@@ -1,0 +1,6 @@
+@import './student-portal-modal.css';
+
+.selected-chips .chip{background:#f1f5f9;padding:6px 8px;border-radius:16px;display:inline-flex;align-items:center;gap:6px}
+.selected-chips .chip-remove{border:none;background:transparent;cursor:pointer;color:#666;font-size:14px}
+.small-input{width:64px}
+.grid-form.two-col{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
