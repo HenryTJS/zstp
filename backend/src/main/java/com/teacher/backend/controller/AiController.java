@@ -8,6 +8,7 @@ import com.teacher.backend.dto.GenerateExamRequest;
 import com.teacher.backend.dto.GradeAnswerRequest;
 import com.teacher.backend.dto.KnowledgeGraphRequest;
 import com.teacher.backend.dto.LearningSuggestionsRequest;
+import com.teacher.backend.dto.MajorRelevanceRequest;
 import com.teacher.backend.dto.SaveExamRequest;
 import com.teacher.backend.service.AiService;
 import org.slf4j.Logger;
@@ -45,6 +46,15 @@ public class AiController {
         String knowledgePoint = request == null ? null : request.knowledgePoint();
         log.info("Hit /api/learning-suggestions, topic={}, knowledgePoint={}", topic, knowledgePoint);
         return aiService.generateLearningSuggestions(topic, knowledgePoint);
+    }
+
+    @PostMapping("/major-relevance")
+    public Map<String, Object> majorRelevance(@RequestBody(required = false) MajorRelevanceRequest request) {
+        String topic = request == null ? null : request.topic();
+        String knowledgePoint = request == null ? null : request.knowledgePoint();
+        String major = request == null ? null : request.major();
+        log.info("Hit /api/major-relevance, topic={}, knowledgePoint={}, major={}", topic, knowledgePoint, major);
+        return aiService.generateMajorRelevance(topic, knowledgePoint, major);
     }
 
     @PostMapping("/generate-question")

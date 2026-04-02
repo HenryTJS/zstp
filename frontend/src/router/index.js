@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginPage from '../components/LoginPage.vue'
 import StudentPortal from '../components/StudentPortal.vue'
 import TeacherPortal from '../components/TeacherPortal.vue'
+import AdminPortal from '../components/AdminPortal.vue'
 import AccountSecurityPanel from '../components/AccountSecurityPanel.vue'
 
 const routes = [
@@ -12,6 +13,7 @@ const routes = [
       if (!u) return '/login'
       if (u.role === 'student') return '/student'
       if (u.role === 'teacher') return '/teacher'
+      if (u.role === 'admin') return '/admin'
       return '/login'
     }
   },
@@ -22,6 +24,14 @@ const routes = [
     props: (route) => ({ currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'), activePage: route.params.page || 'home' })
   },
   { path: '/teacher/:page?', component: TeacherPortal, props: (route) => ({ currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'), activePage: route.params.page || 'profile' }) },
+  {
+    path: '/admin/:page?',
+    component: AdminPortal,
+    props: (route) => ({
+      currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'),
+      activePage: route.params.page || 'profile'
+    })
+  },
   { path: '/security', component: AccountSecurityPanel, props: () => ({ currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null') }) }
 ]
 

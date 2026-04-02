@@ -1,21 +1,27 @@
 package com.teacher.backend.controller;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 
+import com.teacher.backend.dto.BulkUserImportRequest;
+import com.teacher.backend.dto.BulkUserRow;
 import com.teacher.backend.dto.ChangePasswordRequest;
-import com.teacher.backend.dto.UpdateUserRequest;
 import com.teacher.backend.dto.LoginRequest;
+import com.teacher.backend.dto.UpdateUserRequest;
 import com.teacher.backend.entity.User;
 import com.teacher.backend.repository.UserRepository;
 import com.teacher.backend.service.ApiResponseMapper;
 import com.teacher.backend.service.PasswordService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,6 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private static final Set<String> VALID_ROLES = Set.of("student", "teacher");
+    private static final String ROLE_ADMIN = "admin";
 
     private final UserRepository userRepository;
     private final PasswordService passwordService;
@@ -54,7 +61,7 @@ public class UserController {
             return error(HttpStatus.BAD_REQUEST, "identity and password are required");
         }
 
-        return userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase(identity, identity)
+        return userRepository.findByWorkIdIgnoreCaseOrEmailIgnoreCase(identity, identity)
             .filter(user -> passwordService.matches(password, user.getPasswordHash()))
             .<ResponseEntity<?>>map(user -> ResponseEntity.ok(Map.of(
                 "message", "ok",
@@ -118,11 +125,19 @@ public class UserController {
 
                 String newUsername = request.username() == null ? null : request.username().trim();
                 String newEmail = request.email() == null ? null : request.email().trim();
+                String newWorkId = request.workId() == null ? null : request.workId().trim();
                 if (newUsername != null && newUsername.length() > 0) {
                     nonNullUser.setUsername(newUsername);
                 }
                 if (newEmail != null && newEmail.length() > 0) {
                     nonNullUser.setEmail(newEmail);
+                }
+                if (newWorkId != null && newWorkId.length() > 0) {
+                    Optional<User> other = userRepository.findByWorkIdIgnoreCase(newWorkId);
+                    if (other.isPresent() && !other.get().getId().equals(nonNullUser.getId())) {
+                        return error(HttpStatus.BAD_REQUEST, "学工号已被其他账号使用");
+                    }
+                    nonNullUser.setWorkId(newWorkId);
                 }
                 try {
                     User saved = userRepository.save(nonNullUser);
@@ -132,5 +147,88 @@ public class UserController {
                 }
             })
             .orElseGet(() -> error(HttpStatus.NOT_FOUND, "user not found"));
+    }
+
+    @PostMapping("/bulk-import")
+    @Transactional
+    public ResponseEntity<?> bulkImport(@RequestBody(required = false) BulkUserImportRequest request) {
+        if (!resolveAdmin(request == null ? null : request.userId()).isPresent()) {
+            return error(HttpStatus.FORBIDDEN, "仅管理员可批量导入账号");
+        }
+        String role = request == null ? "" : normalize(request.role()).toLowerCase(Locale.ROOT);
+        if (!VALID_ROLES.contains(role)) {
+            return error(HttpStatus.BAD_REQUEST, "role 须为 student 或 teacher");
+        }
+        List<BulkUserRow> rows = request == null || request.rows() == null ? List.of() : request.rows();
+        int created = 0;
+        List<Map<String, String>> failures = new ArrayList<>();
+        for (BulkUserRow row : rows) {
+            if (row == null) {
+                continue;
+            }
+            String username = row.username() == null ? "" : row.username().trim();
+            String workId = row.workId() == null ? "" : row.workId().trim();
+            if (!StringUtils.hasText(username) || !StringUtils.hasText(workId)) {
+                failures.add(failureRow(username, workId, "用户名与学工号均不能为空"));
+                continue;
+            }
+            if (userRepository.findByUsernameIgnoreCase(username).isPresent()) {
+                failures.add(failureRow(username, workId, "用户名已存在"));
+                continue;
+            }
+            if (userRepository.existsByWorkIdIgnoreCase(workId)) {
+                failures.add(failureRow(username, workId, "学工号已存在"));
+                continue;
+            }
+            String email = allocateImportEmail(workId, role);
+            User u = new User();
+            u.setUsername(username);
+            u.setEmail(email);
+            u.setWorkId(workId);
+            u.setRole(role);
+            u.setPasswordHash(passwordService.hashPassword(workId));
+            try {
+                userRepository.save(u);
+                created++;
+            } catch (DataIntegrityViolationException ex) {
+                failures.add(failureRow(username, workId, "写入失败（可能与其他字段冲突）"));
+            }
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message", "ok");
+        body.put("created", created);
+        body.put("failures", failures);
+        return ResponseEntity.ok(body);
+    }
+
+    private static Map<String, String> failureRow(String username, String workId, String reason) {
+        Map<String, String> m = new LinkedHashMap<>();
+        m.put("username", username);
+        m.put("workId", workId);
+        m.put("reason", reason);
+        return m;
+    }
+
+    private String allocateImportEmail(String workId, String role) {
+        String safe = workId.replaceAll("[^a-zA-Z0-9._-]", "_");
+        if (!StringUtils.hasText(safe)) {
+            safe = "id";
+        }
+        String prefix = "student".equals(role) ? "s" : "t";
+        String local = prefix + safe.toLowerCase(Locale.ROOT);
+        String email = local + "@bulk.import.local";
+        int i = 0;
+        while (userRepository.findByEmailIgnoreCase(email).isPresent()) {
+            i++;
+            email = local + "_" + i + "@bulk.import.local";
+        }
+        return email;
+    }
+
+    private Optional<User> resolveAdmin(Long userId) {
+        if (userId == null) {
+            return Optional.empty();
+        }
+        return userRepository.findById(userId).filter(u -> ROLE_ADMIN.equals(u.getRole()));
     }
 }

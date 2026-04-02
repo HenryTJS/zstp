@@ -33,6 +33,10 @@ public class KnowledgePointController {
         if (!courseKnowledgePointRepository.existsById(id)) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "知识点不存在"));
         }
+        var toDelete = courseKnowledgePointRepository.findById(id).orElse(null);
+        if (toDelete != null && isCourseRootPoint(toDelete)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "课程根知识点不可删除"));
+        }
         try {
             // 删除知识点及其前置关系引用
             prereqRepository.deleteByPointId(id);
@@ -62,6 +66,14 @@ public class KnowledgePointController {
         }
         if (pointName.equals(parentPoint)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "pointName cannot equal parentPoint"));
+        }
+        if (isCourseRootPoint(entity)) {
+            if (!pointName.equals(entity.getPointName())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "课程根知识点名称不可修改"));
+            }
+            if (StringUtils.hasText(parentPoint)) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "课程根知识点不可设置父节点"));
+            }
         }
         entity.setCourseName(courseName);
         entity.setPointName(pointName);
@@ -110,6 +122,7 @@ public class KnowledgePointController {
     @GetMapping
     public Map<String, Object> listByCourse(@RequestParam(required = false) String courseName) {
         String normalizedCourse = courseCatalogService.normalizeCourseName(courseName);
+        ensureCourseRootPoint(normalizedCourse);
         List<Map<String, Object>> points = courseKnowledgePointRepository
             .findByCourseNameOrderBySortOrderAscIdAsc(normalizedCourse)
             .stream()
@@ -136,6 +149,9 @@ public class KnowledgePointController {
         }
         if (pointName.equals(parentPoint)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "pointName cannot equal parentPoint"));
+        }
+        if (pointName.equals(courseName) && StringUtils.hasText(parentPoint)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "与课程同名的根知识点不可设置父节点"));
         }
 
         CourseKnowledgePoint entity = courseKnowledgePointRepository
@@ -187,6 +203,29 @@ public class KnowledgePointController {
         java.util.List<com.teacher.backend.entity.CourseKnowledgePointPrereq> prs = prereqRepository.findByPointId(point.getId());
         java.util.List<Long> prereqIds = prs == null ? java.util.List.of() : prs.stream().map(com.teacher.backend.entity.CourseKnowledgePointPrereq::getPrereqPointId).toList();
         response.put("prereqIds", prereqIds);
+        response.put("courseRoot", isCourseRootPoint(point));
         return response;
+    }
+
+    private boolean isCourseRootPoint(CourseKnowledgePoint point) {
+        if (point == null || point.getPointName() == null || point.getCourseName() == null) {
+            return false;
+        }
+        return point.getPointName().equals(point.getCourseName());
+    }
+
+    /** 课程名作为 0 级知识点：与课程同名、无父节点，且不可删除 */
+    private void ensureCourseRootPoint(String normalizedCourse) {
+        if (!StringUtils.hasText(normalizedCourse)) {
+            return;
+        }
+        if (courseKnowledgePointRepository.findByCourseNameAndPointName(normalizedCourse, normalizedCourse).isEmpty()) {
+            CourseKnowledgePoint p = new CourseKnowledgePoint();
+            p.setCourseName(normalizedCourse);
+            p.setPointName(normalizedCourse);
+            p.setParentPoint(null);
+            p.setSortOrder(-1000);
+            courseKnowledgePointRepository.save(p);
+        }
     }
 }

@@ -469,6 +469,11 @@ public class AiService {
         idMap.put(courseName, "root");
 
         for (CourseKnowledgePoint point : points) {
+            // 数据库中的课程根知识点（与课程同名、无父）与图谱 root 节点合并，避免重复
+            if (courseName.equals(point.getPointName()) && !StringUtils.hasText(point.getParentPoint())) {
+                idByDbId.put(point.getId(), "root");
+                continue;
+            }
             String pointId = "p" + point.getId();
             idMap.put(point.getPointName(), pointId);
             idByDbId.put(point.getId(), pointId);
@@ -477,6 +482,9 @@ public class AiService {
 
         Set<String> knownPoints = idMap.keySet();
         for (CourseKnowledgePoint point : points) {
+            if (courseName.equals(point.getPointName()) && !StringUtils.hasText(point.getParentPoint())) {
+                continue;
+            }
             String pointId = idMap.get(point.getPointName());
             String parentPoint = point.getParentPoint();
             if (StringUtils.hasText(parentPoint) && knownPoints.contains(parentPoint)) {
@@ -566,6 +574,65 @@ public class AiService {
         ));
     }
 
+    public Map<String, Object> generateMajorRelevance(String topic, String knowledgePoint, String major) {
+        String courseName = courseCatalogService.normalizeCourseName(topic);
+        String kp = safe(knowledgePoint);
+        String mj = safe(major);
+        if (!StringUtils.hasText(kp)) {
+            kp = "该知识点";
+        }
+        if (!StringUtils.hasText(mj)) {
+            mj = "未设置专业";
+        }
+
+        if (aiEnabled()) {
+            String systemPrompt = "你是教学顾问，需要判断“知识点”和“专业方向”的关联度。"
+                + "必须输出 JSON，格式为："
+                + "{score_level:number, summary:string, related_contents:[string], low_relevance_reason:string}。"
+                + "约束："
+                + "1) score_level 只能是 1~5 的整数（5 最高，1 最低）；"
+                + "2) summary 用 1~2 句中文解释评分依据；"
+                + "3) related_contents 列出与该专业较相关的课程/能力/场景要点（0~4 条）；"
+                + "4) 若关联度较低（score_level<=2），不要硬凑相关性，low_relevance_reason 说明为什么关联弱；否则 low_relevance_reason 置空字符串。";
+            String userPrompt = "课程：" + courseName
+                + "\n知识点：" + kp
+                + "\n专业：" + mj
+                + "\n请严格按 JSON 输出，不要输出额外文本。";
+            try {
+                Map<String, Object> parsed = chatJson(systemPrompt, userPrompt);
+                int level = clampMajorRelevanceLevel(parsed.get("score_level"));
+                String summary = safe(String.valueOf(parsed.getOrDefault("summary", "")));
+                if (!StringUtils.hasText(summary)) {
+                    summary = "可结合专业课程目标评估该知识点的应用价值。";
+                }
+                List<String> related = sanitizeStringList(parsed.get("related_contents"), 4);
+                String lowReason = safe(String.valueOf(parsed.getOrDefault("low_relevance_reason", "")));
+                if (level <= 2 && !StringUtils.hasText(lowReason)) {
+                    lowReason = "该知识点在该专业核心课程中出现频率较低，更多属于通用基础能力。";
+                }
+                if (level >= 3) {
+                    lowReason = "";
+                }
+                return Map.of(
+                    "scoreLevel", level,
+                    "summary", summary,
+                    "relatedContents", related,
+                    "lowRelevanceReason", lowReason
+                );
+            } catch (Exception ex) {
+                log.warn("generateMajorRelevance: AI call failed: {}", ex.getMessage());
+            }
+        }
+
+        int fallbackLevel = 3;
+        return Map.of(
+            "scoreLevel", fallbackLevel,
+            "summary", "该知识点与专业学习存在一定通用关联，建议结合具体课程任务再细化判断。",
+            "relatedContents", List.of("基础定量分析能力", "问题建模与逻辑推理"),
+            "lowRelevanceReason", ""
+        );
+    }
+
     private String fallbackSuggestion(String knowledgePoint, int idx) {
         // 用“该知识点”做兜底时也能正常描述
         return switch (idx) {
@@ -573,6 +640,35 @@ public class AiService {
             case 1 -> "再针对「" + knowledgePoint + "」做 1-2 道典型练习，记录解题关键。";
             default -> "最后做错题复盘与总结，形成可复用的步骤清单。";
         };
+    }
+
+    private int clampMajorRelevanceLevel(Object levelValue) {
+        int n = 3;
+        if (levelValue instanceof Number number) {
+            n = (int) Math.round(number.doubleValue());
+        } else {
+            try {
+                n = (int) Math.round(Double.parseDouble(String.valueOf(levelValue)));
+            } catch (Exception ignored) {
+                n = 3;
+            }
+        }
+        return Math.max(1, Math.min(5, n));
+    }
+
+    private List<String> sanitizeStringList(Object raw, int maxSize) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item == null) continue;
+            String s = String.valueOf(item).trim();
+            if (s.isBlank()) continue;
+            out.add(s);
+            if (out.size() >= Math.max(1, maxSize)) break;
+        }
+        return out;
     }
 
     public Map<String, Object> generateQuestion(String topic, String difficulty, String questionType, String major) {

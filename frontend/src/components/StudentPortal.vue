@@ -9,7 +9,7 @@ const props = defineProps({
     default: 'home'
   }
 })
-const emit = defineEmits(['navigate', 'logout'])
+const emit = defineEmits(['navigate', 'logout', 'update-user'])
 
 const profileForm = ref({ username: '', email: '', role: '' })
 const practiceAnswer = ref('')
@@ -43,11 +43,20 @@ const userInitial = computed(() => props.currentUser?.username?.charAt(0) || '')
 const selectedNode = computed(() => {
   return graphData.value.nodes.find(n => n.id === selectedNodeId.value) || null
 })
+const relevanceLabel = computed(() => {
+  const level = Number(majorRelevance.value?.scoreLevel || 0)
+  if (level >= 5) return '高度相关'
+  if (level >= 4) return '较强相关'
+  if (level >= 3) return '中等相关'
+  if (level >= 2) return '弱相关'
+  if (level >= 1) return '很弱相关'
+  return ''
+})
 import * as echarts from 'echarts'
 import katex from 'katex'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Teleport, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
-import { fetchGrading, fetchKnowledgeGraph, fetchQuestion, fetchQuestions, fetchStudentState, saveStudentState, fetchMaterialsByKnowledgePoint, updateUser, listKnowledgePoints, fetchExam, fetchExams, deleteExam, fetchLearningSuggestions, saveExam } from '../api/client'
+import { fetchGrading, fetchKnowledgeGraph, fetchQuestion, fetchQuestions, fetchStudentState, saveStudentState, fetchMaterialsByKnowledgePoint, updateUser, listKnowledgePoints, fetchExam, fetchExams, deleteExam, fetchLearningSuggestions, fetchMajorRelevance, saveExam, fetchAnnouncements } from '../api/client'
 const materials = ref([])
 const selectedKnowledgePoint = ref('')
 
@@ -186,6 +195,15 @@ const learningSuggestions = ref([])
 const suggestionLoading = ref(false)
 const suggestionError = ref('')
 let suggestionReqId = 0
+const majorRelevance = ref({
+  scoreLevel: null,
+  summary: '',
+  relatedContents: [],
+  lowRelevanceReason: ''
+})
+const relevanceLoading = ref(false)
+const relevanceError = ref('')
+let relevanceReqId = 0
 
 
 const questionForm = ref({
@@ -223,17 +241,94 @@ const loadSavedExams = async () => {
   }
 }
 
-// 加载当前课程的知识点供多选使用
-const examPointOptions = ref([])
+// 加载当前课程的知识点（含 parentPoint，用于三级联选）
+const examPointsRaw = ref([])
 const loadExamPoints = async () => {
   try {
     const { data } = await listKnowledgePoints(selectedCourse.value)
-    examPointOptions.value = Array.isArray(data) ? data.map(p => p.pointName) : (Array.isArray(data?.points) ? data.points.map(p=>p.pointName) : [])
+    const points = Array.isArray(data?.points)
+      ? data.points
+      : Array.isArray(data)
+        ? data
+        : []
+    examPointsRaw.value = points
   } catch (e) {
-    examPointOptions.value = []
+    examPointsRaw.value = []
   }
 }
-watch(selectedCourse, () => loadExamPoints(), { immediate: true })
+
+const kpCascade1 = ref('')
+const kpCascade2 = ref('')
+const kpCascade3 = ref('')
+
+watch(selectedCourse, () => {
+  kpCascade1.value = ''
+  kpCascade2.value = ''
+  kpCascade3.value = ''
+  loadExamPoints()
+}, { immediate: true })
+
+const sortPoints = (a, b) => {
+  const oa = Number(a?.sortOrder ?? 0)
+  const ob = Number(b?.sortOrder ?? 0)
+  if (oa !== ob) return oa - ob
+  return String(a?.pointName || '').localeCompare(String(b?.pointName || ''), 'zh-CN')
+}
+
+/** 一级：父节点为课程名，或旧数据无父节点且名称不等于课程名（课程名单独作为 0 级） */
+const kpLevel1Options = computed(() => {
+  const cn = selectedCourse.value
+  return examPointsRaw.value
+    .filter((p) => {
+      if (!cn || p?.pointName === cn) return false
+      const parent = p?.parentPoint && String(p.parentPoint).trim()
+      if (!parent) return true
+      return parent === cn
+    })
+    .slice()
+    .sort(sortPoints)
+})
+
+/** 二级：当前一级的子节点 */
+const kpLevel2Options = computed(() => {
+  const parent = kpCascade1.value
+  if (!parent) return []
+  return examPointsRaw.value.filter((p) => p?.parentPoint === parent).slice().sort(sortPoints)
+})
+
+/** 三级：当前二级的子节点 */
+const kpLevel3Options = computed(() => {
+  const parent = kpCascade2.value
+  if (!parent) return []
+  return examPointsRaw.value.filter((p) => p?.parentPoint === parent).slice().sort(sortPoints)
+})
+
+watch(kpCascade1, () => {
+  kpCascade2.value = ''
+  kpCascade3.value = ''
+})
+watch(kpCascade2, () => {
+  kpCascade3.value = ''
+})
+
+/** 最深层联选；若未选一二三级则使用当前课程名（0 级） */
+const pickCascadePoint = () =>
+  kpCascade3.value || kpCascade2.value || kpCascade1.value || selectedCourse.value || ''
+
+const clearCascadeAfterAdd = () => {
+  if (kpCascade3.value) {
+    kpCascade3.value = ''
+    return
+  }
+  if (kpCascade2.value) {
+    kpCascade2.value = ''
+    return
+  }
+  if (kpCascade1.value) {
+    kpCascade1.value = ''
+  }
+  // 仅添加 0 级（课程名）时一～三级本就为空，无需额外处理
+}
 
 // 切换“单题/组卷”时重置对应预览状态，避免串台
 watch(examMode, (mode) => {
@@ -282,21 +377,19 @@ const testForm = ref({
   selectedPoints: []
 })
 
-const testPointPicker = ref('')
-
 const addTestPoint = () => {
-  const p = testPointPicker.value
+  const p = pickCascadePoint()
   if (!p) return
   if (!Array.isArray(testForm.value.selectedPoints)) testForm.value.selectedPoints = []
   if (!testForm.value.selectedPoints.includes(p)) {
     testForm.value.selectedPoints.push(p)
   }
-  testPointPicker.value = ''
+  clearCascadeAfterAdd()
 }
 
 const removeTestPoint = (p) => {
   if (!Array.isArray(testForm.value.selectedPoints)) return
-  testForm.value.selectedPoints = testForm.value.selectedPoints.filter(x => x !== p)
+  testForm.value.selectedPoints = testForm.value.selectedPoints.filter((x) => x !== p)
 }
 
 const testQuestions = ref([]) // 后端生成的题目数组
@@ -454,10 +547,13 @@ const generateTest = async () => {
     const trimmed = results.slice(0, 10)
 
     testQuestions.value = (trimmed || [])
-      .map((q) => {
+      .map((q, i) => {
         if (!q) return q
+        const anchorKp = topics[i % topics.length]
         return {
           ...q,
+          // 记录出题时轮换到的用户知识点，避免 AI 在 knowledge_points 里编造名称误导错题本
+          userKnowledgePoint: anchorKp,
           question: unescapeNewlinesSafe(q.question),
           explanation: unescapeNewlinesSafe(q.explanation),
           answer: unescapeNewlinesSafe(q.answer),
@@ -543,11 +639,16 @@ const submitTest = async () => {
       const result = perQuestionScores[i] || {}
       const score = Number(result.score || 0)
       const full = 10
-      const kp = Array.isArray(q.knowledge_points) && q.knowledge_points.length
-        ? String(q.knowledge_points[0] || '').trim()
-        : (Array.isArray(testForm.value.selectedPoints) && testForm.value.selectedPoints.length
+      const kpUserAnchored = String(q.userKnowledgePoint || '').trim()
+      const kpFromForm =
+        Array.isArray(testForm.value.selectedPoints) && testForm.value.selectedPoints.length
           ? String(testForm.value.selectedPoints[i % testForm.value.selectedPoints.length] || '').trim()
-          : '')
+          : ''
+      const kpFromAi =
+        Array.isArray(q.knowledge_points) && q.knowledge_points.length
+          ? String(q.knowledge_points[0] || '').trim()
+          : ''
+      const kp = kpUserAnchored || kpFromForm || kpFromAi || ''
 
       newLearningRecords.push({
         id: `lr-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
@@ -566,6 +667,7 @@ const submitTest = async () => {
           course: selectedCourse.value || '',
           knowledgePoint: kp || '未标注',
           question: q.question || '',
+          explanation: unescapeNewlinesSafe(q.explanation) || '',
           myAnswer: resolveAnswerText(q, testAnswers.value[i]),
           answer: resolveAnswerText(q, q.answer),
           score,
@@ -598,6 +700,75 @@ const filteredWrongBook = computed(() => {
     return wrongBook.value
   }
   return wrongBook.value.filter((item) => item.course === selectedCourse.value)
+})
+
+/**
+ * 按知识图谱「包含」边（不含前置）从某节点向下遍历，得到该节点及所有下级节点对应的 label 集合，
+ * 用于把练习记录汇总到祖先知识点。
+ */
+const collectDescendantLabelsFromGraph = (startId) => {
+  const nodes = graphData.value.nodes || []
+  const rawEdges = graphData.value.edges || []
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const childMap = new Map()
+  for (const edge of rawEdges) {
+    if ((edge.label || '').toString().includes('前置')) continue
+    if (!childMap.has(edge.source)) childMap.set(edge.source, [])
+    childMap.get(edge.source).push(edge.target)
+  }
+  const visited = new Set()
+  const stack = [startId]
+  while (stack.length) {
+    const id = stack.pop()
+    if (!id || visited.has(id)) continue
+    visited.add(id)
+    for (const t of childMap.get(id) || []) {
+      if (!visited.has(t)) stack.push(t)
+    }
+  }
+  const labels = new Set()
+  for (const id of visited) {
+    const n = byId.get(id)
+    const lab = n?.label && String(n.label).trim()
+    if (lab) labels.add(lab)
+  }
+  return labels
+}
+
+/** 当前选中图谱节点：本节点 + 所有下级在练习记录中的得分合计 */
+const graphNodeMastery = computed(() => {
+  const startId = selectedNodeId.value
+  if (!startId || !graphData.value.nodes?.length) {
+    return {
+      ratio: null,
+      score: 0,
+      full: 0,
+      noData: true,
+      attemptCount: 0
+    }
+  }
+  const labels = collectDescendantLabelsFromGraph(startId)
+  let score = 0
+  let full = 0
+  let attemptCount = 0
+  for (const item of filteredLearningRecords.value) {
+    const kp = String(item.knowledgePoint || '').trim()
+    if (kp && labels.has(kp)) {
+      score += Number(item.score || 0)
+      full += Number(item.fullScore || 0)
+      attemptCount += 1
+    }
+  }
+  if (full <= 0) {
+    return { ratio: null, score: 0, full: 0, noData: true, attemptCount }
+  }
+  return {
+    ratio: Math.round((score / full) * 100),
+    score,
+    full,
+    noData: false,
+    attemptCount
+  }
 })
 
 const graphNetworkData = computed(() => {
@@ -708,8 +879,7 @@ const learningStats = computed(() => {
     return {
       total: 0,
       average: 0,
-      mastery: 0,
-      weakPoints: []
+      mastery: 0
     }
   }
 
@@ -718,28 +888,10 @@ const learningStats = computed(() => {
   const average = Math.round((totalScore / filteredLearningRecords.value.length) * 10) / 10
   const mastery = totalFull > 0 ? Math.round((totalScore / totalFull) * 100) : 0
 
-  const byPoint = {}
-  for (const item of filteredLearningRecords.value) {
-    if (!byPoint[item.knowledgePoint]) {
-      byPoint[item.knowledgePoint] = { score: 0, full: 0 }
-    }
-    byPoint[item.knowledgePoint].score += item.score
-    byPoint[item.knowledgePoint].full += item.fullScore
-  }
-
-  const weakPoints = Object.entries(byPoint)
-    .map(([name, value]) => ({
-      name,
-      ratio: value.full > 0 ? Math.round((value.score / value.full) * 100) : 0
-    }))
-    .sort((a, b) => a.ratio - b.ratio)
-    .slice(0, 3)
-
   return {
     total: filteredLearningRecords.value.length,
     average,
-    mastery,
-    weakPoints
+    mastery
   }
 })
 
@@ -925,20 +1077,18 @@ const persistGeneratedExam = async () => {
   }
 }
 
-// 临时单选器用于按教师端风格逐条添加知识点
-const examPointPicker = ref('')
 const addExamPoint = () => {
-  const p = examPointPicker.value
+  const p = pickCascadePoint()
   if (!p) return
   if (!Array.isArray(examForm.value.selectedPoints)) examForm.value.selectedPoints = []
   if (!examForm.value.selectedPoints.includes(p)) {
     examForm.value.selectedPoints.push(p)
   }
-  examPointPicker.value = ''
+  clearCascadeAfterAdd()
 }
 const removeExamPoint = (p) => {
   if (!Array.isArray(examForm.value.selectedPoints)) return
-  examForm.value.selectedPoints = examForm.value.selectedPoints.filter(x => x !== p)
+  examForm.value.selectedPoints = examForm.value.selectedPoints.filter((x) => x !== p)
 }
 
 // 三级联动后不再需要 normalizeMajor
@@ -1070,6 +1220,69 @@ const loadLearningSuggestionsFor = async (pointName) => {
   }
 }
 
+const loadMajorRelevanceFor = async (pointName) => {
+  const reqId = ++relevanceReqId
+  relevanceLoading.value = true
+  relevanceError.value = ''
+
+  const kp = pointName || selectedKnowledgePoint.value || ''
+  const majorText = selectedMajorDisplay.value || selectedMajor.value || ''
+  if (!selectedCourse.value || !kp || !majorText) {
+    majorRelevance.value = {
+      scoreLevel: null,
+      summary: '',
+      relatedContents: [],
+      lowRelevanceReason: ''
+    }
+    relevanceLoading.value = false
+    return
+  }
+
+  try {
+    const resp = await fetchMajorRelevance({
+      topic: selectedCourse.value,
+      knowledgePoint: kp,
+      major: majorText
+    })
+    const payload = resp && resp.data ? resp.data : resp
+    if (reqId === relevanceReqId) {
+      majorRelevance.value = {
+        scoreLevel: Number(payload?.scoreLevel) || null,
+        summary: payload?.summary || '',
+        relatedContents: Array.isArray(payload?.relatedContents) ? payload.relatedContents : [],
+        lowRelevanceReason: payload?.lowRelevanceReason || ''
+      }
+    }
+  } catch (err) {
+    if (reqId === relevanceReqId) {
+      relevanceError.value = err?.response?.data?.message || '专业关联度分析生成失败，请稍后重试。'
+      majorRelevance.value = {
+        scoreLevel: null,
+        summary: '',
+        relatedContents: [],
+        lowRelevanceReason: ''
+      }
+    }
+  } finally {
+    if (reqId === relevanceReqId) {
+      relevanceLoading.value = false
+    }
+  }
+}
+
+const loadMaterialsByKnowledgePoint = async (pointName) => {
+  if (!selectedCourse.value || !pointName) {
+    materials.value = []
+    return
+  }
+  try {
+    const resp = await fetchMaterialsByKnowledgePoint(selectedCourse.value, pointName, false)
+    materials.value = resp.data
+  } catch {
+    materials.value = []
+  }
+}
+
 const loadGraph = async () => {
   graphLoading.value = true
   graphError.value = ''
@@ -1084,12 +1297,14 @@ const loadGraph = async () => {
     // 作为兜底先展示 knowledge-graph 返回的建议，随后再为“当前知识点”异步生成新建议
     learningSuggestions.value = Array.isArray(graphData.value.suggestions) ? graphData.value.suggestions : []
 
-    selectedNodeId.value = graphData.value.nodes.find((node) => node.id !== 'root')?.id || ''
-    const initialNode = graphData.value.nodes.find((n) => n.id === selectedNodeId.value)
-    if (initialNode?.label) {
-      selectedKnowledgePoint.value = initialNode.label
+    selectedNodeId.value = 'root'
+    const rootNode = graphData.value.nodes.find((n) => n.id === 'root')
+    if (rootNode?.label) {
+      selectedKnowledgePoint.value = rootNode.label
       if (currentPage.value === 'graph') {
-        void loadLearningSuggestionsFor(initialNode.label)
+        await loadMaterialsByKnowledgePoint(rootNode.label)
+        void loadLearningSuggestionsFor(rootNode.label)
+        void loadMajorRelevanceFor(rootNode.label)
       }
     }
     await nextTick()
@@ -1114,36 +1329,15 @@ const renderGraphChart = () => {
   if (!graphChart) {
     graphChart = echarts.init(graphChartRef.value)
     graphChart.on('click', (params) => {
-      if (params?.data?.id && params.data.id !== 'root') {
+      if (params?.data?.id) {
         selectedNodeId.value = params.data.id
-        // 选中知识点时自动加载资料
-        selectedKnowledgePoint.value = params.data.name
-        loadMaterialsByKnowledgePoint(params.data.name)
-        // 同步生成“学习建议”（基于当前知识点）
-        void loadLearningSuggestionsFor(params.data.name)
+        const name = params.data.name
+        selectedKnowledgePoint.value = name
+        void loadMaterialsByKnowledgePoint(name)
+        void loadLearningSuggestionsFor(name)
+        void loadMajorRelevanceFor(name)
       }
     })
-  const loadMaterialsByKnowledgePoint = async (pointName) => {
-    if (!selectedCourse.value || !pointName) {
-      materials.value = []
-      return
-    }
-    const resp = await fetchMaterialsByKnowledgePoint(selectedCourse.value, pointName, false)
-    materials.value = resp.data
-  }
-  // 页面切换到知识图谱时，自动加载根节点资料
-  watch(currentPage, (val) => {
-    if (val === 'graph' && graphData.value.nodes?.length) {
-      const rootNode = graphData.value.nodes.find((n) => n.id !== 'root') || graphData.value.nodes[0]
-      if (rootNode) {
-        selectedKnowledgePoint.value = rootNode.label
-        loadMaterialsByKnowledgePoint(rootNode.label)
-        // 同步生成“学习建议”（基于当前知识点）
-        void loadLearningSuggestionsFor(rootNode.label)
-      }
-    }
-  })
-      // ...existing code...
   }
 
   graphChart.setOption({
@@ -1200,8 +1394,61 @@ const removeWrongItem = (id) => {
   if (!id) return
   if (!confirm('确定删除这条错题记录吗？')) return
   wrongBook.value = wrongBook.value.filter((item) => item.id !== id)
+  if (wrongBookModalItem.value?.id === id) {
+    wrongBookModalItem.value = null
+  }
   schedulePersistStudentState()
 }
+
+/** 错题本卡片预览：弱化公式占位，避免格子内过长 */
+const wrongBookQuestionPreview = (raw) => {
+  let s = String(raw || '')
+    .replace(/\$\$[\s\S]*?\$\$/g, '〔公式〕')
+    .replace(/\$[^$\n]+?\$/g, '〔式〕')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (s.length > 72) s = `${s.slice(0, 72)}…`
+  return s || '（无题干）'
+}
+
+const wrongBookModalItem = ref(null)
+const openWrongBookModal = (item) => {
+  wrongBookModalItem.value = item || null
+}
+const closeWrongBookModal = () => {
+  wrongBookModalItem.value = null
+}
+
+const announcements = ref([])
+const annLoading = ref(false)
+const annError = ref('')
+
+const loadStudentAnnouncements = async () => {
+  annLoading.value = true
+  annError.value = ''
+  try {
+    const { data } = await fetchAnnouncements()
+    announcements.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    annError.value = e?.response?.data?.message || '加载公告失败。'
+    announcements.value = []
+  } finally {
+    annLoading.value = false
+  }
+}
+
+const formatAnnTime = (iso) => {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return String(iso)
+  }
+}
+
+watch(currentPage, (v) => {
+  if (v !== 'review') closeWrongBookModal()
+})
 
 const removeLearningRecord = (id) => {
   if (!id) return
@@ -1261,7 +1508,11 @@ const handleSaveProfile = async () => {
       : { ...props.currentUser, username: profileForm.value.username, email: profileForm.value.email }
     try { localStorage.setItem('currentUser', JSON.stringify(updatedUser)) } catch (e) {}
     // 向父组件传递最新用户信息以便上层刷新
-    emit('update-user', { username: updatedUser.username, email: updatedUser.email })
+    emit('update-user', {
+      username: updatedUser.username,
+      email: updatedUser.email,
+      ...(updatedUser.workId !== undefined && updatedUser.workId !== null ? { workId: updatedUser.workId } : {})
+    })
   } catch (err) {
     // 保持本地更新，向用户展示错误信息
     editProfileVisible.value = false
@@ -1269,7 +1520,11 @@ const handleSaveProfile = async () => {
     // 即使后端同步失败，也更新 localStorage 显示最新输入，避免用户界面和输入不一致
     const fallbackUser = { ...props.currentUser, username: profileForm.value.username, email: profileForm.value.email }
     try { localStorage.setItem('currentUser', JSON.stringify(fallbackUser)) } catch (e) {}
-    emit('update-user', { username: profileForm.value.username, email: profileForm.value.email })
+    emit('update-user', {
+      username: profileForm.value.username,
+      email: profileForm.value.email,
+      ...(props.currentUser.workId ? { workId: props.currentUser.workId } : {})
+    })
   }
 }
 
@@ -1294,7 +1549,21 @@ watch(selectedCourse, () => {
   schedulePersistStudentState()
 })
 
+watch([selectedMajor1, selectedMajor2, selectedMajor3], () => {
+  if (currentPage.value === 'graph' && selectedKnowledgePoint.value) {
+    void loadMajorRelevanceFor(selectedKnowledgePoint.value)
+  }
+})
+
 // removed watcher for profileForm.bio (learning goal removed)
+
+watch(
+  currentPage,
+  (v) => {
+    if (v === 'announcements') void loadStudentAnnouncements()
+  },
+  { immediate: true }
+)
 
 watch(
   () => currentPage.value,
@@ -1305,9 +1574,20 @@ watch(
     if (value === 'graph') {
       if (!graphData.value.nodes?.length) {
         await loadGraph()
+      } else {
+        await nextTick()
+        renderGraphChart()
+        const kp =
+          selectedKnowledgePoint.value ||
+          graphData.value.nodes.find((n) => n.id === 'root')?.label ||
+          ''
+        if (kp) {
+          await loadMaterialsByKnowledgePoint(kp)
+          void loadLearningSuggestionsFor(kp)
+          void loadMajorRelevanceFor(kp)
+        }
       }
       await nextTick()
-      renderGraphChart()
       graphChart?.resize()
       return
     }
@@ -1420,21 +1700,18 @@ const confirmDeleteExam = async (id) => {
               <strong>{{ filteredWrongBook.length }}</strong>
             </div>
           </div>
-          <div>
-            <h3>薄弱点提示</h3>
-            <p v-if="!learningStats.weakPoints.length" class="panel-subtitle">暂无历史练习。</p>
-            <ul v-else>
-              <li v-for="item in learningStats.weakPoints" :key="item.name">{{ item.name }}（掌握率 {{ item.ratio }}%）</li>
-            </ul>
-          </div>
         </article>
 
         <article class="result-card profile-detail-card">
           <h3>资料设置</h3>
           <div class="grid-form">
               <label>
-                用户名
+                用户名（展示名）
                 <div class="panel-subtitle">{{ profileForm.username || currentUser.username }}</div>
+              </label>
+              <label>
+                学工号
+                <div class="panel-subtitle">{{ currentUser.workId || '未设置' }}</div>
               </label>
               <label>
                 邮箱
@@ -1470,6 +1747,18 @@ const confirmDeleteExam = async (id) => {
 
       <article v-if="selectedNode" class="result-card">
         <h3>{{ selectedNode.label }}</h3>
+        <div style="margin-bottom:14px">
+          <h3>掌握程度</h3>
+          <p v-if="graphNodeMastery.noData" class="panel-subtitle">
+            暂无该知识点及其下级相关的练习记录。
+          </p>
+          <template v-else>
+            <p class="panel-subtitle">
+              <strong style="font-size:1.15em">{{ graphNodeMastery.ratio }}%</strong>
+              <span>（{{ graphNodeMastery.score }} / {{ graphNodeMastery.full }} 分，{{ graphNodeMastery.attemptCount }} 次练习）</span>
+            </p>
+          </template>
+        </div>
         <div>
           <h3>学习建议</h3>
           <p v-if="suggestionLoading" class="panel-subtitle">正在生成学习建议...</p>
@@ -1478,6 +1767,38 @@ const confirmDeleteExam = async (id) => {
             <li v-for="item in learningSuggestions" :key="item">{{ item }}</li>
             <li v-if="!learningSuggestions.length" class="panel-subtitle">暂无建议。</li>
           </ul>
+        </div>
+        <div style="margin-top:12px;">
+          <h3>专业关联度分析</h3>
+          <p v-if="relevanceLoading" class="panel-subtitle">正在分析该知识点与当前专业的关联度...</p>
+          <p v-else-if="relevanceError" class="error-text">{{ relevanceError }}</p>
+          <div v-else>
+            <div v-if="majorRelevance.scoreLevel" class="relevance-meter-wrap">
+              <div class="relevance-meter">
+                <span
+                  v-for="i in 5"
+                  :key="'relevance-dot-' + i"
+                  class="relevance-dot"
+                  :class="{ active: i <= majorRelevance.scoreLevel }"
+                />
+              </div>
+              <div class="relevance-meter-text">
+                <strong>关联度等级：</strong>{{ majorRelevance.scoreLevel }} / 5
+                <span v-if="relevanceLabel">（{{ relevanceLabel }}）</span>
+              </div>
+            </div>
+            <p v-if="majorRelevance.summary" class="panel-subtitle">{{ majorRelevance.summary }}</p>
+            <div v-if="majorRelevance.relatedContents?.length">
+              <p><strong>相关内容：</strong></p>
+              <ul>
+                <li v-for="item in majorRelevance.relatedContents" :key="item">{{ item }}</li>
+              </ul>
+            </div>
+            <p v-if="majorRelevance.lowRelevanceReason" class="panel-subtitle">
+              <strong>低关联说明：</strong>{{ majorRelevance.lowRelevanceReason }}
+            </p>
+            <p v-if="!majorRelevance.scoreLevel" class="panel-subtitle">请选择已设置专业后查看分析结果。</p>
+          </div>
         </div>
         <div style="margin-top:12px;">
           <h3>相关资料</h3>
@@ -1522,10 +1843,29 @@ const confirmDeleteExam = async (id) => {
         <div v-if="examMode === 'single'" class="grid-form three-col">
           <label>
             知识点（多选）
-            <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-              <select v-model="testPointPicker" class="match-height">
-                <option value="">请选择知识点</option>
-                <option v-for="p in examPointOptions" :key="p" :value="p">{{ p }}</option>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+              <span style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+                <span class="panel-subtitle" style="margin:0">0级</span>
+                <input
+                  type="text"
+                  class="match-height"
+                  style="min-width:10em;background:#f0f4f8;border:1px solid #dde1e6;color:#334155;cursor:default"
+                  readonly
+                  :value="selectedCourse"
+                  title="当前课程名，与知识图谱根节点一致；可直接点「添加」仅按课程出题"
+                />
+              </span>
+              <select v-model="kpCascade1" class="match-height">
+                <option value="">一级知识点</option>
+                <option v-for="p in kpLevel1Options" :key="p.id" :value="p.pointName">{{ p.pointName }}</option>
+              </select>
+              <select v-model="kpCascade2" class="match-height" :disabled="!kpCascade1">
+                <option value="">二级知识点</option>
+                <option v-for="p in kpLevel2Options" :key="p.id" :value="p.pointName">{{ p.pointName }}</option>
+              </select>
+              <select v-model="kpCascade3" class="match-height" :disabled="!kpCascade2">
+                <option value="">三级知识点</option>
+                <option v-for="p in kpLevel3Options" :key="p.id" :value="p.pointName">{{ p.pointName }}</option>
               </select>
               <button type="button" class="match-button" @click="addTestPoint">添加</button>
             </div>
@@ -1582,11 +1922,30 @@ const confirmDeleteExam = async (id) => {
 
         <div v-if="examMode === 'batch'" style="margin-top:12px">
           <label>
-            选择知识点（下拉选择后点击添加）
-            <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-              <select v-model="examPointPicker">
-                <option value="">请选择知识点</option>
-                <option v-for="p in examPointOptions" :key="p" :value="p">{{ p }}</option>
+            选择知识点（按图谱逐级选择后点击添加；可混选不同层级，亦可只选 0 级课程名）
+            <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
+              <span style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+                <span class="panel-subtitle" style="margin:0">0级</span>
+                <input
+                  type="text"
+                  class="match-height"
+                  style="min-width:10em;background:#f0f4f8;border:1px solid #dde1e6;color:#334155;cursor:default"
+                  readonly
+                  :value="selectedCourse"
+                  title="当前课程名；未选一二三级时点击「添加」即按课程出题"
+                />
+              </span>
+              <select v-model="kpCascade1" class="match-height">
+                <option value="">一级知识点</option>
+                <option v-for="p in kpLevel1Options" :key="'e-' + p.id" :value="p.pointName">{{ p.pointName }}</option>
+              </select>
+              <select v-model="kpCascade2" class="match-height" :disabled="!kpCascade1">
+                <option value="">二级知识点</option>
+                <option v-for="p in kpLevel2Options" :key="'e-' + p.id" :value="p.pointName">{{ p.pointName }}</option>
+              </select>
+              <select v-model="kpCascade3" class="match-height" :disabled="!kpCascade2">
+                <option value="">三级知识点</option>
+                <option v-for="p in kpLevel3Options" :key="'e-' + p.id" :value="p.pointName">{{ p.pointName }}</option>
               </select>
               <button type="button" class="match-button" @click="addExamPoint">添加</button>
             </div>
@@ -1726,17 +2085,51 @@ const confirmDeleteExam = async (id) => {
       <article class="result-card">
         <h3>错题本</h3>
         <p v-if="!filteredWrongBook.length" class="panel-subtitle">当前课程暂无收藏错题。</p>
-        <div v-else class="panel-stack">
-          <article v-for="item in filteredWrongBook" :key="item.id" class="result-card wrong-item-card">
-            <p><strong>{{ item.major }} · {{ item.course }} · {{ item.knowledgePoint }}</strong></p>
-            <p>{{ item.question }}</p>
-            <p><strong>我的答案：</strong>{{ item.myAnswer }}</p>
-            <p><strong>参考答案：</strong>{{ item.answer }}</p>
-            <p><strong>得分：</strong>{{ item.score }} / {{ item.fullScore }}</p>
-            <p><strong>收藏时间：</strong>{{ item.collectedAt }}</p>
-            <button type="button" @click="removeWrongItem(item.id)">删除</button>
+        <div v-else class="wrong-book-grid">
+          <article v-for="item in filteredWrongBook" :key="item.id" class="wrong-book-card">
+            <div class="wrong-book-card-top">
+              <strong class="wrong-book-title">{{ item.course }} · {{ item.knowledgePoint }}</strong>
+              <div class="wrong-book-meta-line">
+                <span>{{ item.score }} / {{ item.fullScore }} 分</span>
+                <span class="wrong-book-time">{{ item.collectedAt }}</span>
+              </div>
+            </div>
+            <p class="wrong-book-preview">{{ wrongBookQuestionPreview(item.question) }}</p>
+            <div class="wrong-book-card-actions">
+              <button type="button" class="match-button wrong-book-toggle" @click.stop="openWrongBookModal(item)">
+                查看题目与解析
+              </button>
+              <button type="button" class="cancel-button" @click.stop="removeWrongItem(item.id)">删除</button>
+            </div>
           </article>
         </div>
+
+        <Teleport to="body">
+          <div v-if="wrongBookModalItem" class="modal-mask" @click.self="closeWrongBookModal">
+            <div class="modal-wrapper wrong-book-modal-wrap">
+              <div class="modal-container wrong-book-modal-box">
+                <button type="button" class="modal-close" @click="closeWrongBookModal" aria-label="关闭">×</button>
+                <h3>题目与解析</h3>
+                <p class="panel-subtitle wrong-book-modal-sub">
+                  {{ wrongBookModalItem.course }} · {{ wrongBookModalItem.knowledgePoint }}
+                </p>
+                <div class="wrong-book-modal-body">
+                  <div class="latex-block wrong-book-detail-q" v-html="renderLatexText(wrongBookModalItem.question)"></div>
+                  <p class="wrong-book-detail-row">
+                    <strong>我的答案：</strong><span v-html="renderLatexText(wrongBookModalItem.myAnswer)"></span>
+                  </p>
+                  <p class="wrong-book-detail-row">
+                    <strong>参考答案：</strong><span v-html="renderLatexText(wrongBookModalItem.answer)"></span>
+                  </p>
+                  <div v-if="wrongBookModalItem.explanation" class="wrong-book-detail-explain">
+                    <h4 class="wrong-book-explain-heading">解析</h4>
+                    <div class="latex-block" v-html="renderLatexText(wrongBookModalItem.explanation)"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Teleport>
       </article>
 
       <article class="result-card">
@@ -1746,7 +2139,6 @@ const confirmDeleteExam = async (id) => {
           <thead>
             <tr>
               <th>时间</th>
-              <th>专业</th>
               <th>课程</th>
               <th>知识点</th>
               <th>得分</th>
@@ -1756,7 +2148,6 @@ const confirmDeleteExam = async (id) => {
           <tbody>
             <tr v-for="item in filteredLearningRecords" :key="item.id">
               <td>{{ item.time }}</td>
-              <td>{{ item.major }}</td>
               <td>{{ item.course }}</td>
               <td>{{ item.knowledgePoint }}</td>
               <td>{{ item.score }} / {{ item.fullScore }}</td>
@@ -1797,6 +2188,27 @@ const confirmDeleteExam = async (id) => {
         <p v-if="examError" class="error-text" style="margin-top:8px">{{ examError }}</p>
       </article>
     </section>
+
+    <section v-if="currentPage === 'announcements'" class="panel-stack">
+      <article class="result-card">
+        <h3>平台公告</h3>
+        <p v-if="annLoading && !announcements.length" class="panel-subtitle">加载中…</p>
+        <p v-else-if="annError" class="error-text">{{ annError }}</p>
+        <p v-else-if="!announcements.length" class="panel-subtitle">暂无公告。</p>
+        <div v-else class="announcement-read-list">
+          <article v-for="a in announcements" :key="a.id" class="result-card announcement-read-card">
+            <h4 class="announcement-read-title">{{ a.title }}</h4>
+            <p class="panel-subtitle announcement-read-meta">
+              <span v-if="a.publisherName">{{ a.publisherName }}</span>
+              <span v-if="a.publisherName && a.createdAt"> · </span>
+              <span>{{ formatAnnTime(a.createdAt) }}</span>
+            </p>
+            <div class="announcement-read-body">{{ a.content }}</div>
+          </article>
+        </div>
+      </article>
+    </section>
+
 <!-- 编辑个人资料模态框 -->
 <div v-if="editProfileVisible" class="modal-mask" @click.self="editProfileVisible = false">
   <div class="modal-wrapper">

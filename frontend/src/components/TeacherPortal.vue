@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import colleges from '../data/colleges.json'
-import { listKnowledgePoints, listMaterials, saveKnowledgePoint, uploadMaterial, updateUser, listCoursesByMajor, fetchMaterialsByKnowledgePoint } from '../api/client'
+import { listKnowledgePoints, listMaterials, saveKnowledgePoint, uploadMaterial, updateUser, listCoursesByMajor, fetchMaterialsByKnowledgePoint, fetchAnnouncements } from '../api/client'
 import { deleteKnowledgePoint, updateKnowledgePoint, deleteMaterial } from '../api/point-material-ops'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
 
@@ -28,6 +28,9 @@ watch(() => route.params.page, (v) => {
 // 数据
 const materials = ref([])
 const points = ref([])
+
+/** 与课程同名的根知识点，不可删除、不可编辑名称与父级 */
+const isCourseRootPoint = (item) => Boolean(item?.courseRoot)
 
 // 上传表单与状态
 const uploadForm = ref({ title: '', description: '', course: '', chapter: '', section: '', point: '', files: [] })
@@ -78,6 +81,41 @@ const courseOptions = computed(() => {
 
 const profileMessage = ref('')
 const selectedCollege = ref('')
+
+const announcements = ref([])
+const annLoading = ref(false)
+const annError = ref('')
+
+const loadTeacherAnnouncements = async () => {
+  annLoading.value = true
+  annError.value = ''
+  try {
+    const { data } = await fetchAnnouncements()
+    announcements.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    annError.value = e?.response?.data?.message || '加载公告失败。'
+    announcements.value = []
+  } finally {
+    annLoading.value = false
+  }
+}
+
+const formatAnnTime = (iso) => {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return String(iso)
+  }
+}
+
+watch(
+  currentPage,
+  (v) => {
+    if (v === 'announcements') void loadTeacherAnnouncements()
+  },
+  { immediate: true }
+)
  
 // 与学生端保持一致的个人信息编辑/修改密码逻辑（简化）
 const profileForm = ref({ username: props.currentUser.username || '', email: props.currentUser.email || '' })
@@ -484,7 +522,11 @@ const handleCreatePoint = async () => {
   }
 }
 
-const handleDeletePoint = async (id) => {
+const handleDeletePoint = async (id, item) => {
+  if (item && isCourseRootPoint(item)) {
+    pointError.value = '课程根知识点不可删除。'
+    return
+  }
   if (!confirm('确定要删除该知识点吗？')) return
   try {
     await deleteKnowledgePoint(id)
@@ -550,7 +592,12 @@ const handleSaveProfile = async () => {
     try {
       localStorage.setItem('currentUser', JSON.stringify(enrichedUser))
     } catch (e) {}
-    emit('update-user', { username: enrichedUser.username, email: enrichedUser.email, college: enrichedUser.college })
+    emit('update-user', {
+      username: enrichedUser.username,
+      email: enrichedUser.email,
+      college: enrichedUser.college,
+      ...(enrichedUser.workId !== undefined && enrichedUser.workId !== null ? { workId: enrichedUser.workId } : {})
+    })
     profileMessage.value = resp?.data?.message || '已更新用户信息'
   } catch (err) {
     // 后端同步失败也在本地生效
@@ -566,7 +613,8 @@ const handleSaveProfile = async () => {
     emit('update-user', {
       username: fallbackUser.username,
       email: fallbackUser.email,
-      college: fallbackUser.college
+      college: fallbackUser.college,
+      ...(fallbackUser.workId ? { workId: fallbackUser.workId } : {})
     })
     profileMessage.value = err?.response?.data?.message || '已更新本地信息（未同步服务器）'
   } finally {
@@ -687,8 +735,12 @@ onMounted(async () => {
           <h3>资料设置</h3>
           <div class="grid-form">
               <label>
-                用户名
+                用户名（展示名）
                 <div class="panel-subtitle">{{ profileForm.username || currentUser.username }}</div>
+              </label>
+              <label>
+                学工号
+                <div class="panel-subtitle">{{ currentUser.workId || '未设置' }}</div>
               </label>
               <label>
                 邮箱
@@ -708,6 +760,26 @@ onMounted(async () => {
           <p v-if="profileMessage" class="ok-text">{{ profileMessage }}</p>
         </article>
       </div>
+      </template>
+
+      <template v-else-if="currentPage === 'announcements'">
+        <article class="result-card">
+          <h3>平台公告</h3>
+          <p v-if="annLoading && !announcements.length" class="panel-subtitle">加载中…</p>
+          <p v-else-if="annError" class="error-text">{{ annError }}</p>
+          <p v-else-if="!announcements.length" class="panel-subtitle">暂无公告。</p>
+          <div v-else class="announcement-read-list">
+            <article v-for="a in announcements" :key="a.id" class="result-card announcement-read-card">
+              <h4 class="announcement-read-title">{{ a.title }}</h4>
+              <p class="panel-subtitle announcement-read-meta">
+                <span v-if="a.publisherName">{{ a.publisherName }}</span>
+                <span v-if="a.publisherName && a.createdAt"> · </span>
+                <span>{{ formatAnnTime(a.createdAt) }}</span>
+              </p>
+              <div class="announcement-read-body">{{ a.content }}</div>
+            </article>
+          </div>
+        </article>
       </template>
 
       <template v-else-if="currentPage === 'manage'">
@@ -755,14 +827,19 @@ onMounted(async () => {
           <tbody>
             <tr v-for="item in points" :key="item.id">
               <td>{{ item.courseName }}</td>
-              <td>{{ item.pointName }}</td>
+              <td>{{ item.pointName }}<span v-if="isCourseRootPoint(item)" class="panel-subtitle" style="margin-left:6px">（课程根）</span></td>
               <td>{{ item.parentPoint || '-' }}</td>
               <!-- 顺序 值已移除 -->
               <td>
-                <button @click="openEditPoint(item)">编辑</button>
+                <button v-if="!isCourseRootPoint(item)" type="button" @click="openEditPoint(item)">编辑</button>
                 <button @click="openUploadModal(item)" style="margin-left:8px;">上传资料</button>
                 <button @click="openViewMaterials(item)" style="margin-left:8px;">查看资料</button>
-                <button @click="handleDeletePoint(item.id)" style="margin-left:8px;color:red;">删除</button>
+                <button
+                  v-if="!isCourseRootPoint(item)"
+                  type="button"
+                  @click="handleDeletePoint(item.id, item)"
+                  style="margin-left:8px;color:red;"
+                >删除</button>
               </td>
             </tr>
           </tbody>

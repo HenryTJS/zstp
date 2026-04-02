@@ -1,56 +1,86 @@
 # AI 学生自学平台
 
-一个面向学生自学场景的教学辅助平台原型，前端使用 Vue 3 + Vite，后端使用 Spring Boot（Java），数据存储为 PostgreSQL。功能包括知识图谱可视化、AI 自动出题/组卷、AI 批改与教师资料上传。
+面向学生自学与教师教学管理的 AI 辅助平台。  
+项目包含学生端、教师端和后端服务，支持知识图谱学习、AI 出题与解析、组卷、资料管理等能力。
 
-## 主要特性
+## 功能总览
 
-- 学生端：知识图谱、题目生成、在线练习与 AI 批改
-- 教师端：资料上传、资料列表管理
-- 统一登录、关闭注册、支持修改密码
+- 学生端
+  - 知识图谱查看与学习建议
+  - AI 测试生成、AI 组卷
+  - 客观题批改与错题记录
+  - 学习状态记录、个人资料与密码修改
+- 教师端
+  - 知识点管理（新增、编辑、删除与层级）
+  - 教学资料上传、列表查看、按知识点筛选与删除
+  - Markdown 导入知识点
+- 账号体系
+  - 统一登录
+  - 注册接口已禁用（默认依赖预置账号）
 
-## 仓库结构（简要）
+## 技术栈
+
+- 前端：`Vue 3`、`Vite`、`Vue Router`、`Axios`、`ECharts`、`D3`、`KaTeX`
+- 后端：`Java 17`、`Spring Boot 3`、`Spring Data JPA`、`PostgreSQL`
+- AI 接入：OpenAI 兼容接口（可配置 `OPENAI_BASE_URL` / `OPENAI_MODEL`）
+- 部署：`Docker Compose` + `Nginx`（HTTPS 反向代理）
+
+## 仓库结构
 
 ```text
 e:/zstp/
-  backend/        # Spring Boot 后端代码及配置
-  frontend/       # Vue 3 + Vite 前端代码
-  start-all.bat   # Windows 一键启动脚本
-  start-all.ps1   # PowerShell 一键启动脚本
-  uploads/        # 临时/演示文件上传目录
+  backend/               # Spring Boot 后端
+  frontend/              # Vue 3 + Vite 前端
+  deploy/                # Docker Compose 与大陆部署文档
+  start-all.bat          # Windows 一键启动（CMD）
+  start-all.ps1          # Windows 一键启动（PowerShell）
+  LICENSE
 ```
 
-## 快速开始（开发环境）
+## 快速开始（本地开发）
 
-先决条件：
+### 1) 环境要求
 
-- Java 17 或更高
+- Java 17+
 - Maven 3.x
-- Node.js + npm
-- PostgreSQL
+- Node.js 18+ 与 npm
+- PostgreSQL 14+
 
-1) 启动 PostgreSQL 并创建数据库：
+### 2) 准备数据库
 
 ```sql
 CREATE DATABASE ai_self_learning;
 ```
 
-2) 后端（开发）
+### 3) 配置后端环境变量
+
+后端会从 `backend/.env` 读取配置（由 `application.yml` 导入）。常用配置项：
+
+- 数据库：`DATABASE_URL` 或 `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD`
+- 服务端口：`SERVER_PORT`（默认 `5000`）
+- AI：`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`
+- 预置账号：`APP_BOOTSTRAP_USERS_*`
+
+> 注意：请勿提交真实密钥、真实数据库密码等敏感信息到仓库。
+
+### 4) 启动后端
 
 ```bash
 cd backend
-# 使用 Maven 直接运行
 mvn spring-boot:run
+```
 
-# 或打包后运行
+或：
+
+```bash
+cd backend
 mvn package
 java -jar target/backend-0.0.1-SNAPSHOT.jar
 ```
 
-后端默认监听地址：`http://localhost:5000`（如需改变端口，请查看 `backend/src/main/resources/application.yml`）。
+默认地址：`http://localhost:5000`
 
-环境变量：请参考 `backend/.env.example`，常见项包括数据库连接、`OPENAI_API_KEY`（若使用 OpenAI 兼容服务）、以及用于引导预置账号的 `APP_BOOTSTRAP_USERS_*` 配置。
-
-3) 前端（开发）
+### 5) 启动前端
 
 ```bash
 cd frontend
@@ -58,59 +88,100 @@ npm install
 npm run dev
 ```
 
-前端默认开发服务：`http://localhost:5173`，项目使用 Vite 的 `/api` 代理转发到后端接口。
+默认地址：`http://localhost:5173`，并通过 Vite 代理将 `/api` 转发到后端。
 
-注：前端脚本请参见 `frontend/package.json`，开发命令为 `npm run dev`，构建命令为 `npm run build`。
+### 6) Windows 一键启动
 
-4) 一键启动（Windows）
+在项目根目录执行：
 
-项目根目录包含：
+- `start-all.bat`
+- `start-all.ps1`
 
-- `start-all.bat`（双击运行）
-- `start-all.ps1`（在 PowerShell 中运行）
+脚本会启动后端和前端开发服务。
 
-脚本会在各自终端中启动后端与前端（并在需要时复制 `.env.example` 到 `.env`）。
-
-## 默认账号（仅用于本地演示）
+## 默认演示账号
 
 - 学生：`student_demo / student123`
 - 教师：`teacher_demo / teacher123`
 
-如需修改，请编辑 `backend/.env.example` 中的引导配置并复制到 `backend/.env`。
+生产环境请务必修改默认密码并替换为正式账号体系。
 
-## 主要接口（示例）
+## API 概览
 
-- `POST /api/users/login` — 登录
-- `POST /api/users/change-password` — 修改密码
-- `GET /api/users?role=student|teacher` — 获取用户列表
-- `POST /api/materials/upload` — 教师上传资料（multipart/form-data）
-- `GET /api/materials` — 获取资料列表
-- `POST /api/knowledge-graph` — 生成知识图谱
-- `POST /api/generate-question` — 生成题目与解析
-- `POST /api/grade-answer` — AI 批改
-- `POST /api/generate-test` — AI 组卷
+以下为常用接口分组（完整参数与返回请以后端控制器实现为准）：
 
-（更多接口与参数请参阅后端控制器实现于 `backend/src/main/java/com/teacher/backend/controller`）
+- 用户与认证
+  - `POST /api/users/login`
+  - `POST /api/users/change-password`
+  - `PUT /api/users/{id}`
+  - `GET /api/users?role=student|teacher`
+  - `POST /api/users/register`（已禁用，返回 403）
+- AI 与学习
+  - `POST /api/knowledge-graph`
+  - `POST /api/learning-advice`
+  - `POST /api/generate-question`
+  - `POST /api/grade-answer`
+  - `POST /api/generate-test`
+  - `POST /api/grade-subjective`
+  - `POST /api/exam-papers/save`
+  - `GET /api/exam-papers/{id}/download-markdown`
+- 教学数据
+  - `GET/POST/PUT/DELETE /api/knowledge-points`
+  - `POST /api/materials/upload`
+  - `GET /api/materials`
+  - `DELETE /api/materials/{id}`
+  - `GET /api/student-states/{studentId}`
+  - `POST /api/student-states`
+- 健康检查
+  - `GET /api/health`
 
-## 架构与技术栈
+## 构建与发布
 
-- 前端：Vue 3 + Vite，依赖包括 `axios`, `d3`, `echarts`, `katex`。
-- 后端：Spring Boot + Spring Data JPA，使用 PostgreSQL 作为持久化储存。
+- 前端构建：
+  ```bash
+  cd frontend
+  npm run build
+  ```
+- 后端构建：
+  ```bash
+  cd backend
+  mvn package
+  ```
 
-## 构建与部署建议
+## 部署（中国大陆服务器）
 
-- 后端：`mvn package` 打包为可执行 jar，生产环境使用进程管理器（systemd、pm2、Windows 服务等）运行。
-- 前端：`npm run build` 后将 `dist/` 部署到静态服务器（nginx、静态托管）。
+项目提供完整大陆部署文档，包含腾讯云服务器、域名解析、备案、HTTPS 证书、Nginx 反代与 Docker Compose 部署流程：
 
-## 本地调试提示
+- 详细步骤：`deploy/DEPLOY-MAINLAND.md`
+- 编排文件：`deploy/docker-compose.yml`
+- 环境模板：`deploy/.env.example`
+- 宿主机 Nginx 参考：`deploy/host-nginx.example.conf`
 
-- 若后端未能连接数据库，检查 `backend/.env` 或 `application.yml` 中的 `DATABASE_URL`/JDBC 配置。
-- 若需要测试 OpenAI 功能，请在环境变量中设置 `OPENAI_API_KEY` 或修改为兼容的 API 地址。
+## 质量保障现状
 
-## 贡献与开发流程
+- 当前仓库未提供统一的前端 `lint/test` 脚本。
+- 当前仓库未提供后端测试目录与自动化测试用例。
 
-- 欢迎提交 Issue 或 Pull Request。请在 PR 中说明变更目的、影响范围以及运行验证步骤。
+如需用于生产，建议补充：
+- 前端 ESLint + 单元测试
+- 后端集成测试与关键接口回归测试
+- CI（构建、测试、镜像发布）
+
+## 常见问题（FAQ）
+
+- 后端连不上数据库：优先检查 `backend/.env` 中数据库配置与 PostgreSQL 是否可访问。
+- AI 功能不可用：检查 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`。
+- 前端接口报错：确认后端已启动在 `5000` 端口，且前端代理配置未修改。
+- 服务器 HTTPS 不生效：按 `deploy/DEPLOY-MAINLAND.md` 检查域名解析、备案状态和证书签发。
+
+## 贡献
+
+欢迎提交 Issue 或 Pull Request。请在变更说明中包含：
+
+- 变更目标
+- 影响范围
+- 本地验证步骤
 
 ## 许可证
 
-该项目遵循仓库根目录的 LICENSE 文件。
+本项目遵循 Apache License 2.0，详见根目录 `LICENSE`。

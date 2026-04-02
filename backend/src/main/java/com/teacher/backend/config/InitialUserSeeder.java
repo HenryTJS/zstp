@@ -1,6 +1,7 @@
 package com.teacher.backend.config;
 
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 
 import com.teacher.backend.entity.User;
@@ -13,7 +14,7 @@ import org.springframework.util.StringUtils;
 @Component
 public class InitialUserSeeder implements CommandLineRunner {
 
-    private static final Set<String> VALID_ROLES = Set.of("student", "teacher");
+    private static final Set<String> VALID_ROLES = Set.of("student", "teacher", "admin");
 
     private final InitialUserProperties initialUserProperties;
     private final UserRepository userRepository;
@@ -36,11 +37,19 @@ public class InitialUserSeeder implements CommandLineRunner {
             String email = normalize(seedUser.getEmail()).toLowerCase(Locale.ROOT);
             String password = seedUser.getPassword() == null ? "" : seedUser.getPassword().trim();
             String role = normalize(seedUser.getRole());
+            String workIdRaw = seedUser.getWorkId() == null ? "" : seedUser.getWorkId().trim();
 
             if (!StringUtils.hasText(username) || !StringUtils.hasText(email) || password.length() < 6 || !VALID_ROLES.contains(role)) {
                 continue;
             }
-            if (userRepository.findByUsernameIgnoreCase(username).isPresent()) {
+
+            Optional<User> existingOpt = userRepository.findByUsernameIgnoreCase(username);
+            if (existingOpt.isPresent()) {
+                syncWorkIdOnExistingUser(existingOpt.get(), workIdRaw);
+                continue;
+            }
+
+            if (StringUtils.hasText(workIdRaw) && userRepository.existsByWorkIdIgnoreCase(workIdRaw)) {
                 continue;
             }
 
@@ -48,9 +57,30 @@ public class InitialUserSeeder implements CommandLineRunner {
             user.setUsername(username);
             user.setEmail(email);
             user.setRole(role);
+            if (StringUtils.hasText(workIdRaw)) {
+                user.setWorkId(workIdRaw);
+            }
             user.setPasswordHash(passwordService.hashPassword(password));
             userRepository.save(user);
         }
+    }
+
+    /**
+     * 预置账号若在添加学工号前已存在，启动时按配置补写 workId，便于学工号登录。
+     */
+    private void syncWorkIdOnExistingUser(User existing, String workIdFromConfig) {
+        if (!StringUtils.hasText(workIdFromConfig)) {
+            return;
+        }
+        if (workIdFromConfig.equals(existing.getWorkId())) {
+            return;
+        }
+        Optional<User> holder = userRepository.findByWorkIdIgnoreCase(workIdFromConfig);
+        if (holder.isPresent() && !holder.get().getId().equals(existing.getId())) {
+            return;
+        }
+        existing.setWorkId(workIdFromConfig);
+        userRepository.save(existing);
     }
 
     private String normalize(String value) {

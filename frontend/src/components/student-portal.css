@@ -4,3 +4,69 @@
 .selected-chips .chip-remove{border:none;background:transparent;cursor:pointer;color:#666;font-size:14px}
 .small-input{width:64px}
 .grid-form.two-col{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+
+.relevance-meter-wrap{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:6px 0}
+.relevance-meter{display:flex;gap:6px}
+.relevance-dot{
+  width:20px;
+  height:10px;
+  border-radius:999px;
+  background:#e2e8f0;
+  transition:all .2s ease;
+}
+.relevance-dot.active{background:linear-gradient(90deg,#22c55e,#16a34a);box-shadow:0 0 0 1px rgba(34,197,94,.2)}
+.relevance-meter-text{font-size:14px;color:#0f172a}
+
+/* 错题本：一行三列；题目与解析为弹窗 */
+.wrong-book-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  align-items:start;
+}
+@media (max-width:1024px){
+  .wrong-book-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media (max-width:560px){
+  .wrong-book-grid{grid-template-columns:1fr;}
+}
+.wrong-book-card{
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:10px;
+  padding:12px 14px;
+  box-shadow:0 1px 2px rgba(15,23,42,.04);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-width:0;
+}
+.wrong-book-card-top{display:flex;flex-direction:column;gap:4px}
+.wrong-book-title{font-size:14px;color:#0f172a;line-height:1.35}
+.wrong-book-meta-line{display:flex;flex-wrap:wrap;gap:8px 12px;font-size:12px;color:#64748b}
+.wrong-book-time{word-break:break-all}
+.wrong-book-preview{
+  margin:0;
+  font-size:13px;
+  color:#475569;
+  line-height:1.45;
+  min-height:2.6em;
+}
+.wrong-book-card-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.wrong-book-toggle{flex:1;min-width:120px}
+.modal-wrapper.wrong-book-modal-wrap{max-width:min(920px,96vw);width:96%}
+.wrong-book-modal-box{max-height:85vh;display:flex;flex-direction:column;padding:20px 20px 16px}
+.wrong-book-modal-box h3{margin:0 36px 4px 0;font-size:18px;line-height:1.3}
+.wrong-book-modal-sub{margin:0 0 12px!important}
+.wrong-book-modal-body{overflow-y:auto;flex:1;min-height:0;padding-right:6px}
+.wrong-book-detail-q{margin-bottom:10px}
+.wrong-book-detail-row{margin:8px 0;font-size:14px;line-height:1.55}
+.wrong-book-detail-explain{margin-top:14px}
+.wrong-book-explain-heading{margin:0 0 8px;font-size:14px;font-weight:600;color:#0f172a}
+
+/* 师生端 — 公告只读列表 */
+.announcement-read-list{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.announcement-read-card{margin:0;padding:14px 16px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.announcement-read-title{margin:0 0 6px;font-size:16px;font-weight:600;color:#0f172a;line-height:1.35}
+.announcement-read-meta{margin:0 0 10px!important;font-size:13px}
+.announcement-read-body{font-size:14px;line-height:1.65;color:#334155;white-space:pre-wrap;word-break:break-word}

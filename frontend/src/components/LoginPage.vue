@@ -15,7 +15,7 @@ const doLogin = async () => {
   error.value = ''
   try {
     const { data } = await loginUser(loginForm.value)
-    message.value = `登录成功，欢迎 ${data.user.username}`
+    message.value = `登录成功，欢迎 ${data.user?.username ?? ''}`
     emit('login-success', data.user)
   } catch (err) {
     error.value = err?.response?.data?.message || '登录失败。'
@@ -32,8 +32,8 @@ const doLogin = async () => {
         <h3>账户登录</h3>
         <div class="grid-form">
           <label>
-            用户名或邮箱
-            <input v-model="loginForm.identity" />
+            学工号或邮箱
+            <input v-model="loginForm.identity" autocomplete="username" />
           </label>
           <label>
             密码

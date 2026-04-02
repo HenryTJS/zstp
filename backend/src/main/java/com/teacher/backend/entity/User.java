@@ -29,6 +29,10 @@ public class User {
     @Column(nullable = false, unique = true, length = 120)
     private String email;
 
+    /** 学工号：师生登录凭证之一，全局唯一；可为空仅兼容历史数据 */
+    @Column(name = "work_id", unique = true, length = 64)
+    private String workId;
+
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
@@ -70,6 +74,14 @@ public class User {
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getWorkId() {
+        return workId;
+    }
+
+    public void setWorkId(String workId) {
+        this.workId = workId;
     }
 
     public String getPasswordHash() {

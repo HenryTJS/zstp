@@ -15,6 +15,7 @@ public class ApiResponseMapper {
         response.put("id", user.getId());
         response.put("username", user.getUsername());
         response.put("email", user.getEmail());
+        response.put("workId", user.getWorkId());
         response.put("role", user.getRole());
         response.put("createdAt", user.getCreatedAt() == null ? null : user.getCreatedAt().toString());
         return response;

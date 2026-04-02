@@ -33,9 +33,16 @@ app:
   bootstrap-users:
     - username: ${APP_BOOTSTRAP_USERS_0_USERNAME:student_demo}
       email: ${APP_BOOTSTRAP_USERS_0_EMAIL:student@example.com}
+      work-id: ${APP_BOOTSTRAP_USERS_0_WORK_ID:1234567890}
       password: ${APP_BOOTSTRAP_USERS_0_PASSWORD:student123}
       role: ${APP_BOOTSTRAP_USERS_0_ROLE:student}
     - username: ${APP_BOOTSTRAP_USERS_1_USERNAME:teacher_demo}
       email: ${APP_BOOTSTRAP_USERS_1_EMAIL:teacher@example.com}
+      work-id: ${APP_BOOTSTRAP_USERS_1_WORK_ID:0987654321}
       password: ${APP_BOOTSTRAP_USERS_1_PASSWORD:teacher123}
       role: ${APP_BOOTSTRAP_USERS_1_ROLE:teacher}
+    - username: ${APP_BOOTSTRAP_USERS_2_USERNAME:admin_demo}
+      email: ${APP_BOOTSTRAP_USERS_2_EMAIL:admin@example.com}
+      work-id: ${APP_BOOTSTRAP_USERS_2_WORK_ID:1111111111}
+      password: ${APP_BOOTSTRAP_USERS_2_PASSWORD:admin123456}
+      role: ${APP_BOOTSTRAP_USERS_2_ROLE:admin}

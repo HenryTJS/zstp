@@ -21,6 +21,7 @@ public class InitialUserProperties {
     public static class SeedUser {
         private String username;
         private String email;
+        private String workId;
         private String password;
         private String role;
 
@@ -38,6 +39,14 @@ public class InitialUserProperties {
 
         public void setEmail(String email) {
             this.email = email;
+        }
+
+        public String getWorkId() {
+            return workId;
+        }
+
+        public void setWorkId(String workId) {
+            this.workId = workId;
         }
 
         public String getPassword() {
