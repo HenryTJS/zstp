@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { bulkImportUsers, createAnnouncement, deleteAnnouncement, fetchAnnouncements, updateUser } from '../api/client'
+import { bulkImportUsers, createAnnouncement, deleteAnnouncement, fetchAnnouncements, listUsers, updateUser } from '../api/client'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
 
 const props = defineProps({
@@ -64,8 +64,49 @@ watch(
   }
 )
 
+const students = ref([])
+const teachers = ref([])
+const usersLoaded = ref(false)
+const usersLoading = ref(false)
+const usersError = ref('')
+
+const normalizeUserList = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.users)) return payload.users
+  return []
+}
+
+const loadAllStudentsAndTeachers = async () => {
+  if (usersLoading.value) return
+  usersLoading.value = true
+  usersError.value = ''
+  try {
+    const [stuResp, teaResp] = await Promise.all([listUsers('student'), listUsers('teacher')])
+    students.value = normalizeUserList(stuResp?.data)
+    teachers.value = normalizeUserList(teaResp?.data)
+    usersLoaded.value = true
+  } catch (e) {
+    usersError.value = e?.response?.data?.message || e?.message || '加载学生/教师列表失败。'
+    students.value = []
+    teachers.value = []
+    usersLoaded.value = false
+  } finally {
+    usersLoading.value = false
+  }
+}
+
+watch(
+  () => currentPage.value,
+  (v) => {
+    if (v === 'student-stats' || v === 'teacher-stats') {
+      if (!usersLoaded.value) void loadAllStudentsAndTeachers()
+    }
+  }
+)
+
 onMounted(() => {
   void loadAnnouncements()
+  void loadAllStudentsAndTeachers()
 })
 
 const submitAnnouncement = async () => {
@@ -303,9 +344,6 @@ const handlePasswordSave = async () => {
             <h3>{{ profileForm.username || currentUser.username }}</h3>
           </div>
         </div>
-        <div class="profile-hero-actions">
-          <p class="panel-subtitle" style="margin:0">管理员账号，可发布公告供师生查看。</p>
-        </div>
       </article>
 
       <div class="profile-grid">
@@ -321,7 +359,6 @@ const handlePasswordSave = async () => {
               <strong>公告管理</strong>
             </div>
           </div>
-          <p class="panel-subtitle" style="margin-top:10px">在顶部导航进入「批量导入」或「公告管理」。</p>
         </article>
 
         <article class="result-card profile-detail-card">
@@ -356,11 +393,7 @@ const handlePasswordSave = async () => {
 
     <section v-else-if="currentPage === 'import'" class="panel-stack">
       <article class="result-card">
-        <h3>批量导入学生 / 教师（Excel）</h3>
-        <p class="panel-subtitle">
-          请下载模板，按<strong>第一张工作表</strong>填写：<strong>A 列</strong>展示用户名，<strong>B 列</strong>学工号；第 1 行为表头勿删。仅支持 <code>.xlsx</code>。初始密码与学工号相同；登录可用学工号或系统占位邮箱（如
-          <code>s学工号@bulk.import.local</code>）。
-        </p>
+        <h3>批量导入学生 / 教师</h3>
         <div class="inline-form admin-import-actions" style="margin-top:12px;flex-wrap:wrap;gap:10px;align-items:center">
           <button type="button" class="match-button" @click="downloadImportTemplate">下载 Excel 模板</button>
           <input
@@ -424,7 +457,7 @@ const handlePasswordSave = async () => {
           </label>
           <label>
             正文
-            <textarea v-model="newAnn.content" rows="6" placeholder="公告内容（学生端与教师端可见）"></textarea>
+            <textarea v-model="newAnn.content" rows="6" placeholder="公告内容"></textarea>
           </label>
         </div>
         <div class="inline-form" style="margin-top:12px">
@@ -456,6 +489,104 @@ const handlePasswordSave = async () => {
             </tr>
           </tbody>
         </table>
+      </article>
+    </section>
+
+    <section v-else-if="currentPage === 'student-stats'" class="panel-stack">
+      <article class="result-card">
+        <h3>学生统计</h3>
+        <p v-if="usersLoading && !students.length" class="panel-subtitle">加载中…</p>
+        <p v-else-if="usersError && !students.length" class="error-text">{{ usersError }}</p>
+
+        <div class="profile-stat-list" style="margin-top:12px">
+          <div>
+            <span>学生总数</span>
+            <strong>{{ students.length }}</strong>
+          </div>
+          <div>
+            <span>数据状态</span>
+            <strong>{{ usersLoaded ? '已加载' : (usersLoading ? '加载中' : '未加载') }}</strong>
+          </div>
+        </div>
+
+        <div class="inline-form" style="margin-top:12px">
+          <button type="button" class="match-button" :disabled="usersLoading" @click="loadAllStudentsAndTeachers">
+            {{ usersLoading ? '刷新中…' : '刷新列表' }}
+          </button>
+        </div>
+      </article>
+
+      <article class="result-card">
+        <h3>学生列表</h3>
+        <div v-if="usersLoading && !students.length" class="panel-subtitle">加载中…</div>
+        <div v-else-if="!students.length" class="panel-subtitle">暂无学生数据。</div>
+        <div v-else style="max-height:520px;overflow:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>用户名</th>
+                <th>学工号</th>
+                <th>邮箱</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in students" :key="s.id || s.workId || s.username">
+                <td>{{ s.username || '-' }}</td>
+                <td>{{ s.workId || '-' }}</td>
+                <td>{{ s.email || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section v-else-if="currentPage === 'teacher-stats'" class="panel-stack">
+      <article class="result-card">
+        <h3>教师统计</h3>
+        <p v-if="usersLoading && !teachers.length" class="panel-subtitle">加载中…</p>
+        <p v-else-if="usersError && !teachers.length" class="error-text">{{ usersError }}</p>
+
+        <div class="profile-stat-list" style="margin-top:12px">
+          <div>
+            <span>教师总数</span>
+            <strong>{{ teachers.length }}</strong>
+          </div>
+          <div>
+            <span>数据状态</span>
+            <strong>{{ usersLoaded ? '已加载' : (usersLoading ? '加载中' : '未加载') }}</strong>
+          </div>
+        </div>
+
+        <div class="inline-form" style="margin-top:12px">
+          <button type="button" class="match-button" :disabled="usersLoading" @click="loadAllStudentsAndTeachers">
+            {{ usersLoading ? '刷新中…' : '刷新列表' }}
+          </button>
+        </div>
+      </article>
+
+      <article class="result-card">
+        <h3>教师列表</h3>
+        <div v-if="usersLoading && !teachers.length" class="panel-subtitle">加载中…</div>
+        <div v-else-if="!teachers.length" class="panel-subtitle">暂无教师数据。</div>
+        <div v-else style="max-height:520px;overflow:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>用户名</th>
+                <th>学工号</th>
+                <th>邮箱</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in teachers" :key="t.id || t.workId || t.username">
+                <td>{{ t.username || '-' }}</td>
+                <td>{{ t.workId || '-' }}</td>
+                <td>{{ t.email || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </article>
     </section>
 

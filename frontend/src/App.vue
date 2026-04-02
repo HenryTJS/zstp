@@ -20,15 +20,17 @@ const studentPageList = [
 ]
 
 const teacherPageList = [
-  { key: 'profile', label: '个人中心' },
   { key: 'manage', label: '资料管理' },
-  { key: 'announcements', label: '公告' }
+  { key: 'announcements', label: '公告' },
+  { key: 'profile', label: '个人中心' }
 ]
 
 const adminPageList = [
-  { key: 'profile', label: '个人中心' },
   { key: 'import', label: '批量导入' },
-  { key: 'announcements', label: '公告管理' }
+  { key: 'announcements', label: '公告管理' },
+  { key: 'student-stats', label: '学生统计' },
+  { key: 'teacher-stats', label: '教师统计' },
+  { key: 'profile', label: '个人中心' }
 ]
 
 const roleLabelMap = {

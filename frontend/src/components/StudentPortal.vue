@@ -1706,7 +1706,7 @@ const confirmDeleteExam = async (id) => {
           <h3>资料设置</h3>
           <div class="grid-form">
               <label>
-                用户名（展示名）
+                用户名
                 <div class="panel-subtitle">{{ profileForm.username || currentUser.username }}</div>
               </label>
               <label>
