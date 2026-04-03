@@ -12,6 +12,7 @@ import com.teacher.backend.dto.UpsertKnowledgePointRequest;
 import com.teacher.backend.repository.CourseKnowledgePointPrereqRepository;
 import com.teacher.backend.entity.CourseKnowledgePoint;
 import com.teacher.backend.repository.CourseKnowledgePointRepository;
+import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 import com.teacher.backend.service.CourseCatalogService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -108,20 +109,39 @@ public class KnowledgePointController {
     private final CourseKnowledgePointRepository courseKnowledgePointRepository;
     private final CourseCatalogService courseCatalogService;
     private final CourseKnowledgePointPrereqRepository prereqRepository;
+    private final TeacherCoursePermissionRepository teacherCoursePermissionRepository;
 
     public KnowledgePointController(
         CourseKnowledgePointRepository courseKnowledgePointRepository,
         CourseCatalogService courseCatalogService,
-        CourseKnowledgePointPrereqRepository prereqRepository
+        CourseKnowledgePointPrereqRepository prereqRepository,
+        TeacherCoursePermissionRepository teacherCoursePermissionRepository
     ) {
         this.courseKnowledgePointRepository = courseKnowledgePointRepository;
         this.courseCatalogService = courseCatalogService;
         this.prereqRepository = prereqRepository;
+        this.teacherCoursePermissionRepository = teacherCoursePermissionRepository;
     }
 
     @GetMapping
-    public Map<String, Object> listByCourse(@RequestParam(required = false) String courseName) {
+    public Map<String, Object> listByCourse(
+        @RequestParam(required = false) String courseName,
+        @RequestParam(required = false) Long teacherId
+    ) {
         String normalizedCourse = courseCatalogService.normalizeCourseName(courseName);
+
+        // 当传入 teacherId 时，只允许访问管理员配置的课程
+        if (teacherId != null) {
+            boolean allowed = teacherCoursePermissionRepository.existsByTeacherIdAndCourseName(teacherId, normalizedCourse);
+            if (!allowed) {
+                return Map.of(
+                    "courseName", normalizedCourse,
+                    "courses", List.of(),
+                    "points", List.of()
+                );
+            }
+        }
+
         ensureCourseRootPoint(normalizedCourse);
         List<Map<String, Object>> points = courseKnowledgePointRepository
             .findByCourseNameOrderBySortOrderAscIdAsc(normalizedCourse)
@@ -129,9 +149,19 @@ public class KnowledgePointController {
             .map(this::toPointMap)
             .toList();
 
+        List<String> courses;
+        if (teacherId != null) {
+            courses = teacherCoursePermissionRepository.findByTeacherIdOrderByIdAsc(teacherId).stream()
+                .map(com.teacher.backend.entity.TeacherCoursePermission::getCourseName)
+                .distinct()
+                .toList();
+        } else {
+            courses = courseCatalogService.allCourses();
+        }
+
         return Map.of(
             "courseName", normalizedCourse,
-            "courses", courseCatalogService.allCourses(),
+            "courses", courses,
             "points", points
         );
     }

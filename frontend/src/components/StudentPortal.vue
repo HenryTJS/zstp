@@ -56,11 +56,56 @@ import * as echarts from 'echarts'
 import katex from 'katex'
 import { Teleport, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
-import { fetchGrading, fetchKnowledgeGraph, fetchQuestion, fetchQuestions, fetchStudentState, saveStudentState, fetchMaterialsByKnowledgePoint, updateUser, listKnowledgePoints, fetchExam, fetchExams, deleteExam, fetchLearningSuggestions, fetchMajorRelevance, saveExam, fetchAnnouncements } from '../api/client'
+import AiAssistantWidget from './AiAssistantWidget.vue'
+import {
+  fetchGrading,
+  fetchKnowledgeGraph,
+  fetchQuestion,
+  fetchQuestions,
+  fetchStudentState,
+  saveStudentState,
+  fetchMaterialsByKnowledgePoint,
+  updateUser,
+  listKnowledgePoints,
+  fetchExam,
+  fetchExams,
+  deleteExam,
+  fetchLearningSuggestions,
+  fetchMajorRelevance,
+  saveExam,
+  fetchAnnouncements,
+  listCoursesByMajor,
+  listTeachersForCourses
+} from '../api/client'
 const materials = ref([])
 const selectedKnowledgePoint = ref('')
 
 import { http } from '../api/client'
+const joinedCourses = ref([])
+const joinedCoursesSearch = ref('')
+const joinedCoursesPage = ref(1)
+const coursePageSize = 8
+
+/** 课程名 -> 拥有该课程查看权限的教师 [{ teacherId, username }]（在 availableCourses 定义后填充） */
+const teachersByCourse = ref({})
+const teachersByCourseLoading = ref(false)
+
+/** 旧版仅存在浏览器本地的已加入课程，首次登录时合并进服务端并删除该键 */
+const readLegacyJoinedCoursesFromLocalStorage = () => {
+  const id = props.currentUser?.id
+  if (!id) return []
+  try {
+    const raw = localStorage.getItem(`student-joined-courses:${id}`)
+    const arr = JSON.parse(raw || '[]')
+    const list = Array.isArray(arr) ? arr.filter((x) => typeof x === 'string' && x.trim()) : []
+    if (list.length) {
+      localStorage.removeItem(`student-joined-courses:${id}`)
+    }
+    return list
+  } catch {
+    return []
+  }
+}
 // 专业三级联动数据
 const majorLevel1 = ref([])
 const majorLevel2 = ref([])
@@ -87,8 +132,6 @@ const loadMajorLevel2 = async (parentCode) => {
     console.error('loadMajorLevel2 failed', err)
     majorLevel2.value = []
   }
-      // 保存学生端学习状态（包含专业/课程选择）
-      await persistStudentState(true)
 }
 const loadMajorLevel3 = async (parentCode) => {
   if (!parentCode) { majorLevel3.value = []; return }
@@ -138,22 +181,64 @@ onMounted(() => {
   loadMajorLevel1()
 })
 // 课程列表由教师端维护，选中专业后动态请求
-import { listCoursesByMajor } from '../api/client'
 const availableCourses = ref([])
-watch([selectedMajor1, selectedMajor2, selectedMajor3], async () => {
-  // 优先三级
-  let code = selectedMajor3.value || selectedMajor2.value || selectedMajor1.value
-  if (!code) { availableCourses.value = []; return }
+
+let majorCoursesReqId = 0
+/** 从服务器恢复学生状态期间：不因 availableCourses 尚未就绪而裁剪 joinedCourses */
+let hydrateJoiningCourses = false
+
+const fetchAvailableCoursesForCurrentMajor = async () => {
+  const code = selectedMajor3.value || selectedMajor2.value || selectedMajor1.value
+  const reqId = ++majorCoursesReqId
+  if (!code) {
+    availableCourses.value = []
+    return reqId
+  }
   try {
     const { data } = await listCoursesByMajor(code)
+    if (reqId !== majorCoursesReqId) return reqId
     availableCourses.value = Array.isArray(data) ? data : []
   } catch {
+    if (reqId !== majorCoursesReqId) return reqId
     availableCourses.value = []
   }
-  // 自动切换当前课程
-  if (!availableCourses.value.includes(selectedCourse.value)) {
-    selectedCourse.value = availableCourses.value[0] || ''
+  return reqId
+}
+
+const loadTeachersForMarketCourses = async () => {
+  if (!availableCourses.value.length) {
+    teachersByCourse.value = {}
+    return
   }
+  teachersByCourseLoading.value = true
+  try {
+    const { data } = await listTeachersForCourses(availableCourses.value)
+    teachersByCourse.value = data && typeof data === 'object' ? data : {}
+  } catch {
+    teachersByCourse.value = {}
+  } finally {
+    teachersByCourseLoading.value = false
+  }
+}
+
+const formatTeachersForCourse = (courseName) => {
+  const list = teachersByCourse.value[courseName]
+  if (!Array.isArray(list) || !list.length) return ''
+  return list.map((t) => t?.username || '').filter(Boolean).join('、')
+}
+watch([selectedMajor1, selectedMajor2, selectedMajor3], async () => {
+  const appliedReqId = await fetchAvailableCoursesForCurrentMajor()
+  if (appliedReqId !== majorCoursesReqId) return
+  if (hydrateJoiningCourses) return
+  // 课程列表尚未加载出结果时不裁剪 joinedCourses，避免误清空服务端已持久化的加入列表
+  if (!availableCourses.value.length) {
+    ensureCourseSelection()
+    return
+  }
+  // 专业切换后仅保留当前专业课程广场里仍存在的已加入课程
+  joinedCourses.value = joinedCourses.value.filter((c) => availableCourses.value.includes(c))
+  ensureCourseSelection()
+  schedulePersistStudentState()
 }, { immediate: true })
 
 const selectedMajor = computed({
@@ -181,7 +266,19 @@ const selectedMajorDisplay = computed(() => {
   }
   return findName(majorLevel1.value, code) || code
 })
-const selectedCourse = ref('高等数学')
+const selectedCourse = ref('')
+const canStudyCurrentCourse = computed(() => Boolean(selectedCourse.value && joinedCourses.value.includes(selectedCourse.value)))
+const filteredMarketCourses = computed(() => {
+  const kw = (joinedCoursesSearch.value || '').trim().toLowerCase()
+  if (!kw) return availableCourses.value
+  return availableCourses.value.filter((c) => String(c || '').toLowerCase().includes(kw))
+})
+const marketTotalPages = computed(() => Math.max(1, Math.ceil(filteredMarketCourses.value.length / coursePageSize)))
+const pagedMarketCourses = computed(() => {
+  const page = Math.min(Math.max(1, joinedCoursesPage.value), marketTotalPages.value)
+  const start = (page - 1) * coursePageSize
+  return filteredMarketCourses.value.slice(start, start + coursePageSize)
+})
 
 const graphLoading = ref(false)
 const graphError = ref('')
@@ -900,8 +997,81 @@ const composeTopic = (knowledgePoint) => {
 }
 
 const ensureCourseSelection = () => {
-  if (!availableCourses.value.includes(selectedCourse.value)) {
-    selectedCourse.value = availableCourses.value[0] || ''
+  if (!joinedCourses.value.includes(selectedCourse.value)) {
+    selectedCourse.value = joinedCourses.value[0] || ''
+  }
+}
+
+const joinCourse = async (courseName) => {
+  const course = String(courseName || '').trim()
+  if (!course || joinedCourses.value.includes(course)) return
+  if (!confirm(`确定要加入课程「${course}」吗？加入后即可学习该课程内容。`)) return
+  joinedCourses.value.push(course)
+  selectedCourse.value = course
+  // 立即落库，避免防抖窗口内退出登录导致未保存
+  await persistStudentState(false)
+}
+
+const clearExerciseUiAfterQuittingCurrentCourse = () => {
+  generatedQuestion.value = null
+  questionError.value = ''
+  questionLoading.value = false
+  practiceResult.value = null
+  practiceError.value = ''
+  practiceAnswer.value = ''
+  selectedChoiceAnswer.value = ''
+  answerImageFile.value = null
+  answerImageBase64.value = ''
+  resetTestState()
+  testLoading.value = false
+  examResult.value = null
+  examError.value = ''
+  examLoading.value = false
+  if (examForm.value && typeof examForm.value === 'object') {
+    examForm.value.selectedPoints = []
+  }
+  if (testForm.value && typeof testForm.value === 'object') {
+    testForm.value.selectedPoints = []
+  }
+}
+
+const quitCourse = async (courseName) => {
+  const course = String(courseName || '').trim()
+  if (!course || !joinedCourses.value.includes(course)) return
+  if (
+    !confirm(
+      `确定要退出课程「${course}」吗？\n\n退出后将清除该课程下的学习记录、错题收藏等所有本地进度（与服务器同步后也会删除），此操作不可恢复。`
+    )
+  ) {
+    return
+  }
+
+  const wasCurrent = selectedCourse.value === course
+
+  learningRecords.value = (learningRecords.value || []).filter((item) => item.course !== course)
+  wrongBook.value = (wrongBook.value || []).filter((item) => item.course !== course)
+  if (wrongBookModalItem.value?.course === course) {
+    wrongBookModalItem.value = null
+  }
+
+  joinedCourses.value = joinedCourses.value.filter((c) => c !== course)
+
+  if (wasCurrent) {
+    selectedCourse.value = joinedCourses.value[0] || ''
+    clearExerciseUiAfterQuittingCurrentCourse()
+  }
+
+  try {
+    await saveStudentState({
+      userId: props.currentUser.id,
+      major: selectedMajor.value || null,
+      courseName: selectedCourse.value,
+      learningRecords: learningRecords.value,
+      wrongBook: wrongBook.value,
+      joinedCourses: joinedCourses.value
+    })
+  } catch {
+    profileMessage.value = '课程已退出，但同步服务器失败，请稍后刷新或重试。'
   }
 }
 
@@ -1094,6 +1264,8 @@ const removeExamPoint = (p) => {
 // 三级联动后不再需要 normalizeMajor
 
 const loadStudentState = async () => {
+  hydrateJoiningCourses = true
+  let needsPushJoinedMigration = false
   try {
     const { data } = await fetchStudentState(props.currentUser.id)
     // 回显专业，data.major 为 code。确保已加载专业树后再回显。
@@ -1115,10 +1287,21 @@ const loadStudentState = async () => {
         selectedMajor3.value = path[2]
       }
     }
-    ensureCourseSelection()
-
-    if (availableCourses.value.includes(data.courseName)) {
+    // 须先等当前专业下的课程列表加载完成，否则会误把 joinedCourses 过滤为空
+    await fetchAvailableCoursesForCurrentMajor()
+    const fromServer = Array.isArray(data?.joinedCourses)
+      ? data.joinedCourses.filter((x) => typeof x === 'string' && x.trim())
+      : []
+    const legacyJoined = readLegacyJoinedCoursesFromLocalStorage()
+    const mergedJoined = [...new Set([...fromServer, ...legacyJoined])]
+    needsPushJoinedMigration = legacyJoined.length > 0
+    // 登录恢复时以服务端为准，勿按当前 availableCourses 过滤（专业未回显或列表延迟时否则会整表清空）
+    joinedCourses.value = [...new Set(mergedJoined.map((x) => String(x || '').trim()).filter(Boolean))]
+    // 不再根据服务端保存的 courseName 自动加入课程（避免默认把「高等数学」等加入）
+    if (data?.courseName && joinedCourses.value.includes(data.courseName)) {
       selectedCourse.value = data.courseName
+    } else {
+      ensureCourseSelection()
     }
 
     // removed handling of profile bio (学习目标) per UI change
@@ -1128,7 +1311,11 @@ const loadStudentState = async () => {
   } catch {
     profileMessage.value = '未读取到历史学习状态，已使用默认配置。'
   } finally {
+    hydrateJoiningCourses = false
     stateHydrated.value = true
+  }
+  if (needsPushJoinedMigration && joinedCourses.value.length) {
+    await persistStudentState(false)
   }
 }
 
@@ -1161,7 +1348,8 @@ const persistStudentState = async (showMessage = false) => {
       major: selectedMajor.value || null,
       courseName: selectedCourse.value,
       learningRecords: learningRecords.value,
-      wrongBook: wrongBook.value
+      wrongBook: wrongBook.value,
+      joinedCourses: joinedCourses.value
     })
     if (showMessage) {
       profileMessage.value = '个人信息已保存到服务器。'
@@ -1284,6 +1472,14 @@ const loadMaterialsByKnowledgePoint = async (pointName) => {
 }
 
 const loadGraph = async () => {
+  if (!canStudyCurrentCourse.value) {
+    graphData.value = { title: '知识图谱', nodes: [], edges: [], suggestions: [] }
+    selectedNodeId.value = ''
+    selectedKnowledgePoint.value = ''
+    materials.value = []
+    learningSuggestions.value = []
+    return
+  }
   graphLoading.value = true
   graphError.value = ''
   try {
@@ -1545,9 +1741,24 @@ const openPasswordPage = () => {
 ensureCourseSelection()
 
 watch(selectedCourse, () => {
-  loadGraph()
+  if (canStudyCurrentCourse.value) {
+    loadGraph()
+  }
   schedulePersistStudentState()
 })
+
+watch(joinedCoursesSearch, () => {
+  joinedCoursesPage.value = 1
+})
+
+watch(
+  [currentPage, availableCourses],
+  async () => {
+    if (currentPage.value !== 'courses') return
+    await loadTeachersForMarketCourses()
+  },
+  { deep: true }
+)
 
 watch([selectedMajor1, selectedMajor2, selectedMajor3], () => {
   if (currentPage.value === 'graph' && selectedKnowledgePoint.value) {
@@ -1572,6 +1783,7 @@ watch(
       await loadSavedExams()
     }
     if (value === 'graph') {
+      if (!canStudyCurrentCourse.value) return
       if (!graphData.value.nodes?.length) {
         await loadGraph()
       } else {
@@ -1601,7 +1813,7 @@ watch(
 
 onMounted(async () => {
   await loadStudentState()
-  loadGraph()
+  if (canStudyCurrentCourse.value) loadGraph()
   await loadSavedExams()
   window.addEventListener('resize', handleWindowResize)
 })
@@ -1655,11 +1867,6 @@ const confirmDeleteExam = async (id) => {
 </script>
 
 <template>
-  <section class="panel">
-    <div class="panel-header">
-      <h2>学生端 · 自主学习空间</h2>
-    </div>
-
     <section v-if="currentPage === 'home'" class="panel-stack">
       <article class="result-card profile-hero-card">
         <div class="profile-hero-main">
@@ -1673,8 +1880,11 @@ const confirmDeleteExam = async (id) => {
               <label>
                 统计课程
                 <select v-model="selectedCourse">
-                  <option v-for="course in availableCourses" :key="course" :value="course">{{ course }}</option>
+                  <option v-for="course in joinedCourses" :key="course" :value="course">{{ course }}</option>
                 </select>
+                <div v-if="!joinedCourses.length" class="panel-subtitle" style="margin-top:6px">
+                  你还没有加入课程，请先到「课程广场」加入。
+                </div>
               </label>
               <!-- 已将个人资料编辑入口移至下方操作区 -->
           </div>
@@ -1734,7 +1944,76 @@ const confirmDeleteExam = async (id) => {
 
     <!-- 修改密码已改为模态窗口 -->
 
+    <section v-if="currentPage === 'courses'" class="panel-stack">
+      <article class="result-card">
+        <div class="course-market-head">
+          <h3>课程广场</h3>
+          <input
+            v-model="joinedCoursesSearch"
+            class="match-height"
+            placeholder="搜索课程名称"
+            style="max-width:280px"
+          />
+        </div>
+        <p class="panel-subtitle">加入课程后即可进入知识图谱、出题与做题、错题与记录进行学习。</p>
+
+        <div v-if="pagedMarketCourses.length" class="course-market-grid">
+          <article v-for="course in pagedMarketCourses" :key="course" class="course-market-card">
+            <div class="course-market-card-body">
+              <h4>{{ course }}</h4>
+              <p class="panel-subtitle course-card-teachers">
+                <template v-if="teachersByCourseLoading">正在加载教师信息…</template>
+                <template v-else-if="formatTeachersForCourse(course)">{{ formatTeachersForCourse(course) }}</template>
+                <template v-else>暂无拥有该课程权限的教师</template>
+              </p>
+            </div>
+            <div class="course-market-card-actions">
+              <button
+                v-if="!joinedCourses.includes(course)"
+                type="button"
+                class="match-button"
+                :disabled="!stateHydrated"
+                @click="joinCourse(course)"
+              >
+                {{ stateHydrated ? '加入课程' : '加载中…' }}
+              </button>
+              <button
+                v-else
+                type="button"
+                class="cancel-button"
+                :disabled="!stateHydrated"
+                @click="quitCourse(course)"
+              >
+                退出课程
+              </button>
+            </div>
+          </article>
+        </div>
+        <p v-else class="panel-subtitle" style="margin-top:12px">未找到匹配课程。</p>
+
+        <nav v-if="marketTotalPages > 1" class="course-market-pagination" aria-label="课程列表分页">
+          <button
+            v-for="page in marketTotalPages"
+            :key="page"
+            type="button"
+            class="course-page-num"
+            :class="{ 'is-active': joinedCoursesPage === page }"
+            :aria-current="joinedCoursesPage === page ? 'page' : undefined"
+            @click="joinedCoursesPage = page"
+          >
+            {{ page }}
+          </button>
+        </nav>
+      </article>
+    </section>
+
     <section v-if="currentPage === 'graph'" class="panel-stack">
+      <article v-if="!canStudyCurrentCourse" class="result-card">
+        <h3>暂不可学习</h3>
+        <p class="panel-subtitle">请先到「课程广场」加入课程，再进入知识图谱学习。</p>
+        <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
+      </article>
+      <template v-else>
       <article class="result-card">
         <h3 class="panel-title">{{ graphData.title }}</h3>
         <div class="inline-form">
@@ -1829,9 +2108,16 @@ const confirmDeleteExam = async (id) => {
           </table>
         </div>
       </article>
+      </template>
     </section>
 
     <section v-if="currentPage === 'exercise'" class="panel-stack">
+      <article v-if="!canStudyCurrentCourse" class="result-card">
+        <h3>暂不可学习</h3>
+        <p class="panel-subtitle">请先到「课程广场」加入课程，再进入出题与做题。</p>
+        <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
+      </article>
+      <template v-else>
       <article class="result-card">
         <h3>出题与做题</h3>
         <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
@@ -2079,9 +2365,16 @@ const confirmDeleteExam = async (id) => {
           </div>
         </div>
       </article>
+      </template>
     </section>
 
     <section v-if="currentPage === 'review'" class="panel-stack">
+      <article v-if="!canStudyCurrentCourse" class="result-card">
+        <h3>暂不可学习</h3>
+        <p class="panel-subtitle">请先到「课程广场」加入课程，再查看错题与记录。</p>
+        <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
+      </article>
+      <template v-else>
       <article class="result-card">
         <h3>错题本</h3>
         <p v-if="!filteredWrongBook.length" class="panel-subtitle">当前课程暂无收藏错题。</p>
@@ -2187,6 +2480,7 @@ const confirmDeleteExam = async (id) => {
         </table>
         <p v-if="examError" class="error-text" style="margin-top:8px">{{ examError }}</p>
       </article>
+      </template>
     </section>
 
     <section v-if="currentPage === 'announcements'" class="panel-stack">
@@ -2265,7 +2559,7 @@ const confirmDeleteExam = async (id) => {
         </div>
       </div>
     </div>
-    </section>
+    <AiAssistantWidget role="student" :current-user="currentUser" />
 </template>
 
 <style scoped src="./student-portal.css"></style>

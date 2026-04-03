@@ -11,4 +11,6 @@ public interface CourseKnowledgePointRepository extends JpaRepository<CourseKnow
     List<CourseKnowledgePoint> findByCourseNameOrderBySortOrderAscIdAsc(String courseName);
 
     Optional<CourseKnowledgePoint> findByCourseNameAndPointName(String courseName, String pointName);
+
+    void deleteByCourseName(String courseName);
 }

@@ -39,6 +39,9 @@ public class StudentState {
     @Column(name = "wrong_book_json", columnDefinition = "TEXT")
     private String wrongBookJson = "[]";
 
+    @Column(name = "joined_courses_json", columnDefinition = "TEXT")
+    private String joinedCoursesJson = "[]";
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -58,7 +61,9 @@ public class StudentState {
         if (wrongBookJson == null) {
             wrongBookJson = "[]";
         }
-        // ...existing code...
+        if (joinedCoursesJson == null) {
+            joinedCoursesJson = "[]";
+        }
     }
 
     @PreUpdate
@@ -112,6 +117,14 @@ public class StudentState {
 
     public void setWrongBookJson(String wrongBookJson) {
         this.wrongBookJson = wrongBookJson;
+    }
+
+    public String getJoinedCoursesJson() {
+        return joinedCoursesJson;
+    }
+
+    public void setJoinedCoursesJson(String joinedCoursesJson) {
+        this.joinedCoursesJson = joinedCoursesJson;
     }
 
     public LocalDateTime getCreatedAt() {

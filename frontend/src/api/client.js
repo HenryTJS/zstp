@@ -1,5 +1,17 @@
 // 根据专业code获取课程列表
 export const listCoursesByMajor = (majorCode) => http.get('/courses', { params: { majorCode } })
+
+// 教师可见课程权限（由管理员分配后教师端才能查看）
+export const listTeacherCoursePermissions = (teacherId) =>
+  http.get('/teacher-course-permissions', { params: { teacherId } })
+export const listTeachersForCourses = (courseNames) =>
+  http.post('/teacher-course-permissions/teachers-for-courses', { courseNames })
+export const assignTeacherCourses = (payload) => http.post('/teacher-course-permissions/assign', payload)
+
+// 管理员课程目录增删
+export const addCourse = (payload) => http.post('/courses', payload)
+export const deleteCourse = (payload) =>
+  http.delete('/courses', { params: { adminUserId: payload?.adminUserId, courseName: payload?.courseName } })
 import axios from 'axios'
 
 const http = axios.create({
@@ -11,12 +23,14 @@ const http = axios.create({
 
 export { http }
 
-export const fetchMaterialsByKnowledgePoint = (courseName, knowledgePoint, includeAncestors = true) =>
-  http.get('/materials/by-knowledge-point', { params: { courseName, knowledgePoint, includeAncestors } })
+export const fetchMaterialsByKnowledgePoint = (courseName, knowledgePoint, includeAncestors = true, teacherId) =>
+  http.get('/materials/by-knowledge-point', { params: { courseName, knowledgePoint, includeAncestors, ...(teacherId ? { teacherId } : {}) } })
 export const fetchKnowledgeGraph = (payload) => http.post('/knowledge-graph', payload)
 export const fetchLearningSuggestions = (payload) => http.post('/learning-suggestions', payload)
 export const fetchMajorRelevance = (payload) => http.post('/major-relevance', payload)
-export const listKnowledgePoints = (courseName) => http.get('/knowledge-points', { params: { courseName } })
+export const askAiAgent = (payload) => http.post('/agent-chat', payload)
+export const listKnowledgePoints = (courseName, teacherId) =>
+  http.get('/knowledge-points', { params: { courseName, ...(teacherId ? { teacherId } : {}) } })
 export const saveKnowledgePoint = (payload) => http.post('/knowledge-points', payload)
 export const fetchQuestion = (payload) => http.post('/generate-question', payload)
 export const fetchQuestions = (payload) => http.post('/generate-questions', payload)

@@ -1,8 +1,21 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { bulkImportUsers, createAnnouncement, deleteAnnouncement, fetchAnnouncements, listUsers, updateUser } from '../api/client'
+import {
+  assignTeacherCourses,
+  addCourse,
+  bulkImportUsers,
+  createAnnouncement,
+  deleteAnnouncement,
+  fetchAnnouncements,
+  listCoursesByMajor,
+  listTeacherCoursePermissions,
+  deleteCourse,
+  listUsers,
+  updateUser
+} from '../api/client'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
+import AiAssistantWidget from './AiAssistantWidget.vue'
 
 const props = defineProps({
   currentUser: {
@@ -98,7 +111,7 @@ const loadAllStudentsAndTeachers = async () => {
 watch(
   () => currentPage.value,
   (v) => {
-    if (v === 'student-stats' || v === 'teacher-stats') {
+    if (v === 'user-stats') {
       if (!usersLoaded.value) void loadAllStudentsAndTeachers()
     }
   }
@@ -108,6 +121,156 @@ onMounted(() => {
   void loadAnnouncements()
   void loadAllStudentsAndTeachers()
 })
+
+// =========================
+// 课程权限（给每个老师分配可见课程）
+// =========================
+const allCourses = ref([])
+const selectedTeacherId = ref(null)
+const assignedCourseNames = ref([])
+const coursePermCandidate = ref('')
+const coursePermLoading = ref(false)
+const coursePermError = ref('')
+const coursePermMessage = ref('')
+
+const courseManageName = ref('')
+const courseManageLoading = ref(false)
+const courseManageError = ref('')
+const courseManageMessage = ref('')
+
+const loadAllCoursesCatalog = async (force = false) => {
+  if (!force && allCourses.value.length) return
+  try {
+    const res = await listCoursesByMajor()
+    const payload = res && res.data ? res.data : res
+    allCourses.value = Array.isArray(payload) ? payload : []
+  } catch (e) {
+    allCourses.value = []
+  }
+}
+
+const loadAssignedCoursesForTeacher = async (teacherId) => {
+  if (!teacherId) {
+    assignedCourseNames.value = []
+    return
+  }
+  coursePermError.value = ''
+  try {
+    const res = await listTeacherCoursePermissions(teacherId)
+    const payload = res && res.data ? res.data : res
+    assignedCourseNames.value = Array.isArray(payload?.courses) ? payload.courses : []
+  } catch (e) {
+    coursePermError.value = e?.response?.data?.message || e?.message || '加载课程权限失败。'
+    assignedCourseNames.value = []
+  }
+}
+
+const addTeacherCourse = () => {
+  const name = String(coursePermCandidate.value || '').trim()
+  if (!name) return
+  if (!allCourses.value.includes(name)) return
+  if (!assignedCourseNames.value.includes(name)) {
+    assignedCourseNames.value = [...assignedCourseNames.value, name]
+  }
+}
+
+const removeTeacherCourse = (name) => {
+  assignedCourseNames.value = assignedCourseNames.value.filter((c) => c !== name)
+}
+
+const ensureCoursePermissionsPageReady = async () => {
+  if (!usersLoaded.value) {
+    await loadAllStudentsAndTeachers()
+    // 避免在用户列表请求未完成时切到本页导致 teacher 列表为空
+    let guard = 0
+    while (!usersLoaded.value && guard < 20) {
+      await new Promise((r) => setTimeout(r, 100))
+      guard++
+    }
+  }
+  await loadAllCoursesCatalog()
+  if (!selectedTeacherId.value && Array.isArray(teachers.value) && teachers.value.length) {
+    selectedTeacherId.value = teachers.value[0]?.id ?? null
+  }
+  await loadAssignedCoursesForTeacher(selectedTeacherId.value)
+}
+
+watch(
+  () => currentPage.value,
+  (v) => {
+    if (v === 'course-permissions') void ensureCoursePermissionsPageReady()
+  },
+  { immediate: true }
+)
+
+const saveTeacherCoursePermissions = async () => {
+  coursePermLoading.value = true
+  coursePermError.value = ''
+  coursePermMessage.value = ''
+  try {
+    if (!selectedTeacherId.value) {
+      coursePermError.value = '请选择老师。'
+      return
+    }
+    await assignTeacherCourses({
+      adminUserId: props.currentUser.id,
+      teacherId: selectedTeacherId.value,
+      courseNames: assignedCourseNames.value
+    })
+    coursePermMessage.value = '课程权限已更新。'
+  } catch (e) {
+    coursePermError.value = e?.response?.data?.message || e?.message || '保存失败。'
+  } finally {
+    coursePermLoading.value = false
+  }
+}
+
+const refreshAllCoursesCatalog = async () => {
+  await loadAllCoursesCatalog(true)
+}
+
+const handleAddCourse = async () => {
+  courseManageLoading.value = true
+  courseManageError.value = ''
+  courseManageMessage.value = ''
+  try {
+    const name = (courseManageName.value || '').trim()
+    if (!name) {
+      courseManageError.value = '请输入课程名称。'
+      return
+    }
+    await addCourse({ adminUserId: props.currentUser.id, courseName: name })
+    courseManageName.value = ''
+    courseManageMessage.value = '课程已添加。'
+
+    await refreshAllCoursesCatalog()
+    await loadAssignedCoursesForTeacher(selectedTeacherId.value)
+  } catch (e) {
+    courseManageError.value = e?.response?.data?.message || e?.message || '添加课程失败。'
+  } finally {
+    courseManageLoading.value = false
+  }
+}
+
+const handleDeleteCourse = async (courseName) => {
+  if (!courseName) return
+  const ok = confirm(`确定删除课程「${courseName}」吗？该课程的知识点与权限会被一并清理。`)
+  if (!ok) return
+  courseManageLoading.value = true
+  courseManageError.value = ''
+  courseManageMessage.value = ''
+  try {
+    await deleteCourse({ adminUserId: props.currentUser.id, courseName })
+    courseManageMessage.value = '课程已删除。'
+
+    await refreshAllCoursesCatalog()
+    await loadAssignedCoursesForTeacher(selectedTeacherId.value)
+  } catch (e) {
+    courseManageError.value = e?.response?.data?.message || e?.message || '删除课程失败。'
+  } finally {
+    courseManageLoading.value = false
+  }
+}
 
 const submitAnnouncement = async () => {
   annMessage.value = ''
@@ -331,11 +494,6 @@ const handlePasswordSave = async () => {
 </script>
 
 <template>
-  <section class="panel">
-    <div class="panel-header">
-      <h2>管理员端 · 系统管理</h2>
-    </div>
-
     <section v-if="currentPage === 'profile'" class="panel-stack">
       <article class="result-card profile-hero-card">
         <div class="profile-hero-main">
@@ -391,9 +549,9 @@ const handlePasswordSave = async () => {
       </div>
     </section>
 
-    <section v-else-if="currentPage === 'import'" class="panel-stack">
+    <section v-else-if="currentPage === 'user-stats'" class="panel-stack">
       <article class="result-card">
-        <h3>批量导入学生 / 教师</h3>
+        <h3>用户统计与批量导入</h3>
         <div class="inline-form admin-import-actions" style="margin-top:12px;flex-wrap:wrap;gap:10px;align-items:center">
           <button type="button" class="match-button" @click="downloadImportTemplate">下载 Excel 模板</button>
           <input
@@ -438,6 +596,101 @@ const handlePasswordSave = async () => {
                 <td>{{ f.username }}</td>
                 <td>{{ f.workId }}</td>
                 <td>{{ f.reason }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="grid-form two-col" style="margin-top:24px">
+          <article>
+            <h3>学生统计</h3>
+        <p v-if="usersLoading && !students.length" class="panel-subtitle">加载中…</p>
+        <p v-else-if="usersError && !students.length" class="error-text">{{ usersError }}</p>
+
+        <div class="profile-stat-list" style="margin-top:12px">
+          <div>
+            <span>学生总数</span>
+            <strong>{{ students.length }}</strong>
+          </div>
+          <div>
+            <span>数据状态</span>
+            <strong>{{ usersLoaded ? '已加载' : (usersLoading ? '加载中' : '未加载') }}</strong>
+          </div>
+        </div>
+
+            <div class="inline-form" style="margin-top:12px">
+              <button type="button" class="match-button" :disabled="usersLoading" @click="loadAllStudentsAndTeachers">
+                {{ usersLoading ? '刷新中…' : '刷新列表' }}
+              </button>
+            </div>
+          </article>
+
+          <article>
+            <h3>教师统计</h3>
+            <p v-if="usersLoading && !teachers.length" class="panel-subtitle">加载中…</p>
+            <p v-else-if="usersError && !teachers.length" class="error-text">{{ usersError }}</p>
+
+            <div class="profile-stat-list" style="margin-top:12px">
+              <div>
+                <span>教师总数</span>
+                <strong>{{ teachers.length }}</strong>
+              </div>
+              <div>
+                <span>数据状态</span>
+                <strong>{{ usersLoaded ? '已加载' : (usersLoading ? '加载中' : '未加载') }}</strong>
+              </div>
+            </div>
+
+            <div class="inline-form" style="margin-top:12px">
+              <button type="button" class="match-button" :disabled="usersLoading" @click="loadAllStudentsAndTeachers">
+                {{ usersLoading ? '刷新中…' : '刷新列表' }}
+              </button>
+            </div>
+          </article>
+        </div>
+      </article>
+
+      <article class="result-card">
+        <h3>学生列表</h3>
+        <div v-if="usersLoading && !students.length" class="panel-subtitle">加载中…</div>
+        <div v-else-if="!students.length" class="panel-subtitle">暂无学生数据。</div>
+        <div v-else style="max-height:520px;overflow:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>用户名</th>
+                <th>学工号</th>
+                <th>邮箱</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in students" :key="s.id || s.workId || s.username">
+                <td>{{ s.username || '-' }}</td>
+                <td>{{ s.workId || '-' }}</td>
+                <td>{{ s.email || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article class="result-card">
+        <h3>教师列表</h3>
+        <div v-if="usersLoading && !teachers.length" class="panel-subtitle">加载中…</div>
+        <div v-else-if="!teachers.length" class="panel-subtitle">暂无教师数据。</div>
+        <div v-else style="max-height:520px;overflow:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>用户名</th>
+                <th>学工号</th>
+                <th>邮箱</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in teachers" :key="t.id || t.workId || t.username">
+                <td>{{ t.username || '-' }}</td>
+                <td>{{ t.workId || '-' }}</td>
+                <td>{{ t.email || '-' }}</td>
               </tr>
             </tbody>
           </table>
@@ -492,101 +745,119 @@ const handlePasswordSave = async () => {
       </article>
     </section>
 
-    <section v-else-if="currentPage === 'student-stats'" class="panel-stack">
+    <section v-else-if="currentPage === 'course-permissions'" class="panel-stack">
       <article class="result-card">
-        <h3>学生统计</h3>
-        <p v-if="usersLoading && !students.length" class="panel-subtitle">加载中…</p>
-        <p v-else-if="usersError && !students.length" class="error-text">{{ usersError }}</p>
+        <h3>课程权限分配</h3>
+        <p class="panel-subtitle" style="margin-top:10px">
+          选择一个教师后，为其逐个添加允许查看的课程。教师端只会展示这些被授权课程。
+        </p>
 
-        <div class="profile-stat-list" style="margin-top:12px">
-          <div>
-            <span>学生总数</span>
-            <strong>{{ students.length }}</strong>
-          </div>
-          <div>
-            <span>数据状态</span>
-            <strong>{{ usersLoaded ? '已加载' : (usersLoading ? '加载中' : '未加载') }}</strong>
-          </div>
+        <div class="grid-form single-col" style="margin-top:12px">
+          <label>
+            选择教师
+            <select v-model="selectedTeacherId" class="match-height" @change="loadAssignedCoursesForTeacher(selectedTeacherId)">
+              <option v-for="t in teachers" :key="t.id || t.workId || t.username" :value="t.id">
+                {{ t.username || '-' }}（{{ t.workId || '-' }}）
+              </option>
+            </select>
+          </label>
+
+          <label>
+            允许查看的课程
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
+              <select v-model="coursePermCandidate" class="match-height" style="min-width:10em">
+                <option value="">选择课程</option>
+                <option v-for="c in allCourses" :key="c" :value="c">{{ c }}</option>
+              </select>
+              <button type="button" class="match-button" :disabled="!coursePermCandidate" @click="addTeacherCourse">
+                添加
+              </button>
+            </div>
+            <div class="selected-chips" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">
+              <span v-for="c in assignedCourseNames" :key="c" class="chip">
+                {{ c }}
+                <button type="button" class="chip-remove" @click="removeTeacherCourse(c)">×</button>
+              </span>
+            </div>
+          </label>
         </div>
 
+        <p v-if="coursePermError" class="error-text">{{ coursePermError }}</p>
+        <p v-if="coursePermMessage" class="ok-text">{{ coursePermMessage }}</p>
+
         <div class="inline-form" style="margin-top:12px">
-          <button type="button" class="match-button" :disabled="usersLoading" @click="loadAllStudentsAndTeachers">
-            {{ usersLoading ? '刷新中…' : '刷新列表' }}
+          <button type="button" class="match-button" :disabled="coursePermLoading" @click="saveTeacherCoursePermissions">
+            {{ coursePermLoading ? '保存中…' : '保存权限' }}
           </button>
         </div>
       </article>
 
       <article class="result-card">
-        <h3>学生列表</h3>
-        <div v-if="usersLoading && !students.length" class="panel-subtitle">加载中…</div>
-        <div v-else-if="!students.length" class="panel-subtitle">暂无学生数据。</div>
-        <div v-else style="max-height:520px;overflow:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>用户名</th>
-                <th>学工号</th>
-                <th>邮箱</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="s in students" :key="s.id || s.workId || s.username">
-                <td>{{ s.username || '-' }}</td>
-                <td>{{ s.workId || '-' }}</td>
-                <td>{{ s.email || '-' }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <h3>当前授权概览</h3>
+        <p v-if="coursePermLoading && selectedTeacherId" class="panel-subtitle">加载中…</p>
+        <p v-else-if="selectedTeacherId && !assignedCourseNames.length" class="panel-subtitle">该教师当前没有可见课程。</p>
+        <div v-else-if="selectedTeacherId && assignedCourseNames.length">
+          <div class="profile-stat-list" style="margin-top:12px">
+            <div>
+              <span>授权课程数</span>
+              <strong>{{ assignedCourseNames.length }}</strong>
+            </div>
+          </div>
+          <ul class="panel-bullets" style="margin-top:10px">
+            <li v-for="c in assignedCourseNames" :key="c">{{ c }}</li>
+          </ul>
         </div>
+        <p v-else class="panel-subtitle">请选择一名教师。</p>
       </article>
-    </section>
 
-    <section v-else-if="currentPage === 'teacher-stats'" class="panel-stack">
       <article class="result-card">
-        <h3>教师统计</h3>
-        <p v-if="usersLoading && !teachers.length" class="panel-subtitle">加载中…</p>
-        <p v-else-if="usersError && !teachers.length" class="error-text">{{ usersError }}</p>
+        <h3>课程管理</h3>
+        <p class="panel-subtitle" style="margin-top:10px">
+          添加/删除课程后，相关知识点与教师权限会被同步清理。
+        </p>
 
-        <div class="profile-stat-list" style="margin-top:12px">
-          <div>
-            <span>教师总数</span>
-            <strong>{{ teachers.length }}</strong>
-          </div>
-          <div>
-            <span>数据状态</span>
-            <strong>{{ usersLoaded ? '已加载' : (usersLoading ? '加载中' : '未加载') }}</strong>
-          </div>
+        <div class="grid-form single-col" style="margin-top:12px">
+          <label>
+            新增课程名称
+            <input v-model="courseManageName" class="match-height" placeholder="例如：高等数学" />
+          </label>
         </div>
 
         <div class="inline-form" style="margin-top:12px">
-          <button type="button" class="match-button" :disabled="usersLoading" @click="loadAllStudentsAndTeachers">
-            {{ usersLoading ? '刷新中…' : '刷新列表' }}
+          <button type="button" class="match-button" :disabled="courseManageLoading" @click="handleAddCourse">
+            {{ courseManageLoading ? '处理中…' : '添加课程' }}
           </button>
         </div>
-      </article>
 
-      <article class="result-card">
-        <h3>教师列表</h3>
-        <div v-if="usersLoading && !teachers.length" class="panel-subtitle">加载中…</div>
-        <div v-else-if="!teachers.length" class="panel-subtitle">暂无教师数据。</div>
-        <div v-else style="max-height:520px;overflow:auto;">
+        <p v-if="courseManageError" class="error-text" style="margin-top:10px">{{ courseManageError }}</p>
+        <p v-if="courseManageMessage" class="ok-text" style="margin-top:10px">{{ courseManageMessage }}</p>
+
+        <div v-if="allCourses.length" style="margin-top:16px;max-height:320px;overflow:auto;">
           <table class="data-table">
             <thead>
               <tr>
-                <th>用户名</th>
-                <th>学工号</th>
-                <th>邮箱</th>
+                <th>课程名称</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="t in teachers" :key="t.id || t.workId || t.username">
-                <td>{{ t.username || '-' }}</td>
-                <td>{{ t.workId || '-' }}</td>
-                <td>{{ t.email || '-' }}</td>
+              <tr v-for="c in allCourses" :key="c">
+                <td>{{ c }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="cancel-button"
+                    :disabled="courseManageLoading"
+                    @click="handleDeleteCourse(c)"
+                  >
+                    删除
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
+        <p v-else class="panel-subtitle" style="margin-top:12px">暂无课程。</p>
       </article>
     </section>
 
@@ -632,7 +903,7 @@ const handlePasswordSave = async () => {
         </div>
       </div>
     </div>
-  </section>
+    <AiAssistantWidget role="admin" :current-user="currentUser" />
 </template>
 
 <style scoped src="./student-portal.css"></style>

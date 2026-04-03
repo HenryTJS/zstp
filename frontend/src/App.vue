@@ -12,6 +12,7 @@ const route = useRoute()
 const currentUser = ref(JSON.parse(localStorage.getItem('currentUser') || 'null'))
 
 const studentPageList = [
+  { key: 'courses', label: '课程广场' },
   { key: 'graph', label: '知识图谱' },
   { key: 'exercise', label: '出题与做题' },
   { key: 'review', label: '错题与记录' },
@@ -26,10 +27,9 @@ const teacherPageList = [
 ]
 
 const adminPageList = [
-  { key: 'import', label: '批量导入' },
+  { key: 'user-stats', label: '用户与导入' },
   { key: 'announcements', label: '公告管理' },
-  { key: 'student-stats', label: '学生统计' },
-  { key: 'teacher-stats', label: '教师统计' },
+  { key: 'course-permissions', label: '课程权限' },
   { key: 'profile', label: '个人中心' }
 ]
 

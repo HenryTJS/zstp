@@ -63,7 +63,8 @@ public class StudentStateController {
                 "majorName", DEFAULT_MAJOR,
                 "courseName", courseCatalogService.defaultCourse(),
                 "learningRecords", List.of(),
-                "wrongBook", List.of()
+                "wrongBook", List.of(),
+                "joinedCourses", List.of()
             ));
         }
 
@@ -75,7 +76,8 @@ public class StudentStateController {
             "majorName", codeRaw,
             "courseName", courseCatalogService.normalizeCourseName(state.getCourseName()),
             "learningRecords", parseJsonArray(state.getLearningRecordsJson()),
-            "wrongBook", parseJsonArray(state.getWrongBookJson())
+            "wrongBook", parseJsonArray(state.getWrongBookJson()),
+            "joinedCourses", normalizeJoinedCourseNames(parseJsonStringList(state.getJoinedCoursesJson()))
         ));
     }
 
@@ -103,6 +105,11 @@ public class StudentStateController {
         state.setCourseName(courseCatalogService.normalizeCourseName(request != null ? request.courseName() : null));
         state.setLearningRecordsJson(writeJsonArray(request != null ? request.learningRecords() : null));
         state.setWrongBookJson(writeJsonArray(request != null ? request.wrongBook() : null));
+        if (request != null && request.joinedCourses() != null) {
+            state.setJoinedCoursesJson(writeJsonStringList(normalizeJoinedCourseNames(request.joinedCourses())));
+        } else if (state.getId() == null) {
+            state.setJoinedCoursesJson("[]");
+        }
         studentStateRepository.save(state);
 
         return ResponseEntity.ok(Map.of("message", "saved"));
@@ -131,5 +138,38 @@ public class StudentStateController {
         } catch (JsonProcessingException exception) {
             return List.of();
         }
+    }
+
+    private String writeJsonStringList(List<String> items) {
+        try {
+            return objectMapper.writeValueAsString(items == null ? List.of() : items);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("failed to serialize joined courses", exception);
+        }
+    }
+
+    private List<String> parseJsonStringList(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return List.of();
+        }
+        try {
+            List<String> list = objectMapper.readValue(raw, new TypeReference<>() {
+            });
+            return list == null ? List.of() : list;
+        } catch (JsonProcessingException exception) {
+            return List.of();
+        }
+    }
+
+    private List<String> normalizeJoinedCourseNames(List<String> names) {
+        if (names == null || names.isEmpty()) {
+            return List.of();
+        }
+        return names.stream()
+            .filter(StringUtils::hasText)
+            .map(String::trim)
+            .map(courseCatalogService::normalizeCourseName)
+            .distinct()
+            .toList();
     }
 }

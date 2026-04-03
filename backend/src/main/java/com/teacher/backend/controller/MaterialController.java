@@ -20,15 +20,17 @@ import com.teacher.backend.entity.Material;
 import com.teacher.backend.entity.User;
 import com.teacher.backend.repository.MaterialRepository;
 import com.teacher.backend.repository.UserRepository;
+import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 import com.teacher.backend.service.ApiResponseMapper;
+import com.teacher.backend.service.CourseCatalogService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -48,6 +50,8 @@ public class MaterialController {
     private final UserRepository userRepository;
     private final MaterialRepository materialRepository;
     private final ApiResponseMapper responseMapper;
+    private final TeacherCoursePermissionRepository teacherCoursePermissionRepository;
+    private final CourseCatalogService courseCatalogService;
     private final Path uploadRoot;
     private final CourseKnowledgePointRepository courseKnowledgePointRepository;
 
@@ -55,12 +59,16 @@ public class MaterialController {
         UserRepository userRepository,
         MaterialRepository materialRepository,
         ApiResponseMapper responseMapper,
+        TeacherCoursePermissionRepository teacherCoursePermissionRepository,
+        CourseCatalogService courseCatalogService,
         CourseKnowledgePointRepository courseKnowledgePointRepository,
         @Value("${app.upload-dir:uploads}") String uploadDir
     ) {
         this.userRepository = userRepository;
         this.materialRepository = materialRepository;
         this.responseMapper = responseMapper;
+        this.teacherCoursePermissionRepository = teacherCoursePermissionRepository;
+        this.courseCatalogService = courseCatalogService;
         this.courseKnowledgePointRepository = courseKnowledgePointRepository;
         this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
     }
@@ -73,9 +81,17 @@ public class MaterialController {
     public List<Map<String, Object>> listByKnowledgePoint(
         @RequestParam String courseName,
         @RequestParam String knowledgePoint,
+        @RequestParam(required = false) Long teacherId,
         @RequestParam(defaultValue = "true") boolean includeAncestors
     ) {
-        List<CourseKnowledgePoint> allPoints = courseKnowledgePointRepository.findByCourseNameOrderBySortOrderAscIdAsc(courseName);
+        String normalizedCourse = courseCatalogService.normalizeCourseName(courseName);
+        if (teacherId != null) {
+            boolean allowed = teacherCoursePermissionRepository.existsByTeacherIdAndCourseName(teacherId, normalizedCourse);
+            if (!allowed) {
+                return List.of();
+            }
+        }
+        List<CourseKnowledgePoint> allPoints = courseKnowledgePointRepository.findByCourseNameOrderBySortOrderAscIdAsc(normalizedCourse);
         // 获取所有下级
         var descendants = KnowledgePointUtils.getAllDescendants(knowledgePoint, allPoints);
         // 获取所有上级

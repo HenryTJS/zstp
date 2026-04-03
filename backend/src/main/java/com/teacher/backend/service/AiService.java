@@ -771,6 +771,52 @@ public class AiService {
         return response;
     }
 
+    public Map<String, Object> agentChat(String question, String role, String username) {
+        String asked = safe(question);
+        String roleName = safe(role);
+        String name = safe(username);
+        Map<String, Object> response = new LinkedHashMap<>();
+
+        if (!StringUtils.hasText(asked)) {
+            response.put("answer", "请输入你想咨询的问题。");
+            return response;
+        }
+
+        String roleText = switch (roleName) {
+            case "student" -> "学生";
+            case "teacher" -> "教师";
+            case "admin" -> "管理员";
+            default -> "用户";
+        };
+
+        if (!aiEnabled()) {
+            response.put("answer", "AI 服务暂未启用，请联系管理员配置 OPENAI_API_KEY 后重试。");
+            return response;
+        }
+
+        String systemPrompt = """
+            你是教学平台内置 AI 助手，请用简体中文回答。
+            回答要求：
+            1) 结合角色给出可执行建议，优先给出步骤化答案；
+            2) 不要编造平台不存在的功能；
+            3) 内容简洁清晰，必要时分点；
+            4) 涉及隐私、账号和安全问题时，提醒用户谨慎操作。
+            """;
+
+        String userPrompt = "当前用户角色: " + roleText +
+            (StringUtils.hasText(name) ? ("，用户名: " + name) : "") +
+            "\n用户问题: " + asked;
+
+        try {
+            String answer = chatText(systemPrompt, userPrompt);
+            response.put("answer", StringUtils.hasText(answer) ? answer.trim() : "暂时没有可用回答，请稍后重试。");
+        } catch (Exception exception) {
+            log.warn("agentChat failed: {}", exception.getMessage());
+            response.put("answer", "AI 暂时繁忙，请稍后重试。");
+        }
+        return response;
+    }
+
     /**
      * Batch generate 1-2 questions per request.
      * Each item is the same payload as /generate-question.
@@ -955,6 +1001,36 @@ public class AiService {
         }
 
         return parsed;
+    }
+
+    private String chatText(String systemPrompt, String userPrompt) throws IOException, InterruptedException {
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("model", model);
+        requestBody.put("temperature", 0.5);
+        requestBody.put("messages", List.of(
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", userPrompt)
+        ));
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create(baseUrl + "/chat/completions"))
+            .timeout(Duration.ofSeconds(90))
+            .header("Authorization", "Bearer " + apiKey)
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody), StandardCharsets.UTF_8))
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException("AI request failed with status " + response.statusCode());
+        }
+
+        JsonNode payload = objectMapper.readTree(response.body());
+        String content = payload.path("choices").path(0).path("message").path("content").asText("");
+        if (!StringUtils.hasText(content)) {
+            throw new IllegalStateException("AI response content is empty");
+        }
+        return content;
     }
 
     private String extractQuestionFromText(String text) {

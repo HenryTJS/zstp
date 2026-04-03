@@ -2,9 +2,19 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import colleges from '../data/colleges.json'
-import { listKnowledgePoints, listMaterials, saveKnowledgePoint, uploadMaterial, updateUser, listCoursesByMajor, fetchMaterialsByKnowledgePoint, fetchAnnouncements } from '../api/client'
+import {
+  listKnowledgePoints,
+  listMaterials,
+  saveKnowledgePoint,
+  uploadMaterial,
+  updateUser,
+  fetchMaterialsByKnowledgePoint,
+  fetchAnnouncements,
+  listTeacherCoursePermissions
+} from '../api/client'
 import { deleteKnowledgePoint, updateKnowledgePoint, deleteMaterial } from '../api/point-material-ops'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
+import AiAssistantWidget from './AiAssistantWidget.vue'
 
 const props = defineProps({
   currentUser: {
@@ -43,8 +53,8 @@ const viewMaterialsDialogVisible = ref(false)
 const viewMaterialsList = ref([])
 const viewMaterialsPoint = ref('')
 
-// 知识点表单
-const pointForm = ref({ courseName: '高等数学' })
+// 知识点表单：课程由管理员分配权限后才可见，默认不预设课程
+const pointForm = ref({ courseName: '' })
 const pointMessage = ref('')
 const pointError = ref('')
 
@@ -67,17 +77,7 @@ const mdImportResult = ref('')
 
 const catalogCourses = ref([])
 
-const courseOptions = computed(() => {
-  if (Array.isArray(catalogCourses.value) && catalogCourses.value.length) {
-    return catalogCourses.value
-  }
-  const set = new Set()
-  const pts = Array.isArray(points.value) ? points.value : []
-  const mats = Array.isArray(materials.value) ? materials.value : []
-  pts.forEach(p => p && p.courseName && set.add(p.courseName))
-  mats.forEach(m => m && m.courseName && set.add(m.courseName))
-  return Array.from(set.size ? set : ['高等数学'])
-})
+const courseOptions = computed(() => (Array.isArray(catalogCourses.value) ? catalogCourses.value : []))
 
 const profileMessage = ref('')
 const selectedCollege = ref('')
@@ -126,18 +126,68 @@ const passwordPanelRef = ref(null)
 
 const userInitial = computed(() => (props.currentUser && props.currentUser.username ? props.currentUser.username.charAt(0).toUpperCase() : '?'))
 const selectedCourse = ref(pointForm.value.courseName || '')
+const courseInitDone = ref(false)
+const suppressCourseWatch = ref(false)
+const coursePermFetchInFlight = ref(false)
+const lastCoursePermFetchAt = ref(0)
 
 watch(() => courseOptions.value, () => {
-  if (!selectedCourse.value) selectedCourse.value = courseOptions.value[0] || pointForm.value.courseName || ''
+  if (suppressCourseWatch.value) return
+  const opts = Array.isArray(courseOptions.value) ? courseOptions.value : []
+  if (!opts.length) {
+    selectedCourse.value = ''
+    pointForm.value.courseName = ''
+    return
+  }
+  if (!opts.includes(selectedCourse.value)) {
+    selectedCourse.value = opts[0] || ''
+  }
 })
 
 // 当顶部选择课程改变时，同步到 pointForm 并刷新知识点
 watch(selectedCourse, (val) => {
-  if (val) {
-    pointForm.value.courseName = val
-    switchCourse()
+  if (suppressCourseWatch.value) return
+  if (!val) {
+    pointForm.value.courseName = ''
+    return
   }
+  pointForm.value.courseName = val
+  if (courseInitDone.value) switchCourse()
 })
+
+const refreshTeacherCoursePermissionsIfNeeded = async (force = false) => {
+  // 30s 内缓存权限，避免频繁请求；但若当前 selectedCourse 不在权限列表内，则必须刷新
+  const now = Date.now()
+  const opts = Array.isArray(catalogCourses.value) ? catalogCourses.value : []
+  const selectedStillAllowed = opts.includes(selectedCourse.value)
+  const shouldFetch = force || !opts.length || !selectedStillAllowed || now - lastCoursePermFetchAt.value > 30000
+  if (!shouldFetch) return
+  if (coursePermFetchInFlight.value) return
+
+  coursePermFetchInFlight.value = true
+  try {
+    const res = await listTeacherCoursePermissions(props.currentUser.id)
+    const payload = res && res.data ? res.data : res
+    const nextCourses = Array.isArray(payload?.courses) ? payload.courses : []
+
+    suppressCourseWatch.value = true
+    catalogCourses.value = nextCourses
+
+    if (nextCourses.length) {
+      if (!nextCourses.includes(selectedCourse.value)) selectedCourse.value = nextCourses[0] || ''
+      pointForm.value.courseName = selectedCourse.value
+    } else {
+      selectedCourse.value = ''
+      pointForm.value.courseName = ''
+    }
+  } catch {
+    // 失败则保持当前状态，但会导致后续请求为空；这里不强行清空，避免误伤
+  } finally {
+    suppressCourseWatch.value = false
+    coursePermFetchInFlight.value = false
+    lastCoursePermFetchAt.value = Date.now()
+  }
+}
 
 // 加载数据
 const loadBaseData = async () => {
@@ -156,8 +206,13 @@ const loadKnowledgePointData = async () => {
   pointMessage.value = ''
   pointError.value = ''
   try {
+    await refreshTeacherCoursePermissionsIfNeeded()
     const courseName = pointForm.value.courseName || selectedCourse.value || ''
-    const res = await listKnowledgePoints(courseName)
+    if (!courseName) {
+      points.value = []
+      return
+    }
+    const res = await listKnowledgePoints(courseName, props.currentUser.id)
     const payload = res && res.data ? res.data : res
     const rawPoints = Array.isArray(payload) ? payload : (payload && payload.points) ? payload.points : []
     points.value = Array.isArray(rawPoints) ? rawPoints : []
@@ -174,8 +229,13 @@ const loadMaterialsByKnowledgePoint = async (kp) => {
   message.value = ''
   error.value = ''
   try {
+    await refreshTeacherCoursePermissionsIfNeeded()
     const courseName = pointForm.value.courseName || selectedCourse.value || ''
-    const resp = await fetchMaterialsByKnowledgePoint(courseName, kp, false)
+    if (!courseName) {
+      materials.value = []
+      return
+    }
+    const resp = await fetchMaterialsByKnowledgePoint(courseName, kp, false, props.currentUser.id)
     materials.value = resp && resp.data ? resp.data : resp || []
   } catch (err) {
     error.value = err?.response?.data?.message || '加载资料失败。'
@@ -202,7 +262,8 @@ const openViewMaterials = async (point) => {
   viewMaterialsPoint.value = point.pointName || point
   viewMaterialsList.value = []
   try {
-    const resp = await fetchMaterialsByKnowledgePoint(point.courseName || point.course || selectedCourse.value, viewMaterialsPoint.value, false)
+    await refreshTeacherCoursePermissionsIfNeeded()
+    const resp = await fetchMaterialsByKnowledgePoint(point.courseName || point.course || selectedCourse.value, viewMaterialsPoint.value, false, props.currentUser.id)
     viewMaterialsList.value = resp && resp.data ? resp.data : resp
   } catch (e) {
     viewMaterialsList.value = []
@@ -276,9 +337,14 @@ const openEditPoint = (point) => {
 }
 
 const openAddPoint = () => {
+  const cn = pointForm.value.courseName || selectedCourse.value || ''
+  if (!cn) {
+    pointError.value = '暂无可访问课程，请联系管理员分配课程权限。'
+    return
+  }
   editingPoint.value = null
   editPointForm.value = {
-    courseName: pointForm.value.courseName || '高等数学',
+    courseName: cn,
     pointName: '',
     parentPoint: ''
   }
@@ -549,10 +615,22 @@ const handleDeleteMaterial = async (id) => {
 }
 
 const loadTeacherProfile = () => {
-  // 优先使用本地缓存的教师端学院编码
-  const storedCollege = localStorage.getItem('teacher_college') || ''
+  // 按教师账号隔离缓存，避免同一浏览器切换账号后学院串号
+  const legacyKey = 'teacher_college'
+  const key = `teacher_college_${props.currentUser?.id ?? ''}`
+  const storedCollege = localStorage.getItem(key) || ''
   if (storedCollege) {
     selectedCollege.value = storedCollege
+    return
+  }
+  // 兼容旧版本：如果存在老的全局 key，则迁移一次到当前账号 key（迁移后清理旧 key）
+  const legacy = localStorage.getItem(legacyKey) || ''
+  if (legacy) {
+    selectedCollege.value = legacy
+    try {
+      localStorage.setItem(key, legacy)
+      localStorage.removeItem(legacyKey)
+    } catch (e) {}
     return
   }
   // 兜底：如果本地没有缓存，但 currentUser 上有 college 字段，则用于初始化
@@ -576,9 +654,12 @@ const handleSaveProfile = async () => {
   profileForm.value.email = editProfileForm.value.email
   // 更新学院到 local state
   selectedCollege.value = editProfileForm.value.college || ''
-  // 立刻持久化到本地存储，保证刷新页面后学院能正确回显
+  // 立刻持久化到本地存储（按账号隔离），保证刷新页面后学院能正确回显
   try {
-    localStorage.setItem('teacher_college', selectedCollege.value || '')
+    const key = `teacher_college_${props.currentUser?.id ?? ''}`
+    localStorage.setItem(key, selectedCollege.value || '')
+    // 清理旧 key，避免串号
+    localStorage.removeItem('teacher_college')
   } catch (e) {}
   // 尝试同步基础用户信息到服务器（后端目前仅支持用户名/邮箱）
   try {
@@ -636,15 +717,11 @@ const handlePasswordSave = async () => {
 onMounted(async () => {
   try {
     await loadBaseData()
+    // 初始化：拉取管理员分配给当前教师的可见课程
+    await refreshTeacherCoursePermissionsIfNeeded(true)
+
     await loadKnowledgePointData()
-    // 从后端检索课程目录（与学生端一致）
-    try {
-      const res = await listCoursesByMajor()
-      const payload = res && res.data ? res.data : res
-      catalogCourses.value = Array.isArray(payload) ? payload : []
-    } catch (e) {
-      catalogCourses.value = []
-    }
+    courseInitDone.value = true
     loadTeacherProfile()
   } catch (e) {
     error.value = '加载教师端数据失败，请确认后端与数据库已启动。'
@@ -653,11 +730,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="panel">
-    <div class="panel-header">
-      <h2>教师端 · 教学资源空间</h2>
-    </div>
-    <!-- 查看已上传资料模态框 -->
+  <!-- 查看已上传资料模态框 -->
     <div v-if="viewMaterialsDialogVisible" class="modal-mask" @click.self="viewMaterialsDialogVisible = false">
       <div class="modal-wrapper">
         <div class="modal-container">
@@ -704,7 +777,10 @@ onMounted(async () => {
           <div class="grid-form">
               <label>
                 统计课程
-                <select v-model="selectedCourse">
+                <div v-if="!courseOptions.length" class="panel-subtitle" style="margin-top:6px">
+                  暂无可见课程，请联系管理员分配课程权限。
+                </div>
+                <select v-else v-model="selectedCourse">
                   <option v-for="course in courseOptions" :key="course" :value="course">{{ course }}</option>
                 </select>
               </label>
@@ -814,36 +890,38 @@ onMounted(async () => {
         <p v-if="mdImportError" class="error-text">{{ mdImportError }}</p>
         <p v-if="mdImportResult" class="ok-text">{{ mdImportResult }}</p>
 
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>课程</th>
-              <th>知识点</th>
-              <th>父级知识点</th>
-              <!-- 顺序 列已移除 -->
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in points" :key="item.id">
-              <td>{{ item.courseName }}</td>
-              <td>{{ item.pointName }}<span v-if="isCourseRootPoint(item)" class="panel-subtitle" style="margin-left:6px">（课程根）</span></td>
-              <td>{{ item.parentPoint || '-' }}</td>
-              <!-- 顺序 值已移除 -->
-              <td>
-                <button v-if="!isCourseRootPoint(item)" type="button" @click="openEditPoint(item)">编辑</button>
-                <button @click="openUploadModal(item)" style="margin-left:8px;">上传资料</button>
-                <button @click="openViewMaterials(item)" style="margin-left:8px;">查看资料</button>
-                <button
-                  v-if="!isCourseRootPoint(item)"
-                  type="button"
-                  @click="handleDeletePoint(item.id, item)"
-                  style="margin-left:8px;color:red;"
-                >删除</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div style="max-height:520px;overflow:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>课程</th>
+                <th>知识点</th>
+                <th>父级知识点</th>
+                <!-- 顺序 列已移除 -->
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in points" :key="item.id">
+                <td>{{ item.courseName }}</td>
+                <td>{{ item.pointName }}<span v-if="isCourseRootPoint(item)" class="panel-subtitle" style="margin-left:6px">（课程根）</span></td>
+                <td>{{ item.parentPoint || '-' }}</td>
+                <!-- 顺序 值已移除 -->
+                <td>
+                  <button v-if="!isCourseRootPoint(item)" type="button" @click="openEditPoint(item)">编辑</button>
+                  <button @click="openUploadModal(item)" style="margin-left:8px;">上传资料</button>
+                  <button @click="openViewMaterials(item)" style="margin-left:8px;">查看资料</button>
+                  <button
+                    v-if="!isCourseRootPoint(item)"
+                    type="button"
+                    @click="handleDeletePoint(item.id, item)"
+                    style="margin-left:8px;color:red;"
+                  >删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </article>
 
       <!-- 已上传资料表格已移除；教师可在知识点行内上传，学生端会展示相应资料 -->
@@ -964,7 +1042,7 @@ onMounted(async () => {
         </div>
       </div>
     </div>
-  </section>
+    <AiAssistantWidget role="teacher" :current-user="currentUser" />
 </template>
 
 <style scoped src="./teacher-portal.css"></style>

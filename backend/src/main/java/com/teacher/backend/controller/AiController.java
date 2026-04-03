@@ -5,6 +5,7 @@ import com.teacher.backend.dto.GenerateQuestionRequest;
 import com.teacher.backend.dto.GenerateQuestionsRequest;
 import com.teacher.backend.dto.GenerateTestRequest;
 import com.teacher.backend.dto.GenerateExamRequest;
+import com.teacher.backend.dto.AgentChatRequest;
 import com.teacher.backend.dto.GradeAnswerRequest;
 import com.teacher.backend.dto.KnowledgeGraphRequest;
 import com.teacher.backend.dto.LearningSuggestionsRequest;
@@ -46,6 +47,16 @@ public class AiController {
         String knowledgePoint = request == null ? null : request.knowledgePoint();
         log.info("Hit /api/learning-suggestions, topic={}, knowledgePoint={}", topic, knowledgePoint);
         return aiService.generateLearningSuggestions(topic, knowledgePoint);
+    }
+
+    @PostMapping("/agent-chat")
+    public Map<String, Object> agentChat(@RequestBody(required = false) AgentChatRequest request) {
+        String question = request == null ? null : request.question();
+        String role = request == null ? null : request.role();
+        String username = request == null ? null : request.username();
+        String userId = request == null ? null : request.userId();
+        log.info("Hit /api/agent-chat, role={}, userId={}", role, userId);
+        return aiService.agentChat(question, role, username);
     }
 
     @PostMapping("/major-relevance")
