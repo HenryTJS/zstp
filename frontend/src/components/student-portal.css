@@ -122,6 +122,13 @@
   align-self:flex-start;
 }
 
+.course-market-card-actions--split{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+
 .course-market-pagination{
   margin-top:18px;
   display:flex;

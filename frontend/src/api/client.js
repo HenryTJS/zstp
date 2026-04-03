@@ -8,6 +8,14 @@ export const listTeachersForCourses = (courseNames) =>
   http.post('/teacher-course-permissions/teachers-for-courses', { courseNames })
 export const assignTeacherCourses = (payload) => http.post('/teacher-course-permissions/assign', payload)
 
+// 教师端申请课程权限（管理员端审批后可授予教师课程权限）
+export const listTeacherCoursePermissionRequests = (payload) =>
+  http.get('/teacher-course-permission-requests', { params: payload })
+export const createTeacherCoursePermissionRequest = (payload) =>
+  http.post('/teacher-course-permission-requests', payload)
+export const decideTeacherCoursePermissionRequest = (payload) =>
+  http.post('/teacher-course-permission-requests/decide', payload)
+
 // 管理员课程目录增删
 export const addCourse = (payload) => http.post('/courses', payload)
 export const deleteCourse = (payload) =>

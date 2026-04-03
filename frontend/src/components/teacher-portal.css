@@ -23,3 +23,102 @@
 .announcement-read-title{margin:0 0 6px;font-size:16px;font-weight:600;color:#0f172a;line-height:1.35}
 .announcement-read-meta{margin:0 0 10px!important;font-size:13px}
 .announcement-read-body{font-size:14px;line-height:1.65;color:#334155;white-space:pre-wrap;word-break:break-word}
+
+/* =========================
+   教师端「课程广场」样式（与学生端一致）
+   ========================= */
+.course-market-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.course-market-grid{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+}
+
+.course-market-card{
+  border:1px solid #e2e8f0;
+  border-radius:10px;
+  padding:14px 14px 12px;
+  background:#fff;
+  min-height:200px;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+
+.course-market-card-body{
+  flex:1;
+  min-height:0;
+}
+
+.course-market-card h4{
+  margin:0 0 6px;
+  font-size:15px;
+  color:#0f172a;
+}
+
+.course-card-teachers{
+  margin-top:8px;
+  margin-bottom:0;
+  font-size:13px;
+  line-height:1.45;
+  word-break:break-word;
+}
+
+.course-market-card-actions{
+  margin-top:auto;
+  padding-top:14px;
+  align-self:flex-start;
+}
+
+.course-market-card-actions--split{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+
+.course-market-pagination{
+  margin-top:18px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:2px 4px;
+  flex-wrap:wrap;
+}
+
+.course-page-num{
+  min-width:26px;
+  height:26px;
+  padding:0 4px;
+  border:none;
+  background:transparent;
+  font-size:13px;
+  line-height:1;
+  color:#64748b;
+  cursor:pointer;
+  border-radius:4px;
+}
+
+.course-page-num:hover{
+  color:#0f172a;
+  background:rgba(15,23,42,.06);
+}
+
+.course-page-num.is-active{
+  color:#0f172a;
+  font-weight:600;
+  cursor:default;
+  background:transparent;
+}
+
+@media (max-width:1024px){
+  .course-market-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}

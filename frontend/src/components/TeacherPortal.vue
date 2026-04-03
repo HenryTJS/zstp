@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import colleges from '../data/colleges.json'
 import {
   listKnowledgePoints,
@@ -10,7 +10,10 @@ import {
   updateUser,
   fetchMaterialsByKnowledgePoint,
   fetchAnnouncements,
-  listTeacherCoursePermissions
+  listTeacherCoursePermissions,
+  listCoursesByMajor,
+  listTeacherCoursePermissionRequests,
+  createTeacherCoursePermissionRequest
 } from '../api/client'
 import { deleteKnowledgePoint, updateKnowledgePoint, deleteMaterial } from '../api/point-material-ops'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
@@ -28,6 +31,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['logout', 'update-user'])
 const route = useRoute()
+const router = useRouter()
 // 当前激活子页，优先使用路由 param，再使用 props 作为回退
 const currentPage = ref(route.params.page || props.activePage || 'profile')
 // 同步路由 param 到本地 ref
@@ -117,6 +121,178 @@ watch(
   { immediate: true }
 )
  
+// =========================
+// 教师端「课程广场」
+// =========================
+const teacherCoursesSearch = ref('')
+const courseMarketPageSize = 8
+const teacherCoursesPage = ref(1)
+
+const allMarketCourses = ref([])
+const marketCoursesLoaded = ref(false)
+const marketCoursesLoading = ref(false)
+const marketCoursesError = ref('')
+
+// 后端存储的申请记录（教师端仅能查看自己的）
+const teacherCoursePermissionRequests = ref([])
+const teacherPermissionRequestsLoading = ref(false)
+const teacherPermissionRequestsError = ref('')
+
+const permissionRequestDialogVisible = ref(false)
+const permissionRequestCourseName = ref('')
+const permissionRequestText = ref('')
+const permissionRequestSubmitting = ref(false)
+const permissionRequestError = ref('')
+
+const teacherEnteredCourseStorageKey = `teacher-entered-course:${props.currentUser?.id}`
+
+const filteredMarketCourses = computed(() => {
+  const kw = (teacherCoursesSearch.value || '').trim().toLowerCase()
+  if (!kw) return allMarketCourses.value
+  return allMarketCourses.value.filter((c) => String(c || '').toLowerCase().includes(kw))
+})
+
+const marketTotalPages = computed(() => Math.max(1, Math.ceil(filteredMarketCourses.value.length / courseMarketPageSize)))
+const pagedMarketCourses = computed(() => {
+  const page = Math.min(Math.max(1, teacherCoursesPage.value), marketTotalPages.value)
+  const start = (page - 1) * courseMarketPageSize
+  return filteredMarketCourses.value.slice(start, start + courseMarketPageSize)
+})
+
+watch(teacherCoursesSearch, () => {
+  teacherCoursesPage.value = 1
+})
+
+const permissionRequestByCourse = computed(() => {
+  const map = {}
+  const list = Array.isArray(teacherCoursePermissionRequests.value) ? teacherCoursePermissionRequests.value : []
+  for (const r of list) {
+    const cn = r?.courseName
+    if (!cn || map[cn]) continue
+    map[cn] = r
+  }
+  return map
+})
+
+const loadTeacherCoursePermissionRequests = async () => {
+  teacherPermissionRequestsLoading.value = true
+  teacherPermissionRequestsError.value = ''
+  try {
+    const res = await listTeacherCoursePermissionRequests({ teacherId: props.currentUser.id })
+    const payload = res && res.data ? res.data : res
+    teacherCoursePermissionRequests.value = Array.isArray(payload) ? payload : []
+  } catch (e) {
+    teacherPermissionRequestsError.value = e?.response?.data?.message || e?.message || '加载申请记录失败。'
+    teacherCoursePermissionRequests.value = []
+  } finally {
+    teacherPermissionRequestsLoading.value = false
+  }
+}
+
+const loadTeacherCourseMarket = async () => {
+  marketCoursesLoading.value = true
+  marketCoursesError.value = ''
+  try {
+    if (!marketCoursesLoaded.value) {
+      const res = await listCoursesByMajor()
+      const payload = res && res.data ? res.data : res
+      allMarketCourses.value = Array.isArray(payload) ? payload : []
+      marketCoursesLoaded.value = true
+    }
+
+    // 权限/申请记录需要实时一些（管理员可能刚审批完）
+    await refreshTeacherCoursePermissionsIfNeeded(true)
+    await loadTeacherCoursePermissionRequests()
+  } catch (e) {
+    marketCoursesError.value = e?.response?.data?.message || e?.message || '加载课程广场失败。'
+    allMarketCourses.value = []
+  } finally {
+    marketCoursesLoading.value = false
+  }
+}
+
+watch(
+  currentPage,
+  (v) => {
+    if (v === 'courses') void loadTeacherCourseMarket()
+  },
+  { immediate: false }
+)
+
+const openPermissionRequest = (courseName) => {
+  permissionRequestCourseName.value = String(courseName || '').trim()
+  permissionRequestText.value = ''
+  permissionRequestError.value = ''
+  permissionRequestDialogVisible.value = true
+}
+
+const submitPermissionRequest = async () => {
+  permissionRequestError.value = ''
+  if (!permissionRequestCourseName.value) {
+    permissionRequestError.value = '课程名为空。'
+    return
+  }
+  if (!permissionRequestText.value || !permissionRequestText.value.trim()) {
+    permissionRequestError.value = '请填写获得权限的申请书内容。'
+    return
+  }
+
+  permissionRequestSubmitting.value = true
+  try {
+    await createTeacherCoursePermissionRequest({
+      teacherId: props.currentUser.id,
+      courseName: permissionRequestCourseName.value,
+      requestText: permissionRequestText.value.trim()
+    })
+    permissionRequestDialogVisible.value = false
+    await loadTeacherCoursePermissionRequests()
+  } catch (e) {
+    permissionRequestError.value = e?.response?.data?.message || e?.message || '提交申请失败。'
+  } finally {
+    permissionRequestSubmitting.value = false
+  }
+}
+
+const enterCourseFromMarket = (courseName) => {
+  const cn = String(courseName || '').trim()
+  if (!cn) return
+  if (!Array.isArray(catalogCourses.value) || !catalogCourses.value.includes(cn)) return
+  if (selectedCourse.value === cn) {
+    // 已进入该课程：允许“再次点击”但不重复切换与刷新
+    router.push('/teacher/manage')
+    return
+  }
+
+  autoSelectCourseEnabled.value = false
+  selectedCourse.value = cn
+  pointForm.value.courseName = cn
+
+  try {
+    localStorage.setItem(teacherEnteredCourseStorageKey, cn)
+  } catch (e) {}
+
+  router.push('/teacher/manage')
+}
+
+const quitCourseFromMarket = (courseName) => {
+  const cn = String(courseName || '').trim()
+  if (!cn) return
+  if (selectedCourse.value !== cn) return
+
+  const ok = confirm(`确定要退出课程「${cn}」吗？退出后将停止对该课程的资料管理。`)
+  if (!ok) return
+
+  autoSelectCourseEnabled.value = false
+  selectedCourse.value = ''
+  pointForm.value.courseName = ''
+
+  try {
+    localStorage.setItem(teacherEnteredCourseStorageKey, '')
+  } catch (e) {}
+
+  router.push('/teacher/courses')
+}
+
 // 与学生端保持一致的个人信息编辑/修改密码逻辑（简化）
 const profileForm = ref({ username: props.currentUser.username || '', email: props.currentUser.email || '' })
 const editProfileVisible = ref(false)
@@ -126,8 +302,12 @@ const passwordPanelRef = ref(null)
 
 const userInitial = computed(() => (props.currentUser && props.currentUser.username ? props.currentUser.username.charAt(0).toUpperCase() : '?'))
 const selectedCourse = ref(pointForm.value.courseName || '')
+// 个人中心「统计课程」下拉仅用于统计筛选展示，不影响教师端“进入/退出课程”。
+const statCourse = ref(selectedCourse.value || '')
 const courseInitDone = ref(false)
 const suppressCourseWatch = ref(false)
+// 当教师端从课程广场手动进入/退出课程后，会禁止刷新权限时的“自动选第一个课程”
+const autoSelectCourseEnabled = ref(true)
 const coursePermFetchInFlight = ref(false)
 const lastCoursePermFetchAt = ref(0)
 
@@ -137,10 +317,17 @@ watch(() => courseOptions.value, () => {
   if (!opts.length) {
     selectedCourse.value = ''
     pointForm.value.courseName = ''
+    statCourse.value = ''
     return
   }
   if (!opts.includes(selectedCourse.value)) {
-    selectedCourse.value = opts[0] || ''
+    if (autoSelectCourseEnabled.value) {
+      selectedCourse.value = opts[0] || ''
+    } else {
+      selectedCourse.value = ''
+    }
+    pointForm.value.courseName = selectedCourse.value
+    statCourse.value = selectedCourse.value || opts[0] || ''
   }
 })
 
@@ -149,9 +336,13 @@ watch(selectedCourse, (val) => {
   if (suppressCourseWatch.value) return
   if (!val) {
     pointForm.value.courseName = ''
+    points.value = []
+    // 统计下拉回显到“当前进入课程”，但不会反向影响 selectedCourse
+    statCourse.value = ''
     return
   }
   pointForm.value.courseName = val
+  statCourse.value = val
   if (courseInitDone.value) switchCourse()
 })
 
@@ -174,11 +365,23 @@ const refreshTeacherCoursePermissionsIfNeeded = async (force = false) => {
     catalogCourses.value = nextCourses
 
     if (nextCourses.length) {
-      if (!nextCourses.includes(selectedCourse.value)) selectedCourse.value = nextCourses[0] || ''
-      pointForm.value.courseName = selectedCourse.value
+      const stillAllowed = Boolean(selectedCourse.value && nextCourses.includes(selectedCourse.value))
+      if (stillAllowed) {
+        // 保持教师手动进入的课程
+        pointForm.value.courseName = selectedCourse.value
+      } else if (autoSelectCourseEnabled.value) {
+        selectedCourse.value = nextCourses[0] || ''
+        pointForm.value.courseName = selectedCourse.value
+      } else {
+        // 手动“退出课程”状态：权限刷新时保持未进入
+        selectedCourse.value = ''
+        pointForm.value.courseName = ''
+      }
+      statCourse.value = selectedCourse.value || nextCourses[0] || ''
     } else {
       selectedCourse.value = ''
       pointForm.value.courseName = ''
+      statCourse.value = ''
     }
   } catch {
     // 失败则保持当前状态，但会导致后续请求为空；这里不强行清空，避免误伤
@@ -716,6 +919,19 @@ const handlePasswordSave = async () => {
 
 onMounted(async () => {
   try {
+    // 初始化“是否已进入课程”偏好：如果本地已保存过进入/退出操作，则禁止自动选第一个课程
+    const storageKey = `teacher-entered-course:${props.currentUser?.id}`
+    try {
+      const stored = localStorage.getItem(storageKey)
+      if (stored !== null) {
+        autoSelectCourseEnabled.value = false
+        selectedCourse.value = stored
+        pointForm.value.courseName = stored
+      }
+    } catch {
+      // ignore localStorage failures
+    }
+
     await loadBaseData()
     // 初始化：拉取管理员分配给当前教师的可见课程
     await refreshTeacherCoursePermissionsIfNeeded(true)
@@ -723,6 +939,10 @@ onMounted(async () => {
     await loadKnowledgePointData()
     courseInitDone.value = true
     loadTeacherProfile()
+    // 若直接进入“课程广场”，则在页面初次渲染后加载市场/申请数据
+    if (currentPage.value === 'courses') {
+      await loadTeacherCourseMarket()
+    }
   } catch (e) {
     error.value = '加载教师端数据失败，请确认后端与数据库已启动。'
   }
@@ -780,7 +1000,7 @@ onMounted(async () => {
                 <div v-if="!courseOptions.length" class="panel-subtitle" style="margin-top:6px">
                   暂无可见课程，请联系管理员分配课程权限。
                 </div>
-                <select v-else v-model="selectedCourse">
+                <select v-else v-model="statCourse">
                   <option v-for="course in courseOptions" :key="course" :value="course">{{ course }}</option>
                 </select>
               </label>
@@ -858,6 +1078,109 @@ onMounted(async () => {
         </article>
       </template>
 
+      <template v-else-if="currentPage === 'courses'">
+        <article class="result-card">
+          <div class="course-market-head">
+            <h3>课程广场</h3>
+            <input
+              v-model="teacherCoursesSearch"
+              class="match-height"
+              placeholder="搜索课程名称"
+              style="max-width:280px"
+            />
+          </div>
+
+          <p v-if="marketCoursesLoading && !allMarketCourses.length" class="panel-subtitle" style="margin-top:12px">
+            加载中…
+          </p>
+          <p v-else-if="marketCoursesError" class="error-text" style="margin-top:12px">{{ marketCoursesError }}</p>
+
+          <div v-if="pagedMarketCourses.length" class="course-market-grid">
+            <article v-for="course in pagedMarketCourses" :key="course" class="course-market-card">
+              <div class="course-market-card-body">
+                <h4>{{ course }}</h4>
+                <p class="panel-subtitle course-card-teachers">
+                  <template v-if="catalogCourses.includes(course)">
+                    已授权
+                  </template>
+                  <template v-else-if="permissionRequestByCourse[course]?.status === 'PENDING'">
+                    申请中
+                  </template>
+                  <template v-else-if="permissionRequestByCourse[course]?.status === 'REJECTED'">
+                    已拒绝：{{ permissionRequestByCourse[course]?.adminReason || '（无理由）' }}
+                  </template>
+                  <template v-else-if="permissionRequestByCourse[course]?.status === 'APPROVED'">
+                    已通过：等待权限同步
+                  </template>
+                  <template v-else>
+                    未获得权限
+                  </template>
+                </p>
+              </div>
+
+              <div class="course-market-card-actions course-market-card-actions--split">
+                <template v-if="catalogCourses.includes(course)">
+                  <button
+                    type="button"
+                    class="match-button"
+                    :disabled="!courseInitDone"
+                    @click="enterCourseFromMarket(course)"
+                  >
+                    进入课程
+                  </button>
+                  <button
+                    type="button"
+                    class="cancel-button"
+                    :disabled="!courseInitDone"
+                    @click="quitCourseFromMarket(course)"
+                  >
+                    退出课程
+                  </button>
+                </template>
+
+                <template v-else>
+                  <button
+                    type="button"
+                    class="match-button"
+                    :disabled="
+                      !courseInitDone ||
+                      teacherPermissionRequestsLoading ||
+                      permissionRequestByCourse[course]?.status === 'PENDING' ||
+                      permissionRequestByCourse[course]?.status === 'APPROVED'
+                    "
+                    @click="openPermissionRequest(course)"
+                  >
+                    {{
+                      permissionRequestByCourse[course]?.status === 'PENDING'
+                        ? '申请中'
+                        : permissionRequestByCourse[course]?.status === 'APPROVED'
+                          ? '已审批通过'
+                          : '加入课程'
+                    }}
+                  </button>
+                </template>
+              </div>
+            </article>
+          </div>
+
+          <p v-else class="panel-subtitle" style="margin-top:12px">暂无课程。</p>
+
+          <nav v-if="marketTotalPages > 1" class="course-market-pagination" aria-label="课程列表分页">
+            <button
+              v-for="page in marketTotalPages"
+              :key="page"
+              type="button"
+              class="course-page-num"
+              :class="{ 'is-active': teacherCoursesPage === page }"
+              :aria-current="teacherCoursesPage === page ? 'page' : undefined"
+              @click="teacherCoursesPage = page"
+            >
+              {{ page }}
+            </button>
+          </nav>
+        </article>
+      </template>
+
       <template v-else-if="currentPage === 'manage'">
       <!-- 单条知识点上传功能已移至表格内的“上传资料”按钮 -->
 
@@ -927,6 +1250,45 @@ onMounted(async () => {
       <!-- 已上传资料表格已移除；教师可在知识点行内上传，学生端会展示相应资料 -->
     </template>
     </section>
+    <div v-if="permissionRequestDialogVisible" class="modal-mask" @click.self="permissionRequestDialogVisible = false">
+      <div class="modal-wrapper">
+        <div class="modal-container">
+          <button class="modal-close" @click="permissionRequestDialogVisible = false" aria-label="关闭">×</button>
+          <h3>获得权限申请书 - {{ permissionRequestCourseName }}</h3>
+
+          <div class="grid-form single-col" style="margin-top:12px;">
+            <label>
+              申请内容
+              <textarea
+                v-model="permissionRequestText"
+                rows="6"
+                placeholder="请写明希望获得该课程权限的理由、计划或相关经验。"
+              ></textarea>
+            </label>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button
+              class="match-height match-button"
+              :disabled="permissionRequestSubmitting"
+              @click="submitPermissionRequest"
+            >
+              {{ permissionRequestSubmitting ? '提交中…' : '提交申请' }}
+            </button>
+            <button
+              class="match-height cancel-button"
+              @click="permissionRequestDialogVisible = false"
+              style="margin-left:8px;"
+            >
+              取消
+            </button>
+          </div>
+
+          <p v-if="permissionRequestError" class="error-text" style="margin-top:10px">{{ permissionRequestError }}</p>
+        </div>
+      </div>
+    </div>
+
       <div v-if="editDialogVisible" class="modal-mask" @click.self="editDialogVisible = false">
       <div class="modal-wrapper">
         <div class="modal-container">

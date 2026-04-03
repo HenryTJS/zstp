@@ -266,8 +266,24 @@ const selectedMajorDisplay = computed(() => {
   }
   return findName(majorLevel1.value, code) || code
 })
+/** 个人中心「统计课程」下拉，仅影响首页统计筛选，不单独决定知识图谱/做题上下文 */
 const selectedCourse = ref('')
-const canStudyCurrentCourse = computed(() => Boolean(selectedCourse.value && joinedCourses.value.includes(selectedCourse.value)))
+/** 从课程广场「进入课程」选择的当前学习课程（须已加入） */
+const learningContextCourse = ref('')
+/** 未加入时「查看课程」仅浏览图谱，不可进行资料/建议等交互 */
+const previewUnjoinedCourse = ref('')
+
+const isUnjoinedPreviewMode = computed(() => Boolean(previewUnjoinedCourse.value))
+/** 出题/做题/错题学习页：须已从广场进入且已加入该课 */
+const canStudyCurrentCourse = computed(() => {
+  const c = learningContextCourse.value
+  return Boolean(c && joinedCourses.value.includes(c))
+})
+/** 知识图谱页：已进入的学习课程，或未加入的预览 */
+const canShowGraphPage = computed(() => {
+  if (previewUnjoinedCourse.value) return true
+  return canStudyCurrentCourse.value
+})
 const filteredMarketCourses = computed(() => {
   const kw = (joinedCoursesSearch.value || '').trim().toLowerCase()
   if (!kw) return availableCourses.value
@@ -342,7 +358,7 @@ const loadSavedExams = async () => {
 const examPointsRaw = ref([])
 const loadExamPoints = async () => {
   try {
-    const { data } = await listKnowledgePoints(selectedCourse.value)
+    const { data } = await listKnowledgePoints(learningContextCourse.value)
     const points = Array.isArray(data?.points)
       ? data.points
       : Array.isArray(data)
@@ -358,13 +374,6 @@ const kpCascade1 = ref('')
 const kpCascade2 = ref('')
 const kpCascade3 = ref('')
 
-watch(selectedCourse, () => {
-  kpCascade1.value = ''
-  kpCascade2.value = ''
-  kpCascade3.value = ''
-  loadExamPoints()
-}, { immediate: true })
-
 const sortPoints = (a, b) => {
   const oa = Number(a?.sortOrder ?? 0)
   const ob = Number(b?.sortOrder ?? 0)
@@ -374,7 +383,7 @@ const sortPoints = (a, b) => {
 
 /** 一级：父节点为课程名，或旧数据无父节点且名称不等于课程名（课程名单独作为 0 级） */
 const kpLevel1Options = computed(() => {
-  const cn = selectedCourse.value
+  const cn = learningContextCourse.value
   return examPointsRaw.value
     .filter((p) => {
       if (!cn || p?.pointName === cn) return false
@@ -410,7 +419,7 @@ watch(kpCascade2, () => {
 
 /** 最深层联选；若未选一二三级则使用当前课程名（0 级） */
 const pickCascadePoint = () =>
-  kpCascade3.value || kpCascade2.value || kpCascade1.value || selectedCourse.value || ''
+  kpCascade3.value || kpCascade2.value || kpCascade1.value || learningContextCourse.value || ''
 
 const clearCascadeAfterAdd = () => {
   if (kpCascade3.value) {
@@ -751,7 +760,7 @@ const submitTest = async () => {
         id: `lr-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
         time: nowDisplay,
         major: selectedMajorDisplay.value || selectedMajor.value || '',
-        course: selectedCourse.value || '',
+        course: learningContextCourse.value || '',
         knowledgePoint: kp || '未标注',
         score,
         fullScore: full
@@ -761,7 +770,7 @@ const submitTest = async () => {
         newWrongItems.push({
           id: `wb-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
           major: selectedMajorDisplay.value || selectedMajor.value || '',
-          course: selectedCourse.value || '',
+          course: learningContextCourse.value || '',
           knowledgePoint: kp || '未标注',
           question: q.question || '',
           explanation: unescapeNewlinesSafe(q.explanation) || '',
@@ -797,6 +806,25 @@ const filteredWrongBook = computed(() => {
     return wrongBook.value
   }
   return wrongBook.value.filter((item) => item.course === selectedCourse.value)
+})
+
+/** 「错题与记录」页：按当前「进入课程」筛选，与个人中心统计课程无关 */
+const filteredWrongBookForLearningPage = computed(() => {
+  const c = learningContextCourse.value
+  if (!c) return []
+  return wrongBook.value.filter((item) => item.course === c)
+})
+const filteredLearningRecordsForLearningPage = computed(() => {
+  const c = learningContextCourse.value
+  if (!c) return []
+  return learningRecords.value.filter((item) => item.course === c)
+})
+
+/** 知识图谱掌握度：按当前「进入课程」的学习上下文统计，与个人中心统计课程无关 */
+const learningRecordsForGraph = computed(() => {
+  const c = learningContextCourse.value
+  if (!c) return []
+  return learningRecords.value.filter((item) => item.course === c)
 })
 
 /**
@@ -848,7 +876,7 @@ const graphNodeMastery = computed(() => {
   let score = 0
   let full = 0
   let attemptCount = 0
-  for (const item of filteredLearningRecords.value) {
+  for (const item of learningRecordsForGraph.value) {
     const kp = String(item.knowledgePoint || '').trim()
     if (kp && labels.has(kp)) {
       score += Number(item.score || 0)
@@ -993,7 +1021,7 @@ const learningStats = computed(() => {
 })
 
 const composeTopic = (knowledgePoint) => {
-  return `${selectedMajor.value} ${selectedCourse.value} ${knowledgePoint}`.trim()
+  return `${selectedMajor.value} ${learningContextCourse.value} ${knowledgePoint}`.trim()
 }
 
 const ensureCourseSelection = () => {
@@ -1010,6 +1038,29 @@ const joinCourse = async (courseName) => {
   selectedCourse.value = course
   // 立即落库，避免防抖窗口内退出登录导致未保存
   await persistStudentState(false)
+}
+
+/** 已加入：从广场进入学习上下文并打开知识图谱（与个人中心「统计课程」无关） */
+const enterCourseFromMarket = async (courseName) => {
+  const course = String(courseName || '').trim()
+  if (!course || !joinedCourses.value.includes(course)) return
+  previewUnjoinedCourse.value = ''
+  learningContextCourse.value = course
+  currentPage.value = 'graph'
+  await persistStudentState(false)
+  await nextTick()
+  await loadGraph()
+}
+
+/** 未加入：仅浏览图谱，不可点击知识点查看资料与生成建议 */
+const viewCourseWithoutJoin = async (courseName) => {
+  const course = String(courseName || '').trim()
+  if (!course || joinedCourses.value.includes(course)) return
+  learningContextCourse.value = ''
+  previewUnjoinedCourse.value = course
+  currentPage.value = 'graph'
+  await nextTick()
+  await loadGraph()
 }
 
 const clearExerciseUiAfterQuittingCurrentCourse = () => {
@@ -1047,7 +1098,10 @@ const quitCourse = async (courseName) => {
   }
 
   const wasCurrent = selectedCourse.value === course
-
+  if (learningContextCourse.value === course) {
+    learningContextCourse.value = ''
+    clearExerciseUiAfterQuittingCurrentCourse()
+  }
   learningRecords.value = (learningRecords.value || []).filter((item) => item.course !== course)
   wrongBook.value = (wrongBook.value || []).filter((item) => item.course !== course)
   if (wrongBookModalItem.value?.course === course) {
@@ -1065,7 +1119,7 @@ const quitCourse = async (courseName) => {
     await saveStudentState({
       userId: props.currentUser.id,
       major: selectedMajor.value || null,
-      courseName: selectedCourse.value,
+      courseName: learningContextCourse.value || selectedCourse.value,
       learningRecords: learningRecords.value,
       wrongBook: wrongBook.value,
       joinedCourses: joinedCourses.value
@@ -1227,7 +1281,7 @@ const persistGeneratedExam = async () => {
   }
   try {
     const payload = {
-      title: examForm.value.title || (selectedCourse.value + ' 试卷'),
+      title: examForm.value.title || (learningContextCourse.value + ' 试卷'),
       questions: examResult.value
     }
     const resp = await saveExam(payload)
@@ -1297,11 +1351,13 @@ const loadStudentState = async () => {
     needsPushJoinedMigration = legacyJoined.length > 0
     // 登录恢复时以服务端为准，勿按当前 availableCourses 过滤（专业未回显或列表延迟时否则会整表清空）
     joinedCourses.value = [...new Set(mergedJoined.map((x) => String(x || '').trim()).filter(Boolean))]
-    // 不再根据服务端保存的 courseName 自动加入课程（避免默认把「高等数学」等加入）
+    // 个人中心统计课程 + 学习上下文（进入课程）初始与服务端 courseName 对齐
     if (data?.courseName && joinedCourses.value.includes(data.courseName)) {
       selectedCourse.value = data.courseName
+      learningContextCourse.value = data.courseName
     } else {
       ensureCourseSelection()
+      learningContextCourse.value = ''
     }
 
     // removed handling of profile bio (学习目标) per UI change
@@ -1346,7 +1402,7 @@ const persistStudentState = async (showMessage = false) => {
     await saveStudentState({
       userId: props.currentUser.id,
       major: selectedMajor.value || null,
-      courseName: selectedCourse.value,
+      courseName: learningContextCourse.value || selectedCourse.value,
       learningRecords: learningRecords.value,
       wrongBook: wrongBook.value,
       joinedCourses: joinedCourses.value
@@ -1379,7 +1435,7 @@ const loadLearningSuggestionsFor = async (pointName) => {
   suggestionError.value = ''
 
   const kp = pointName || selectedKnowledgePoint.value || ''
-  if (!selectedCourse.value || !kp) {
+  if (!learningContextCourse.value || !kp) {
     learningSuggestions.value = []
     suggestionLoading.value = false
     return
@@ -1387,7 +1443,7 @@ const loadLearningSuggestionsFor = async (pointName) => {
 
   try {
     const resp = await fetchLearningSuggestions({
-      topic: selectedCourse.value,
+      topic: learningContextCourse.value,
       knowledgePoint: kp
     })
     const payload = resp && resp.data ? resp.data : resp
@@ -1415,7 +1471,7 @@ const loadMajorRelevanceFor = async (pointName) => {
 
   const kp = pointName || selectedKnowledgePoint.value || ''
   const majorText = selectedMajorDisplay.value || selectedMajor.value || ''
-  if (!selectedCourse.value || !kp || !majorText) {
+  if (!learningContextCourse.value || !kp || !majorText) {
     majorRelevance.value = {
       scoreLevel: null,
       summary: '',
@@ -1428,7 +1484,7 @@ const loadMajorRelevanceFor = async (pointName) => {
 
   try {
     const resp = await fetchMajorRelevance({
-      topic: selectedCourse.value,
+      topic: learningContextCourse.value,
       knowledgePoint: kp,
       major: majorText
     })
@@ -1459,12 +1515,12 @@ const loadMajorRelevanceFor = async (pointName) => {
 }
 
 const loadMaterialsByKnowledgePoint = async (pointName) => {
-  if (!selectedCourse.value || !pointName) {
+  if (!learningContextCourse.value || !pointName) {
     materials.value = []
     return
   }
   try {
-    const resp = await fetchMaterialsByKnowledgePoint(selectedCourse.value, pointName, false)
+    const resp = await fetchMaterialsByKnowledgePoint(learningContextCourse.value, pointName, false)
     materials.value = resp.data
   } catch {
     materials.value = []
@@ -1472,35 +1528,60 @@ const loadMaterialsByKnowledgePoint = async (pointName) => {
 }
 
 const loadGraph = async () => {
-  if (!canStudyCurrentCourse.value) {
+  const topic = learningContextCourse.value || previewUnjoinedCourse.value
+  const emptyGraph = () => {
     graphData.value = { title: '知识图谱', nodes: [], edges: [], suggestions: [] }
     selectedNodeId.value = ''
     selectedKnowledgePoint.value = ''
     materials.value = []
     learningSuggestions.value = []
+    majorRelevance.value = {
+      scoreLevel: null,
+      summary: '',
+      relatedContents: [],
+      lowRelevanceReason: ''
+    }
+  }
+  if (!topic) {
+    emptyGraph()
     return
+  }
+  const isPreview = Boolean(previewUnjoinedCourse.value)
+  if (!isPreview) {
+    if (!learningContextCourse.value || !joinedCourses.value.includes(learningContextCourse.value)) {
+      emptyGraph()
+      return
+    }
   }
   graphLoading.value = true
   graphError.value = ''
   try {
-    const { data } = await fetchKnowledgeGraph({ topic: selectedCourse.value })
+    const { data } = await fetchKnowledgeGraph({ topic })
     graphData.value = {
       title: data.title || '知识图谱',
       nodes: Array.isArray(data.nodes) ? data.nodes : [],
       edges: Array.isArray(data.edges) ? data.edges : [],
       suggestions: Array.isArray(data.suggestions) ? data.suggestions : []
     }
-    // 作为兜底先展示 knowledge-graph 返回的建议，随后再为“当前知识点”异步生成新建议
     learningSuggestions.value = Array.isArray(graphData.value.suggestions) ? graphData.value.suggestions : []
 
     selectedNodeId.value = 'root'
     const rootNode = graphData.value.nodes.find((n) => n.id === 'root')
     if (rootNode?.label) {
       selectedKnowledgePoint.value = rootNode.label
-      if (currentPage.value === 'graph') {
+      if (currentPage.value === 'graph' && !isPreview) {
         await loadMaterialsByKnowledgePoint(rootNode.label)
         void loadLearningSuggestionsFor(rootNode.label)
         void loadMajorRelevanceFor(rootNode.label)
+      } else if (isPreview) {
+        materials.value = []
+        learningSuggestions.value = []
+        majorRelevance.value = {
+          scoreLevel: null,
+          summary: '',
+          relatedContents: [],
+          lowRelevanceReason: ''
+        }
       }
     }
     await nextTick()
@@ -1511,6 +1592,21 @@ const loadGraph = async () => {
     graphLoading.value = false
   }
 }
+
+watch(
+  learningContextCourse,
+  () => {
+    kpCascade1.value = ''
+    kpCascade2.value = ''
+    kpCascade3.value = ''
+    loadExamPoints()
+    schedulePersistStudentState()
+    if (currentPage.value === 'graph') {
+      void loadGraph()
+    }
+  },
+  { immediate: true }
+)
 
 const renderGraphChart = () => {
   if (!graphChartRef.value || !graphNetworkData.value) {
@@ -1525,6 +1621,9 @@ const renderGraphChart = () => {
   if (!graphChart) {
     graphChart = echarts.init(graphChartRef.value)
     graphChart.on('click', (params) => {
+      if (previewUnjoinedCourse.value) {
+        return
+      }
       if (params?.data?.id) {
         selectedNodeId.value = params.data.id
         const name = params.data.name
@@ -1741,9 +1840,6 @@ const openPasswordPage = () => {
 ensureCourseSelection()
 
 watch(selectedCourse, () => {
-  if (canStudyCurrentCourse.value) {
-    loadGraph()
-  }
   schedulePersistStudentState()
 })
 
@@ -1783,7 +1879,7 @@ watch(
       await loadSavedExams()
     }
     if (value === 'graph') {
-      if (!canStudyCurrentCourse.value) return
+      if (!canShowGraphPage.value) return
       if (!graphData.value.nodes?.length) {
         await loadGraph()
       } else {
@@ -1793,7 +1889,7 @@ watch(
           selectedKnowledgePoint.value ||
           graphData.value.nodes.find((n) => n.id === 'root')?.label ||
           ''
-        if (kp) {
+        if (kp && !previewUnjoinedCourse.value) {
           await loadMaterialsByKnowledgePoint(kp)
           void loadLearningSuggestionsFor(kp)
           void loadMajorRelevanceFor(kp)
@@ -1813,7 +1909,7 @@ watch(
 
 onMounted(async () => {
   await loadStudentState()
-  if (canStudyCurrentCourse.value) loadGraph()
+  if (canStudyCurrentCourse.value || previewUnjoinedCourse.value) loadGraph()
   await loadSavedExams()
   window.addEventListener('resize', handleWindowResize)
 })
@@ -1955,7 +2051,6 @@ const confirmDeleteExam = async (id) => {
             style="max-width:280px"
           />
         </div>
-        <p class="panel-subtitle">加入课程后即可进入知识图谱、出题与做题、错题与记录进行学习。</p>
 
         <div v-if="pagedMarketCourses.length" class="course-market-grid">
           <article v-for="course in pagedMarketCourses" :key="course" class="course-market-card">
@@ -1967,25 +2062,43 @@ const confirmDeleteExam = async (id) => {
                 <template v-else>暂无拥有该课程权限的教师</template>
               </p>
             </div>
-            <div class="course-market-card-actions">
-              <button
-                v-if="!joinedCourses.includes(course)"
-                type="button"
-                class="match-button"
-                :disabled="!stateHydrated"
-                @click="joinCourse(course)"
-              >
-                {{ stateHydrated ? '加入课程' : '加载中…' }}
-              </button>
-              <button
-                v-else
-                type="button"
-                class="cancel-button"
-                :disabled="!stateHydrated"
-                @click="quitCourse(course)"
-              >
-                退出课程
-              </button>
+            <div class="course-market-card-actions course-market-card-actions--split">
+              <template v-if="!joinedCourses.includes(course)">
+                <button
+                  type="button"
+                  class="match-button"
+                  :disabled="!stateHydrated"
+                  @click="joinCourse(course)"
+                >
+                  {{ stateHydrated ? '加入课程' : '加载中…' }}
+                </button>
+                <button
+                  type="button"
+                  class="nav-btn"
+                  :disabled="!stateHydrated"
+                  @click="viewCourseWithoutJoin(course)"
+                >
+                  查看课程
+                </button>
+              </template>
+              <template v-else>
+                <button
+                  type="button"
+                  class="match-button"
+                  :disabled="!stateHydrated"
+                  @click="enterCourseFromMarket(course)"
+                >
+                  进入课程
+                </button>
+                <button
+                  type="button"
+                  class="cancel-button"
+                  :disabled="!stateHydrated"
+                  @click="quitCourse(course)"
+                >
+                  退出课程
+                </button>
+              </template>
             </div>
           </article>
         </div>
@@ -2008,14 +2121,22 @@ const confirmDeleteExam = async (id) => {
     </section>
 
     <section v-if="currentPage === 'graph'" class="panel-stack">
-      <article v-if="!canStudyCurrentCourse" class="result-card">
-        <h3>暂不可学习</h3>
-        <p class="panel-subtitle">请先到「课程广场」加入课程，再进入知识图谱学习。</p>
+      <article v-if="!canShowGraphPage" class="result-card">
+        <h3>请先选择课程</h3>
+        <p class="panel-subtitle">请先到「课程广场」对某门课使用「进入课程」或「查看课程」，再浏览知识图谱。</p>
         <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
       </article>
       <template v-else>
+      <article v-if="isUnjoinedPreviewMode" class="result-card" style="border-left:4px solid #f59e0b">
+        <p class="panel-subtitle" style="margin:0">
+          <strong>浏览模式：</strong>仅可查看图谱结构，点击节点不会加载资料、学习建议与关联度分析。加入该课程后可完整使用。
+        </p>
+      </article>
       <article class="result-card">
         <h3 class="panel-title">{{ graphData.title }}</h3>
+        <p v-if="learningContextCourse" class="panel-subtitle" style="margin-top:4px">
+          当前学习课程：<strong>{{ learningContextCourse }}</strong>
+        </p>
         <div class="inline-form">
           <button :disabled="graphLoading" @click="loadGraph">{{ graphLoading ? '加载中...' : '刷新图谱' }}</button>
         </div>
@@ -2024,7 +2145,7 @@ const confirmDeleteExam = async (id) => {
         <div ref="graphChartRef" style="width: 100%; height: 420px;"></div>
       </article>
 
-      <article v-if="selectedNode" class="result-card">
+      <article v-if="selectedNode && !isUnjoinedPreviewMode" class="result-card">
         <h3>{{ selectedNode.label }}</h3>
         <div style="margin-bottom:14px">
           <h3>掌握程度</h3>
@@ -2114,7 +2235,7 @@ const confirmDeleteExam = async (id) => {
     <section v-if="currentPage === 'exercise'" class="panel-stack">
       <article v-if="!canStudyCurrentCourse" class="result-card">
         <h3>暂不可学习</h3>
-        <p class="panel-subtitle">请先到「课程广场」加入课程，再进入出题与做题。</p>
+        <p class="panel-subtitle">请先在「课程广场」对某门已加入的课程点击「进入课程」，再在此出题与做题（与个人中心「统计课程」无关）。</p>
         <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
       </article>
       <template v-else>
@@ -2137,8 +2258,8 @@ const confirmDeleteExam = async (id) => {
                   class="match-height"
                   style="min-width:10em;background:#f0f4f8;border:1px solid #dde1e6;color:#334155;cursor:default"
                   readonly
-                  :value="selectedCourse"
-                  title="当前课程名，与知识图谱根节点一致；可直接点「添加」仅按课程出题"
+                  :value="learningContextCourse"
+                  title="当前课程名由「进入课程」决定；可直接点「添加」仅按课程出题"
                 />
               </span>
               <select v-model="kpCascade1" class="match-height">
@@ -2217,8 +2338,8 @@ const confirmDeleteExam = async (id) => {
                   class="match-height"
                   style="min-width:10em;background:#f0f4f8;border:1px solid #dde1e6;color:#334155;cursor:default"
                   readonly
-                  :value="selectedCourse"
-                  title="当前课程名；未选一二三级时点击「添加」即按课程出题"
+                  :value="learningContextCourse"
+                  title="当前课程名由「进入课程」决定；未选一二三级时点击「添加」即按课程出题"
                 />
               </span>
               <select v-model="kpCascade1" class="match-height">
@@ -2371,15 +2492,15 @@ const confirmDeleteExam = async (id) => {
     <section v-if="currentPage === 'review'" class="panel-stack">
       <article v-if="!canStudyCurrentCourse" class="result-card">
         <h3>暂不可学习</h3>
-        <p class="panel-subtitle">请先到「课程广场」加入课程，再查看错题与记录。</p>
+        <p class="panel-subtitle">请先在「课程广场」对某门已加入的课程点击「进入课程」，再查看错题与记录（与个人中心「统计课程」无关）。</p>
         <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
       </article>
       <template v-else>
       <article class="result-card">
         <h3>错题本</h3>
-        <p v-if="!filteredWrongBook.length" class="panel-subtitle">当前课程暂无收藏错题。</p>
+        <p v-if="!filteredWrongBookForLearningPage.length" class="panel-subtitle">当前课程暂无收藏错题。</p>
         <div v-else class="wrong-book-grid">
-          <article v-for="item in filteredWrongBook" :key="item.id" class="wrong-book-card">
+          <article v-for="item in filteredWrongBookForLearningPage" :key="item.id" class="wrong-book-card">
             <div class="wrong-book-card-top">
               <strong class="wrong-book-title">{{ item.course }} · {{ item.knowledgePoint }}</strong>
               <div class="wrong-book-meta-line">
@@ -2427,7 +2548,7 @@ const confirmDeleteExam = async (id) => {
 
       <article class="result-card">
         <h3>学习记录</h3>
-        <p v-if="!filteredLearningRecords.length" class="panel-subtitle">当前课程暂无学习记录。</p>
+        <p v-if="!filteredLearningRecordsForLearningPage.length" class="panel-subtitle">当前课程暂无学习记录。</p>
         <table v-else class="data-table">
           <thead>
             <tr>
@@ -2439,7 +2560,7 @@ const confirmDeleteExam = async (id) => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in filteredLearningRecords" :key="item.id">
+            <tr v-for="item in filteredLearningRecordsForLearningPage" :key="item.id">
               <td>{{ item.time }}</td>
               <td>{{ item.course }}</td>
               <td>{{ item.knowledgePoint }}</td>

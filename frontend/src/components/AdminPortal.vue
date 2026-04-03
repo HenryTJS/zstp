@@ -10,6 +10,8 @@ import {
   fetchAnnouncements,
   listCoursesByMajor,
   listTeacherCoursePermissions,
+  listTeacherCoursePermissionRequests,
+  decideTeacherCoursePermissionRequest,
   deleteCourse,
   listUsers,
   updateUser
@@ -138,6 +140,76 @@ const courseManageLoading = ref(false)
 const courseManageError = ref('')
 const courseManageMessage = ref('')
 
+// =========================
+// 教师权限申请审批（带理由）
+// =========================
+const permReqLoading = ref(false)
+const permReqError = ref('')
+const pendingTeacherCoursePermissionRequests = ref([])
+
+const permDecisionDialogVisible = ref(false)
+const permDecisionSubmitting = ref(false)
+const permDecisionError = ref('')
+const permDecisionForm = ref({ requestId: null, decision: 'approve', reason: '', courseName: '', teacherUsername: '' })
+
+const loadPendingTeacherCoursePermissionRequests = async () => {
+  permReqLoading.value = true
+  permReqError.value = ''
+  try {
+    const res = await listTeacherCoursePermissionRequests({ adminUserId: props.currentUser.id, status: 'PENDING' })
+    const payload = res && res.data ? res.data : res
+    pendingTeacherCoursePermissionRequests.value = Array.isArray(payload) ? payload : []
+  } catch (e) {
+    permReqError.value = e?.response?.data?.message || e?.message || '加载申请失败。'
+    pendingTeacherCoursePermissionRequests.value = []
+  } finally {
+    permReqLoading.value = false
+  }
+}
+
+const openPermDecisionDialog = (req, decision) => {
+  permDecisionError.value = ''
+  permDecisionForm.value = {
+    requestId: req?.id ?? null,
+    decision,
+    reason: '',
+    courseName: req?.courseName ?? '',
+    teacherUsername: req?.teacherUsername ?? ''
+  }
+  permDecisionDialogVisible.value = true
+}
+
+const submitPermDecision = async () => {
+  permDecisionError.value = ''
+  if (!permDecisionForm.value.requestId) {
+    permDecisionError.value = '申请记录不存在。'
+    return
+  }
+  if (!permDecisionForm.value.reason || !permDecisionForm.value.reason.trim()) {
+    permDecisionError.value = '请填写理由（通过或不通过都需要）。'
+    return
+  }
+
+  permDecisionSubmitting.value = true
+  try {
+    await decideTeacherCoursePermissionRequest({
+      adminUserId: props.currentUser.id,
+      requestId: permDecisionForm.value.requestId,
+      decision: permDecisionForm.value.decision,
+      reason: permDecisionForm.value.reason.trim()
+    })
+
+    permDecisionDialogVisible.value = false
+    await loadPendingTeacherCoursePermissionRequests()
+    // 若正在查看同一位老师，也刷新其已授权课程列表
+    if (selectedTeacherId.value) await loadAssignedCoursesForTeacher(selectedTeacherId.value)
+  } catch (e) {
+    permDecisionError.value = e?.response?.data?.message || e?.message || '操作失败。'
+  } finally {
+    permDecisionSubmitting.value = false
+  }
+}
+
 const loadAllCoursesCatalog = async (force = false) => {
   if (!force && allCourses.value.length) return
   try {
@@ -193,6 +265,7 @@ const ensureCoursePermissionsPageReady = async () => {
     selectedTeacherId.value = teachers.value[0]?.id ?? null
   }
   await loadAssignedCoursesForTeacher(selectedTeacherId.value)
+  await loadPendingTeacherCoursePermissionRequests()
 }
 
 watch(
@@ -859,7 +932,93 @@ const handlePasswordSave = async () => {
         </div>
         <p v-else class="panel-subtitle" style="margin-top:12px">暂无课程。</p>
       </article>
+
+      <article class="result-card">
+        <h3>教师权限申请（待审批）</h3>
+        <p v-if="permReqLoading && !pendingTeacherCoursePermissionRequests.length" class="panel-subtitle" style="margin-top:10px">
+          加载中…
+        </p>
+        <p v-else-if="permReqError" class="error-text" style="margin-top:10px">{{ permReqError }}</p>
+        <p v-else-if="!pendingTeacherCoursePermissionRequests.length" class="panel-subtitle" style="margin-top:10px">
+          暂无待审批申请。
+        </p>
+        <div v-else style="margin-top:16px;max-height:360px;overflow:auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>申请教师</th>
+                <th>课程</th>
+                <th>申请书</th>
+                <th>审批</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in pendingTeacherCoursePermissionRequests" :key="r.id">
+                <td>{{ r.teacherUsername || '-' }}</td>
+                <td>{{ r.courseName }}</td>
+                <td>
+                  <div style="white-space:pre-wrap;max-width:520px;word-break:break-word;">{{ r.requestText }}</div>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="match-button"
+                    :disabled="permReqLoading"
+                    @click="openPermDecisionDialog(r, 'approve')"
+                  >
+                    同意
+                  </button>
+                  <button
+                    type="button"
+                    class="cancel-button"
+                    :disabled="permReqLoading"
+                    style="margin-left:8px;"
+                    @click="openPermDecisionDialog(r, 'reject')"
+                  >
+                    不同意
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </article>
     </section>
+
+    <div v-if="permDecisionDialogVisible" class="modal-mask" @click.self="permDecisionDialogVisible = false">
+      <div class="modal-wrapper">
+        <div class="modal-container">
+          <button class="modal-close" type="button" @click="permDecisionDialogVisible = false" aria-label="关闭">×</button>
+          <h3>审批教师权限申请</h3>
+          <p class="panel-subtitle" style="margin-top:8px">
+            教师：<strong>{{ permDecisionForm.teacherUsername || '-' }}</strong> · 课程：<strong>{{ permDecisionForm.courseName }}</strong>
+          </p>
+
+          <div class="grid-form single-col" style="margin-top:12px">
+            <label>
+              理由（通过或不通过都需要）
+              <textarea v-model="permDecisionForm.reason" rows="5" placeholder="请填写审批理由"></textarea>
+            </label>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <button
+              type="button"
+              class="match-button"
+              :disabled="permDecisionSubmitting"
+              @click="submitPermDecision"
+            >
+              {{ permDecisionForm.decision === 'approve' ? (permDecisionSubmitting ? '处理中…' : '同意并授予') : (permDecisionSubmitting ? '处理中…' : '不同意并保留拒绝') }}
+            </button>
+            <button type="button" class="cancel-button" :disabled="permDecisionSubmitting" @click="permDecisionDialogVisible = false" style="margin-left:8px;">
+              取消
+            </button>
+          </div>
+
+          <p v-if="permDecisionError" class="error-text" style="margin-top:10px">{{ permDecisionError }}</p>
+        </div>
+      </div>
+    </div>
 
     <div v-if="editProfileVisible" class="modal-mask" @click.self="editProfileVisible = false">
       <div class="modal-wrapper">
