@@ -418,12 +418,16 @@ public class AiService {
     private int guessScoreByType(String questionType) {
         String t = safe(questionType);
         return switch (t) {
-            case "选择题", "单选题" -> 5;
+            // 学生端“测试/组卷”里对单选/填空/解答分值有固定要求
+            // - 单选：6 分
+            // - 填空：6 分
+            // - 解答：16 分
+            case "选择题", "单选题" -> 6;
             case "多选题" -> 6;
             case "判断题" -> 3;
-            case "填空题" -> 4;
+            case "填空题" -> 6;
             case "简答题" -> 8;
-            default -> 10; // 解答题
+            default -> 16; // 解答题
         };
     }
 

@@ -20,5 +20,6 @@
   { "code": "public_policy", "name": "公共政策与管理学院" },
   { "code": "news", "name": "新闻与新媒体学院" },
   { "code": "instrumentation", "name": "仪器科学与技术学院" },
-  { "code": "marxism", "name": "马克思主义学院" }
+  { "code": "marxism", "name": "马克思主义学院" },
+  { "code": "economic_finance", "name": "经济与金融学院" }
 ]

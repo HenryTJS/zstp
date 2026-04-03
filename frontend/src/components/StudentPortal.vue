@@ -1,4 +1,12 @@
 <script setup>
+import StudentGraph from './StudentGraph.vue'
+import StudentExercise from './StudentExercise.vue'
+import StudentReview from './StudentReview.vue'
+import StudentAnnouncements from './StudentAnnouncements.vue'
+import StudentCourses from './StudentCourses.vue'
+import StudentHome from './StudentHome.vue'
+import StudentEditProfileModal from './StudentEditProfileModal.vue'
+import StudentChangePasswordModal from './StudentChangePasswordModal.vue'
 const props = defineProps({
   currentUser: {
     type: Object,
@@ -55,7 +63,6 @@ const relevanceLabel = computed(() => {
 import * as echarts from 'echarts'
 import katex from 'katex'
 import { Teleport, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import AccountSecurityPanel from './AccountSecurityPanel.vue'
 import AiAssistantWidget from './AiAssistantWidget.vue'
 import {
   fetchGrading,
@@ -300,8 +307,15 @@ const graphLoading = ref(false)
 const graphError = ref('')
 const graphData = ref({ title: '', nodes: [], edges: [], suggestions: [] })
 const selectedNodeId = ref('')
+// 记录点击节点的深度类别：0=课程名, 1=章节名, 2=节, 3=更深层扩展
+const graphClickedNodeCategory = ref(null)
 const graphChartRef = ref(null)
 let graphChart = null
+
+// 测试：从课程名/章节名/节开始（不在第 3 级叶子上直接测试）
+const practiceTestAllowed = computed(() => graphClickedNodeCategory.value !== 3)
+// 组卷：仅支持课程名与章节名
+const practiceBatchAllowed = computed(() => graphClickedNodeCategory.value === 0 || graphClickedNodeCategory.value === 1)
 
 // 学习建议：不再只依赖 knowledge-graph 返回的固定建议，而是对“当前知识点”实时调用 API 生成
 const learningSuggestions = ref([])
@@ -466,6 +480,45 @@ watch(examMode, (mode) => {
   }
 })
 
+// 从知识图谱点击节点后：进入“固定规则”的测试/组卷
+const enterFixedTestFromGraph = () => {
+  if (!selectedKnowledgePoint.value) return
+  if (!practiceTestAllowed.value) return
+  // 固定：5题、仅单选
+  examMode.value = 'single'
+  testCounts.value.singleChoiceCount = 5
+  testCounts.value.multiChoiceCount = 0
+  testCounts.value.judgeCount = 0
+  testCounts.value.fillCount = 0
+
+  if (!Array.isArray(testForm.value.selectedPoints)) testForm.value.selectedPoints = []
+  testForm.value.selectedPoints = [String(selectedKnowledgePoint.value).trim()]
+
+  currentPage.value = 'exercise'
+}
+
+const enterFixedBatchFromGraph = () => {
+  if (!selectedKnowledgePoint.value) return
+  if (!practiceBatchAllowed.value) return
+
+  // 固定：10题，3单选+3填空+4解答
+  examMode.value = 'batch'
+  examForm.value.singleChoiceCount = 3
+  examForm.value.multiChoiceCount = 0
+  examForm.value.judgeCount = 0
+  examForm.value.fillCount = 3
+  examForm.value.shortCount = 0
+  examForm.value.essayCount = 4
+
+  if (!Array.isArray(examForm.value.selectedPoints)) examForm.value.selectedPoints = []
+  examForm.value.selectedPoints = [String(selectedKnowledgePoint.value).trim()]
+
+  // 切到新组卷时清空旧结果
+  examResult.value = null
+  examError.value = ''
+  currentPage.value = 'exercise'
+}
+
 // =========================
 // 测试模式（客观题多题）
 // =========================
@@ -622,7 +675,13 @@ const generateTest = async () => {
     // - 每次请求返回 1 或 2 题（后端 /api/generate-questions）
     const specs = typeList.map((qt, idx) => {
       const kp = topics[idx % topics.length]
-      const topic = composeTopic(kp) + `（题${idx + 1}）`
+      let topicLabel = kp
+      // 若该知识点在图谱中有下属知识点，则随机选一个一起作为提示，增加多样性
+      const sub = pickRandomSubpointLabelForKnowledgePoint(kp)
+      if (sub) {
+        topicLabel = `${kp}：${sub}`
+      }
+      const topic = composeTopic(topicLabel) + `（题${idx + 1}）`
       return { topic, difficulty: diff, questionType: qt, major }
     })
 
@@ -858,6 +917,40 @@ const collectDescendantLabelsFromGraph = (startId) => {
     if (lab) labels.add(lab)
   }
   return labels
+}
+
+// 为当前知识点选择一个随机下属知识点 label，用于丰富出题提示词（若无下属则返回 null）
+const pickRandomSubpointLabelForKnowledgePoint = (label) => {
+  const nodes = graphData.value.nodes || []
+  const edges = graphData.value.edges || []
+  if (!nodes.length) return null
+  const trimmed = String(label || '').trim()
+  if (!trimmed) return null
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const byLabel = new Map()
+  for (const n of nodes) {
+    const lab = n?.label && String(n.label).trim()
+    if (lab && !byLabel.has(lab)) {
+      byLabel.set(lab, n.id)
+    }
+  }
+  const startId = byLabel.get(trimmed)
+  if (!startId) return null
+
+  const childMap = new Map()
+  for (const edge of edges) {
+    if ((edge.label || '').toString().includes('前置')) continue
+    if (!childMap.has(edge.source)) childMap.set(edge.source, [])
+    childMap.get(edge.source).push(edge.target)
+  }
+  const children = childMap.get(startId) || []
+  if (!children.length) return null
+  const childNodes = children
+    .map((id) => byId.get(id))
+    .filter((n) => n && n.label && String(n.label).trim() && String(n.label).trim() !== trimmed)
+  if (!childNodes.length) return null
+  const rand = childNodes[Math.floor(Math.random() * childNodes.length)]
+  return String(rand.label || '').trim() || null
 }
 
 /** 当前选中图谱节点：本节点 + 所有下级在练习记录中的得分合计 */
@@ -1198,6 +1291,13 @@ const renderLatexText = (text) => {
 const generateExam = async () => {
   examError.value = ''
   examResult.value = null
+
+  // 组卷固定规则：仅支持「课程名」「章节名」
+  if (examMode.value === 'batch' && !practiceBatchAllowed.value) {
+    examError.value = '组卷仅支持「课程名」和「章节名」。请回到知识图谱重新选择。'
+    return
+  }
+
   const total =
     Number(examForm.value.singleChoiceCount || 0) +
     Number(examForm.value.multiChoiceCount || 0) +
@@ -1628,6 +1728,7 @@ const renderGraphChart = () => {
         selectedNodeId.value = params.data.id
         const name = params.data.name
         selectedKnowledgePoint.value = name
+        graphClickedNodeCategory.value = typeof params?.data?.category === 'number' ? params.data.category : null
         void loadMaterialsByKnowledgePoint(name)
         void loadLearningSuggestionsFor(name)
         void loadMajorRelevanceFor(name)
@@ -1824,15 +1925,6 @@ const handleSaveProfile = async () => {
 }
 
 const changePasswordVisible = ref(false)
-const passwordPanelRef = ref(null)
-
-const handlePasswordSave = async () => {
-  if (!passwordPanelRef.value || !passwordPanelRef.value.submitChange) return
-  const ok = await passwordPanelRef.value.submitChange()
-  if (ok) {
-    changePasswordVisible.value = false
-  }
-}
 const openPasswordPage = () => {
   changePasswordVisible.value = true
 }
@@ -1963,723 +2055,268 @@ const confirmDeleteExam = async (id) => {
 </script>
 
 <template>
-    <section v-if="currentPage === 'home'" class="panel-stack">
-      <article class="result-card profile-hero-card">
-        <div class="profile-hero-main">
-          <div class="profile-avatar">{{ userInitial }}</div>
-          <div>
-              <h3>{{ profileForm.username || currentUser.username }}</h3>
-          </div>
-        </div>
-        <div class="profile-hero-actions">
-          <div class="grid-form">
-              <label>
-                统计课程
-                <select v-model="selectedCourse">
-                  <option v-for="course in joinedCourses" :key="course" :value="course">{{ course }}</option>
-                </select>
-                <div v-if="!joinedCourses.length" class="panel-subtitle" style="margin-top:6px">
-                  你还没有加入课程，请先到「课程广场」加入。
-                </div>
-              </label>
-              <!-- 已将个人资料编辑入口移至下方操作区 -->
-          </div>
-        </div>
-      </article>
-
-      <div class="profile-grid">
-        <article class="result-card profile-overview-card">
-          <h3>学习画像</h3>
-          <div class="profile-stat-list">
-            <div>
-              <span>累计练习</span>
-              <strong>{{ learningStats.total }}</strong>
-            </div>
-            <div>
-
-            
-              <span>掌握程度</span>
-              <strong>{{ learningStats.mastery }}%</strong>
-            </div>
-            <div>
-              <span>错题收藏</span>
-              <strong>{{ filteredWrongBook.length }}</strong>
-            </div>
-          </div>
-        </article>
-
-        <article class="result-card profile-detail-card">
-          <h3>资料设置</h3>
-          <div class="grid-form">
-              <label>
-                用户名
-                <div class="panel-subtitle">{{ profileForm.username || currentUser.username }}</div>
-              </label>
-              <label>
-                学工号
-                <div class="panel-subtitle">{{ currentUser.workId || '未设置' }}</div>
-              </label>
-              <label>
-                邮箱
-                <div class="panel-subtitle">{{ profileForm.email || currentUser.email }}</div>
-              </label>
-            <label>
-              专业
-              <div class="panel-subtitle">{{ selectedMajorDisplay || '未设置' }}</div>
-            </label>
-          </div>
-          <div class="profile-btn-row">
-            <button type="button" class="nav-btn" @click="openEditProfile">编辑资料</button>
-            <button type="button" class="nav-btn" @click="openPasswordPage">修改密码</button>
-            <button class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
-          </div>
-          <p v-if="profileMessage" class="ok-text">{{ profileMessage }}</p>
-        </article>
-      </div>
-    </section>
+    <StudentHome
+      v-if="currentPage === 'home'"
+      :user-initial="userInitial"
+      :profile-form="profileForm"
+      :current-user="currentUser"
+      :selected-course="selectedCourse"
+      :joined-courses="joinedCourses"
+      :selected-major-display="selectedMajorDisplay"
+      :learning-stats="learningStats"
+      :filtered-wrong-book-count="filteredWrongBook.length"
+      :profile-message="profileMessage"
+      @update:selected-course="(v) => (selectedCourse = v)"
+      @edit-profile="openEditProfile"
+      @change-password="openPasswordPage"
+      @logout="emit('logout')"
+    />
 
     <!-- 修改密码已改为模态窗口 -->
 
-    <section v-if="currentPage === 'courses'" class="panel-stack">
-      <article class="result-card">
-        <div class="course-market-head">
-          <h3>课程广场</h3>
-          <input
-            v-model="joinedCoursesSearch"
-            class="match-height"
-            placeholder="搜索课程名称"
-            style="max-width:280px"
-          />
-        </div>
-
-        <div v-if="pagedMarketCourses.length" class="course-market-grid">
-          <article v-for="course in pagedMarketCourses" :key="course" class="course-market-card">
-            <div class="course-market-card-body">
-              <h4>{{ course }}</h4>
-              <p class="panel-subtitle course-card-teachers">
-                <template v-if="teachersByCourseLoading">正在加载教师信息…</template>
-                <template v-else-if="formatTeachersForCourse(course)">{{ formatTeachersForCourse(course) }}</template>
-                <template v-else>暂无拥有该课程权限的教师</template>
-              </p>
-            </div>
-            <div class="course-market-card-actions course-market-card-actions--split">
-              <template v-if="!joinedCourses.includes(course)">
-                <button
-                  type="button"
-                  class="match-button"
-                  :disabled="!stateHydrated"
-                  @click="joinCourse(course)"
-                >
-                  {{ stateHydrated ? '加入课程' : '加载中…' }}
-                </button>
-                <button
-                  type="button"
-                  class="nav-btn"
-                  :disabled="!stateHydrated"
-                  @click="viewCourseWithoutJoin(course)"
-                >
-                  查看课程
-                </button>
-              </template>
-              <template v-else>
-                <button
-                  type="button"
-                  class="match-button"
-                  :disabled="!stateHydrated"
-                  @click="enterCourseFromMarket(course)"
-                >
-                  进入课程
-                </button>
-                <button
-                  type="button"
-                  class="cancel-button"
-                  :disabled="!stateHydrated"
-                  @click="quitCourse(course)"
-                >
-                  退出课程
-                </button>
-              </template>
-            </div>
-          </article>
-        </div>
-        <p v-else class="panel-subtitle" style="margin-top:12px">未找到匹配课程。</p>
-
-        <nav v-if="marketTotalPages > 1" class="course-market-pagination" aria-label="课程列表分页">
-          <button
-            v-for="page in marketTotalPages"
-            :key="page"
-            type="button"
-            class="course-page-num"
-            :class="{ 'is-active': joinedCoursesPage === page }"
-            :aria-current="joinedCoursesPage === page ? 'page' : undefined"
-            @click="joinedCoursesPage = page"
-          >
-            {{ page }}
-          </button>
-        </nav>
-      </article>
-    </section>
+    <StudentCourses
+      v-if="currentPage === 'courses'"
+      :joined-courses="joinedCourses"
+      :joined-courses-search="joinedCoursesSearch"
+      :joined-courses-page="joinedCoursesPage"
+      :market-total-pages="marketTotalPages"
+      :paged-market-courses="pagedMarketCourses"
+      :teachers-by-course-loading="teachersByCourseLoading"
+      :format-teachers-for-course="formatTeachersForCourse"
+      :state-hydrated="stateHydrated"
+      @update:joined-courses-search="(v) => (joinedCoursesSearch = v)"
+      @update:joined-courses-page="(p) => (joinedCoursesPage = p)"
+      @join="joinCourse"
+      @view="viewCourseWithoutJoin"
+      @enter="enterCourseFromMarket"
+      @quit="quitCourse"
+    />
 
     <section v-if="currentPage === 'graph'" class="panel-stack">
-      <article v-if="!canShowGraphPage" class="result-card">
-        <h3>请先选择课程</h3>
-        <p class="panel-subtitle">请先到「课程广场」对某门课使用「进入课程」或「查看课程」，再浏览知识图谱。</p>
-        <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
-      </article>
-      <template v-else>
-      <article v-if="isUnjoinedPreviewMode" class="result-card" style="border-left:4px solid #f59e0b">
-        <p class="panel-subtitle" style="margin:0">
-          <strong>浏览模式：</strong>仅可查看图谱结构，点击节点不会加载资料、学习建议与关联度分析。加入该课程后可完整使用。
-        </p>
-      </article>
-      <article class="result-card">
-        <h3 class="panel-title">{{ graphData.title }}</h3>
-        <p v-if="learningContextCourse" class="panel-subtitle" style="margin-top:4px">
-          当前学习课程：<strong>{{ learningContextCourse }}</strong>
-        </p>
-        <div class="inline-form">
-          <button :disabled="graphLoading" @click="loadGraph">{{ graphLoading ? '加载中...' : '刷新图谱' }}</button>
-        </div>
-        <p v-if="graphError" class="error-text">{{ graphError }}</p>
-        
-        <div ref="graphChartRef" style="width: 100%; height: 420px;"></div>
-      </article>
-
-      <article v-if="selectedNode && !isUnjoinedPreviewMode" class="result-card">
-        <h3>{{ selectedNode.label }}</h3>
-        <div style="margin-bottom:14px">
-          <h3>掌握程度</h3>
-          <p v-if="graphNodeMastery.noData" class="panel-subtitle">
-            暂无该知识点及其下级相关的练习记录。
-          </p>
-          <template v-else>
-            <p class="panel-subtitle">
-              <strong style="font-size:1.15em">{{ graphNodeMastery.ratio }}%</strong>
-              <span>（{{ graphNodeMastery.score }} / {{ graphNodeMastery.full }} 分，{{ graphNodeMastery.attemptCount }} 次练习）</span>
-            </p>
-          </template>
-        </div>
-        <div>
-          <h3>学习建议</h3>
-          <p v-if="suggestionLoading" class="panel-subtitle">正在生成学习建议...</p>
-          <p v-else-if="suggestionError" class="error-text">{{ suggestionError }}</p>
-          <ul v-else>
-            <li v-for="item in learningSuggestions" :key="item">{{ item }}</li>
-            <li v-if="!learningSuggestions.length" class="panel-subtitle">暂无建议。</li>
-          </ul>
-        </div>
-        <div style="margin-top:12px;">
-          <h3>专业关联度分析</h3>
-          <p v-if="relevanceLoading" class="panel-subtitle">正在分析该知识点与当前专业的关联度...</p>
-          <p v-else-if="relevanceError" class="error-text">{{ relevanceError }}</p>
-          <div v-else>
-            <div v-if="majorRelevance.scoreLevel" class="relevance-meter-wrap">
-              <div class="relevance-meter">
-                <span
-                  v-for="i in 5"
-                  :key="'relevance-dot-' + i"
-                  class="relevance-dot"
-                  :class="{ active: i <= majorRelevance.scoreLevel }"
-                />
-              </div>
-              <div class="relevance-meter-text">
-                <strong>关联度等级：</strong>{{ majorRelevance.scoreLevel }} / 5
-                <span v-if="relevanceLabel">（{{ relevanceLabel }}）</span>
-              </div>
-            </div>
-            <p v-if="majorRelevance.summary" class="panel-subtitle">{{ majorRelevance.summary }}</p>
-            <div v-if="majorRelevance.relatedContents?.length">
-              <p><strong>相关内容：</strong></p>
-              <ul>
-                <li v-for="item in majorRelevance.relatedContents" :key="item">{{ item }}</li>
-              </ul>
-            </div>
-            <p v-if="majorRelevance.lowRelevanceReason" class="panel-subtitle">
-              <strong>低关联说明：</strong>{{ majorRelevance.lowRelevanceReason }}
-            </p>
-            <p v-if="!majorRelevance.scoreLevel" class="panel-subtitle">请选择已设置专业后查看分析结果。</p>
+      <StudentGraph
+        :can-show-graph-page="canShowGraphPage"
+        :is-unjoined-preview-mode="isUnjoinedPreviewMode"
+        :graph-data="graphData"
+        :graph-loading="graphLoading"
+        :graph-error="graphError"
+        :graph-node-mastery="graphNodeMastery"
+        :learning-suggestions="learningSuggestions"
+        :suggestion-loading="suggestionLoading"
+        :suggestion-error="suggestionError"
+        :major-relevance="majorRelevance"
+        :relevance-loading="relevanceLoading"
+        :relevance-error="relevanceError"
+        :relevance-label="relevanceLabel"
+        :materials="materials"
+        :practice-test-allowed="practiceTestAllowed"
+        :practice-batch-allowed="practiceBatchAllowed"
+        @go-courses="currentPage = 'courses'"
+        @refresh-graph="loadGraph"
+        @enter-test="enterFixedTestFromGraph"
+        @enter-exam="enterFixedBatchFromGraph"
+      >
+        <article class="result-card">
+          <h3 class="panel-title">{{ graphData.title }}</h3>
+          <div class="inline-form">
+            <button :disabled="graphLoading" @click="loadGraph">{{ graphLoading ? '加载中...' : '刷新图谱' }}</button>
           </div>
-        </div>
-        <div style="margin-top:12px;">
-          <h3>相关资料</h3>
-          <div v-if="!materials.length" class="panel-subtitle">当前知识点暂无资料。</div>
-          <table v-else class="data-table">
-            <thead>
-              <tr>
-                <th>标题</th>
-                <th>描述</th>
-                <th>文件名</th>
-                <th>上传者</th>
-                <th>时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="m in materials" :key="m.id">
-                <td>{{ m.title }}</td>
-                <td>{{ m.description || '-' }}</td>
-                <td>{{ m.fileName || '-' }}</td>
-                <td>{{ m.teacherName || '-' }}</td>
-                <td>{{ m.createdAt ? new Date(m.createdAt).toLocaleString() : '-' }}</td>
-                <td>
-                  <a :href="`/api/materials/${m.id}/download`" target="_blank">下载</a>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-      </template>
-    </section>
+          <p v-if="graphError" class="error-text">{{ graphError }}</p>
+          <div ref="graphChartRef" style="width: 100%; height: 420px;"></div>
+        </article>
 
-    <section v-if="currentPage === 'exercise'" class="panel-stack">
-      <article v-if="!canStudyCurrentCourse" class="result-card">
-        <h3>暂不可学习</h3>
-        <p class="panel-subtitle">请先在「课程广场」对某门已加入的课程点击「进入课程」，再在此出题与做题（与个人中心「统计课程」无关）。</p>
-        <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
-      </article>
-      <template v-else>
-      <article class="result-card">
-        <h3>出题与做题</h3>
-        <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px">
-          <label style="margin:0">出题方式：</label>
-          <label style="display:flex;align-items:center;gap:6px"><input type="radio" value="single" v-model="examMode" /> 测试</label>
-          <label style="display:flex;align-items:center;gap:6px"><input type="radio" value="batch" v-model="examMode" /> 组卷</label>
-        </div>
-
-        <div v-if="examMode === 'single'" class="grid-form three-col">
-          <label>
-            知识点（多选）
-            <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
-              <span style="display:flex;align-items:center;gap:6px;white-space:nowrap">
-                <span class="panel-subtitle" style="margin:0">0级</span>
-                <input
-                  type="text"
-                  class="match-height"
-                  style="min-width:10em;background:#f0f4f8;border:1px solid #dde1e6;color:#334155;cursor:default"
-                  readonly
-                  :value="learningContextCourse"
-                  title="当前课程名由「进入课程」决定；可直接点「添加」仅按课程出题"
-                />
-              </span>
-              <select v-model="kpCascade1" class="match-height">
-                <option value="">一级知识点</option>
-                <option v-for="p in kpLevel1Options" :key="p.id" :value="p.pointName">{{ p.pointName }}</option>
-              </select>
-              <select v-model="kpCascade2" class="match-height" :disabled="!kpCascade1">
-                <option value="">二级知识点</option>
-                <option v-for="p in kpLevel2Options" :key="p.id" :value="p.pointName">{{ p.pointName }}</option>
-              </select>
-              <select v-model="kpCascade3" class="match-height" :disabled="!kpCascade2">
-                <option value="">三级知识点</option>
-                <option v-for="p in kpLevel3Options" :key="p.id" :value="p.pointName">{{ p.pointName }}</option>
-              </select>
-              <button type="button" class="match-button" @click="addTestPoint">添加</button>
-            </div>
-            <div class="selected-chips" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">
-              <span
-                v-for="p in testForm.selectedPoints"
-                :key="p"
-                class="chip"
-              >{{ p }} <button class="chip-remove" type="button" @click="removeTestPoint(p)">×</button></span>
-            </div>
-          </label>
-          <label>
-            难度
-            <select v-model="questionForm.difficulty" class="match-height">
-              <option>基础</option>
-              <option>中等</option>
-              <option>拔高</option>
-            </select>
-          </label>
-          <label>
-            总题数
-            <div class="panel-subtitle">{{ testTotalCount }} / 10</div>
-          </label>
-        </div>
-
-        <div v-if="examMode === 'single'" style="margin-top:12px">
-          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              单选题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="testCounts.singleChoiceCount" />
-            </label>
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              多选题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="testCounts.multiChoiceCount" />
-            </label>
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              判断题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="testCounts.judgeCount" />
-            </label>
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              填空题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="testCounts.fillCount" />
-            </label>
-          </div>
-
-          <div class="inline-form" style="margin-top:12px">
+        <article v-if="selectedNode && !isUnjoinedPreviewMode" class="result-card">
+          <h3>{{ selectedNode.label }}</h3>
+          <div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
             <button
-              :disabled="testLoading || testTotalCount < 1 || testTotalCount > 10"
-              @click="generateTest"
-            >{{ testLoading ? '生成中...' : '开始测试' }}</button>
+              type="button"
+              class="match-button"
+              :disabled="!practiceTestAllowed"
+              @click="enterFixedTestFromGraph"
+            >
+              进入测试（固定 5 题，单选）
+            </button>
+            <button
+              type="button"
+              class="cancel-button"
+              :disabled="!practiceBatchAllowed"
+              @click="enterFixedBatchFromGraph"
+            >
+              进入组卷（固定 10 题，3单选3填空4解答）
+            </button>
+            <span
+              v-if="!practiceTestAllowed || !practiceBatchAllowed"
+              class="panel-subtitle"
+              style="margin-left:4px;"
+            >
+              <template v-if="!practiceTestAllowed && practiceBatchAllowed">
+                测试从 2 级知识点（节）开始，3 级知识点请回到上一级。
+              </template>
+              <template v-else-if="!practiceBatchAllowed && practiceTestAllowed">
+                组卷仅支持「课程名」和「章节名」。
+              </template>
+              <template v-else>
+                测试从 2 级知识点（节）开始，组卷仅支持课程名和章节名。
+              </template>
+            </span>
           </div>
-          <p v-if="testError && !(testQuestions.length && !testSubmitted)" class="error-text">{{ testError }}</p>
-        </div>
-
-        <div v-if="examMode === 'batch'" style="margin-top:12px">
-          <label>
-            选择知识点（按图谱逐级选择后点击添加；可混选不同层级，亦可只选 0 级课程名）
-            <div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">
-              <span style="display:flex;align-items:center;gap:6px;white-space:nowrap">
-                <span class="panel-subtitle" style="margin:0">0级</span>
-                <input
-                  type="text"
-                  class="match-height"
-                  style="min-width:10em;background:#f0f4f8;border:1px solid #dde1e6;color:#334155;cursor:default"
-                  readonly
-                  :value="learningContextCourse"
-                  title="当前课程名由「进入课程」决定；未选一二三级时点击「添加」即按课程出题"
-                />
-              </span>
-              <select v-model="kpCascade1" class="match-height">
-                <option value="">一级知识点</option>
-                <option v-for="p in kpLevel1Options" :key="'e-' + p.id" :value="p.pointName">{{ p.pointName }}</option>
-              </select>
-              <select v-model="kpCascade2" class="match-height" :disabled="!kpCascade1">
-                <option value="">二级知识点</option>
-                <option v-for="p in kpLevel2Options" :key="'e-' + p.id" :value="p.pointName">{{ p.pointName }}</option>
-              </select>
-              <select v-model="kpCascade3" class="match-height" :disabled="!kpCascade2">
-                <option value="">三级知识点</option>
-                <option v-for="p in kpLevel3Options" :key="'e-' + p.id" :value="p.pointName">{{ p.pointName }}</option>
-              </select>
-              <button type="button" class="match-button" @click="addExamPoint">添加</button>
-            </div>
-            <div class="selected-chips" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">
-              <span v-for="p in examForm.selectedPoints" :key="p" class="chip">{{ p }} <button class="chip-remove" @click="removeExamPoint(p)">×</button></span>
-            </div>
-          </label>
-
-          <div style="display:flex;gap:12px;align-items:center;margin-top:12px">
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              单选题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="examForm.singleChoiceCount" />
-            </label>
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              多选题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="examForm.multiChoiceCount" />
-            </label>
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              判断题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="examForm.judgeCount" />
-            </label>
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              填空题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="examForm.fillCount" />
-            </label>
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              简答题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="examForm.shortCount" />
-            </label>
-            <label style="display:flex;flex-direction:column;align-items:flex-start">
-              解答题数量
-              <input class="small-input" type="number" min="0" max="10" v-model.number="examForm.essayCount" />
-            </label>
-          </div>
-
-          <div class="grid-form two-col" style="margin-top:12px">
-            <label>
-              试卷标题
-              <input v-model="examForm.title" placeholder="可选，默认为课程+试卷" />
-            </label>
-          </div>
-        </div>
-        <div v-if="examMode === 'batch'" class="inline-form" style="margin-top:8px">
-          <button :disabled="examLoading" @click="generateExam">{{ examLoading ? '生成中...' : '生成试卷' }}</button>
-        </div>
-        <p v-if="examError" class="error-text">{{ examError }}</p>
-        <div v-if="examMode === 'batch' && examResult && examResult.length" class="inline-form" style="margin-top:8px">
-          <button :disabled="examLoading" @click="persistGeneratedExam">保存试卷并生成 MD</button>
-        </div>
-      </article>
-
-      <article
-        v-if="examMode === 'single' && testQuestions.length && !testSubmitted"
-        class="result-card"
-      >
-        <h3>测试题目</h3>
-        <p class="panel-subtitle">作答完成后点击“提交并查看成绩与解析”。</p>
-
-        <div v-for="(q, idx) in testQuestions" :key="idx" style="margin-top:14px;">
-          <h4>第 {{ idx + 1 }} 题（{{ q.question_type }}）</h4>
-          <div class="latex-block" v-html="renderLatexText(q.question)"></div>
-
-          <div v-if="q.question_type === '选择题'" class="option-list">
-            <label v-for="opt in q.options || []" :key="opt" class="option-item">
-              <input
-                type="radio"
-                :name="'test-q-' + idx"
-                :value="parseOptionLetter(opt)"
-                v-model="testAnswers[idx]"
-              />
-              <span v-html="renderLatexText(parseOptionText(opt))"></span>
-            </label>
-          </div>
-
-          <div v-else-if="q.question_type === '多选题'" class="option-list">
-            <label v-for="opt in q.options || []" :key="opt" class="option-item">
-              <input
-                type="checkbox"
-                :value="parseOptionLetter(opt)"
-                v-model="testAnswers[idx]"
-              />
-              <span v-html="renderLatexText(parseOptionText(opt))"></span>
-            </label>
-          </div>
-
-          <div v-else-if="q.question_type === '判断题'" class="option-list">
-            <label v-for="opt in q.options || []" :key="opt" class="option-item">
-              <input
-                type="radio"
-                :name="'test-q-' + idx"
-                :value="parseOptionLetter(opt)"
-                v-model="testAnswers[idx]"
-              />
-              <span v-html="renderLatexText(parseOptionText(opt))"></span>
-            </label>
-          </div>
-
-          <div v-else-if="q.question_type === '填空题'">
-            <label>
-              填空答案
-              <input class="match-height" v-model="testAnswers[idx]" placeholder="请输入答案" />
-            </label>
-          </div>
-        </div>
-
-        <div class="inline-form" style="margin-top:12px;">
-          <button :disabled="testLoading" @click="submitTest">提交并查看成绩与解析</button>
-        </div>
-        <p v-if="testError" class="error-text">{{ testError }}</p>
-      </article>
-
-      <article
-        v-if="examMode === 'single' && testSubmitted && testResult"
-        class="result-card"
-      >
-        <h3>成绩与解析</h3>
-        <p><strong>总分：</strong>{{ testResult.totalScore }} / {{ testResult.fullScore }}</p>
-
-        <div v-for="(q, idx) in testQuestions" :key="idx" style="margin-top:14px;">
-          <h4>第 {{ idx + 1 }} 题</h4>
-          <p class="panel-subtitle">
-            得分：{{ (testResult.perQuestionScores[idx]?.score) || 0 }} / 10
-          </p>
-          <div class="latex-block" v-html="renderLatexText(q.question)"></div>
-          <p><strong>你的答案：</strong><span v-html="renderLatexText(resolveAnswerText(q, testAnswers[idx]))"></span></p>
-          <p><strong>正确答案：</strong><span v-html="renderLatexText(resolveAnswerText(q, q.answer))"></span></p>
-
-          <div style="margin-top:10px;">
-            <h4>解析</h4>
-            <div class="latex-block" v-html="renderLatexText(q.explanation)"></div>
-          </div>
-        </div>
-      </article>
-      </template>
-    </section>
-
-    <section v-if="currentPage === 'review'" class="panel-stack">
-      <article v-if="!canStudyCurrentCourse" class="result-card">
-        <h3>暂不可学习</h3>
-        <p class="panel-subtitle">请先在「课程广场」对某门已加入的课程点击「进入课程」，再查看错题与记录（与个人中心「统计课程」无关）。</p>
-        <button type="button" class="match-button" @click="currentPage = 'courses'">去课程广场</button>
-      </article>
-      <template v-else>
-      <article class="result-card">
-        <h3>错题本</h3>
-        <p v-if="!filteredWrongBookForLearningPage.length" class="panel-subtitle">当前课程暂无收藏错题。</p>
-        <div v-else class="wrong-book-grid">
-          <article v-for="item in filteredWrongBookForLearningPage" :key="item.id" class="wrong-book-card">
-            <div class="wrong-book-card-top">
-              <strong class="wrong-book-title">{{ item.course }} · {{ item.knowledgePoint }}</strong>
-              <div class="wrong-book-meta-line">
-                <span>{{ item.score }} / {{ item.fullScore }} 分</span>
-                <span class="wrong-book-time">{{ item.collectedAt }}</span>
-              </div>
-            </div>
-            <p class="wrong-book-preview">{{ wrongBookQuestionPreview(item.question) }}</p>
-            <div class="wrong-book-card-actions">
-              <button type="button" class="match-button wrong-book-toggle" @click.stop="openWrongBookModal(item)">
-                查看题目与解析
-              </button>
-              <button type="button" class="cancel-button" @click.stop="removeWrongItem(item.id)">删除</button>
-            </div>
-          </article>
-        </div>
-
-        <Teleport to="body">
-          <div v-if="wrongBookModalItem" class="modal-mask" @click.self="closeWrongBookModal">
-            <div class="modal-wrapper wrong-book-modal-wrap">
-              <div class="modal-container wrong-book-modal-box">
-                <button type="button" class="modal-close" @click="closeWrongBookModal" aria-label="关闭">×</button>
-                <h3>题目与解析</h3>
-                <p class="panel-subtitle wrong-book-modal-sub">
-                  {{ wrongBookModalItem.course }} · {{ wrongBookModalItem.knowledgePoint }}
-                </p>
-                <div class="wrong-book-modal-body">
-                  <div class="latex-block wrong-book-detail-q" v-html="renderLatexText(wrongBookModalItem.question)"></div>
-                  <p class="wrong-book-detail-row">
-                    <strong>我的答案：</strong><span v-html="renderLatexText(wrongBookModalItem.myAnswer)"></span>
-                  </p>
-                  <p class="wrong-book-detail-row">
-                    <strong>参考答案：</strong><span v-html="renderLatexText(wrongBookModalItem.answer)"></span>
-                  </p>
-                  <div v-if="wrongBookModalItem.explanation" class="wrong-book-detail-explain">
-                    <h4 class="wrong-book-explain-heading">解析</h4>
-                    <div class="latex-block" v-html="renderLatexText(wrongBookModalItem.explanation)"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Teleport>
-      </article>
-
-      <article class="result-card">
-        <h3>学习记录</h3>
-        <p v-if="!filteredLearningRecordsForLearningPage.length" class="panel-subtitle">当前课程暂无学习记录。</p>
-        <table v-else class="data-table">
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>课程</th>
-              <th>知识点</th>
-              <th>得分</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in filteredLearningRecordsForLearningPage" :key="item.id">
-              <td>{{ item.time }}</td>
-              <td>{{ item.course }}</td>
-              <td>{{ item.knowledgePoint }}</td>
-              <td>{{ item.score }} / {{ item.fullScore }}</td>
-              <td>
-                <button type="button" @click="removeLearningRecord(item.id)">删除</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </article>
-
-      <article class="result-card">
-        <h3>已保存试卷</h3>
-        <p v-if="!savedExams.length" class="panel-subtitle">暂无已保存试卷。</p>
-        <table v-else class="data-table">
-          <thead>
-            <tr>
-              <th>标题</th>
-              <th>创建时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="e in savedExams" :key="e.id">
-              <td>{{ e.title || ('试卷-' + e.id) }}</td>
-              <td>{{ e.createdAt ? new Date(e.createdAt).toLocaleString() : '-' }}</td>
-              <td>
-                <div style="display:flex;gap:8px;align-items:center">
-                  <button :disabled="!e.mdPaper" @click="downloadExam(e.id, 'md_paper')" :title="e.mdPaper ? '下载原卷 (Markdown)' : 'Markdown 未生成'">下载 MD</button>
-                  <button v-if="!(e.mdPaper && e.mdAnswer)" @click="renderExamPdfs(e.id)" title="生成 Markdown 文件">生成 MD</button>
-                  <button :disabled="!e.mdAnswer" @click="downloadExam(e.id, 'md_answer')" :title="e.mdAnswer ? '下载答案 (Markdown)' : 'Markdown 未生成'">下载 答案 (MD)</button>
-                  <button @click="confirmDeleteExam(e.id)">删除</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <p v-if="examError" class="error-text" style="margin-top:8px">{{ examError }}</p>
-      </article>
-      </template>
-    </section>
-
-    <section v-if="currentPage === 'announcements'" class="panel-stack">
-      <article class="result-card">
-        <h3>平台公告</h3>
-        <p v-if="annLoading && !announcements.length" class="panel-subtitle">加载中…</p>
-        <p v-else-if="annError" class="error-text">{{ annError }}</p>
-        <p v-else-if="!announcements.length" class="panel-subtitle">暂无公告。</p>
-        <div v-else class="announcement-read-list">
-          <article v-for="a in announcements" :key="a.id" class="result-card announcement-read-card">
-            <h4 class="announcement-read-title">{{ a.title }}</h4>
-            <p class="panel-subtitle announcement-read-meta">
-              <span v-if="a.publisherName">{{ a.publisherName }}</span>
-              <span v-if="a.publisherName && a.createdAt"> · </span>
-              <span>{{ formatAnnTime(a.createdAt) }}</span>
+          <div style="margin-bottom:14px">
+            <h3>掌握程度</h3>
+            <p v-if="graphNodeMastery.noData" class="panel-subtitle">
+              暂无该知识点及其下级相关的练习记录。
             </p>
-            <div class="announcement-read-body">{{ a.content }}</div>
-          </article>
-        </div>
-      </article>
+            <template v-else>
+              <p class="panel-subtitle">
+                <strong style="font-size:1.15em">{{ graphNodeMastery.ratio }}%</strong>
+                <span>（{{ graphNodeMastery.score }} / {{ graphNodeMastery.full }} 分，{{ graphNodeMastery.attemptCount }} 次练习）</span>
+              </p>
+            </template>
+          </div>
+          <div>
+            <h3>学习建议</h3>
+            <p v-if="suggestionLoading" class="panel-subtitle">正在生成学习建议...</p>
+            <p v-else-if="suggestionError" class="error-text">{{ suggestionError }}</p>
+            <ul v-else>
+              <li v-for="item in learningSuggestions" :key="item">{{ item }}</li>
+              <li v-if="!learningSuggestions.length" class="panel-subtitle">暂无建议。</li>
+            </ul>
+          </div>
+          <div style="margin-top:12px;">
+            <h3>专业关联度分析</h3>
+            <p v-if="relevanceLoading" class="panel-subtitle">正在分析该知识点与当前专业的关联度...</p>
+            <p v-else-if="relevanceError" class="error-text">{{ relevanceError }}</p>
+            <div v-else>
+              <div v-if="majorRelevance.scoreLevel" class="relevance-meter-wrap">
+                <div class="relevance-meter">
+                  <span
+                    v-for="i in 5"
+                    :key="'relevance-dot-' + i"
+                    class="relevance-dot"
+                    :class="{ active: i <= majorRelevance.scoreLevel }"
+                  />
+                </div>
+                <div class="relevance-meter-text">
+                  <strong>关联度等级：</strong>{{ majorRelevance.scoreLevel }} / 5
+                  <span v-if="relevanceLabel">（{{ relevanceLabel }}）</span>
+                </div>
+              </div>
+              <p v-if="majorRelevance.summary" class="panel-subtitle">{{ majorRelevance.summary }}</p>
+              <div v-if="majorRelevance.relatedContents?.length">
+                <p><strong>相关内容：</strong></p>
+                <ul>
+                  <li v-for="item in majorRelevance.relatedContents" :key="item">{{ item }}</li>
+                </ul>
+              </div>
+              <p v-if="majorRelevance.lowRelevanceReason" class="panel-subtitle">
+                <strong>低关联说明：</strong>{{ majorRelevance.lowRelevanceReason }}
+              </p>
+              <p v-if="!majorRelevance.scoreLevel" class="panel-subtitle">请选择已设置专业后查看分析结果。</p>
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            <h3>相关资料</h3>
+            <div v-if="!materials.length" class="panel-subtitle">当前知识点暂无资料。</div>
+            <table v-else class="data-table">
+              <thead>
+                <tr>
+                  <th>标题</th>
+                  <th>描述</th>
+                  <th>文件名</th>
+                  <th>上传者</th>
+                  <th>时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="m in materials" :key="m.id">
+                  <td>{{ m.title }}</td>
+                  <td>{{ m.description || '-' }}</td>
+                  <td>{{ m.fileName || '-' }}</td>
+                  <td>{{ m.teacherName || '-' }}</td>
+                  <td>{{ m.createdAt ? new Date(m.createdAt).toLocaleString() : '-' }}</td>
+                  <td>
+                    <a :href="`/api/materials/${m.id}/download`" target="_blank">下载</a>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </StudentGraph>
     </section>
 
-<!-- 编辑个人资料模态框 -->
-<div v-if="editProfileVisible" class="modal-mask" @click.self="editProfileVisible = false">
-  <div class="modal-wrapper">
-    <div class="modal-container">
-      <button class="modal-close" @click="editProfileVisible = false" aria-label="关闭">×</button>
-      <h3>编辑个人资料</h3>
-      <div class="grid-form single-col" style="margin-top:12px;">
-        <label>
-          用户名
-          <input v-model="editProfileForm.username" class="match-height" />
-        </label>
-        <label>
-          邮箱
-          <input v-model="editProfileForm.email" type="email" class="match-height" />
-        </label>
-        <label>
-          专业
-          <div style="display:flex;gap:8px;">
-            <select v-model="editProfileForm.major1" @change="onEditMajor1Change">
-              <option value="">请选择</option>
-              <option v-for="m in majorLevel1" :key="m.code" :value="m.code">{{ m.name }}</option>
-            </select>
-            <select v-model="editProfileForm.major2" :disabled="!(Array.isArray(majorLevel2) && majorLevel2.length)" @change="onEditMajor2Change">
-              <option value="">请选择</option>
-              <option v-for="m in (majorLevel2 || [])" :key="m.code" :value="m.code">{{ m.name }}</option>
-            </select>
-            <select v-model="editProfileForm.major3" :disabled="!(Array.isArray(majorLevel3) && majorLevel3.length)">
-              <option value="">请选择</option>
-              <option v-for="m in (majorLevel3 || [])" :key="m.code" :value="m.code">{{ m.name }}</option>
-            </select>
-          </div>
-        </label>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="match-height match-button" @click="handleSaveProfile">保存</button>
-        <button class="match-height cancel-button" @click="editProfileVisible = false">取消</button>
-      </div>
-    </div>
-  </div>
-</div>
-    <!-- 修改密码模态框 -->
-    <div v-if="changePasswordVisible" class="modal-mask" @click.self="changePasswordVisible = false">
-      <div class="modal-wrapper">
-        <div class="modal-container">
-          <button class="modal-close" @click="changePasswordVisible = false" aria-label="关闭">×</button>
-          <h3>修改密码</h3>
-          <div style="margin-top:12px;">
-            <AccountSecurityPanel ref="passwordPanelRef" :current-user="currentUser" :embedded="true" />
-          </div>
-          <div style="display:flex;gap:8px;margin-top:12px;">
-            <button class="match-height match-button" @click="handlePasswordSave">保存</button>
-            <button class="match-height cancel-button" @click="changePasswordVisible = false">取消</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <StudentExercise
+      v-if="currentPage === 'exercise'"
+      :can-study-current-course="canStudyCurrentCourse"
+      :selected-knowledge-point="selectedKnowledgePoint"
+      :question-form="questionForm"
+      :exam-mode="examMode"
+      :practice-batch-allowed="practiceBatchAllowed"
+      :practice-test-allowed="practiceTestAllowed"
+      :test-loading="testLoading"
+      :test-error="testError"
+      :test-questions="testQuestions"
+      :test-submitted="testSubmitted"
+      :test-result="testResult"
+      :test-answers="testAnswers"
+      :exam-loading="examLoading"
+      :exam-error="examError"
+      :exam-result="Array.isArray(examResult) ? examResult : []"
+      :generate-test="generateTest"
+      :submit-test="submitTest"
+      :generate-exam="generateExam"
+      :persist-generated-exam="persistGeneratedExam"
+      :render-latex-text="renderLatexText"
+      :parse-option-letter="parseOptionLetter"
+      :parse-option-text="parseOptionText"
+      :resolve-answer-text="resolveAnswerText"
+      @go-courses="currentPage = 'courses'"
+    />
+
+    <StudentReview
+      v-if="currentPage === 'review'"
+      :can-study-current-course="canStudyCurrentCourse"
+      :filtered-wrong-book-for-learning-page="filteredWrongBookForLearningPage"
+      :filtered-learning-records-for-learning-page="filteredLearningRecordsForLearningPage"
+      :saved-exams="savedExams"
+      :exam-error="examError"
+      :wrong-book-modal-item="wrongBookModalItem"
+      :render-latex-text="renderLatexText"
+      :wrong-book-question-preview="wrongBookQuestionPreview"
+      :open-wrong-book-modal="openWrongBookModal"
+      :close-wrong-book-modal="closeWrongBookModal"
+      :remove-wrong-item="removeWrongItem"
+      :remove-learning-record="removeLearningRecord"
+      :confirm-delete-exam="confirmDeleteExam"
+      :download-exam="downloadExam"
+      :render-exam-pdfs="renderExamPdfs"
+      @go-courses="currentPage = 'courses'"
+    />
+
+    <StudentAnnouncements
+      v-if="currentPage === 'announcements'"
+      :ann-loading="annLoading"
+      :ann-error="annError"
+      :announcements="announcements"
+      :format-ann-time="formatAnnTime"
+    />
+
+    <StudentEditProfileModal
+      :visible="editProfileVisible"
+      :edit-profile-form="editProfileForm"
+      :major-level1="majorLevel1"
+      :major-level2="majorLevel2"
+      :major-level3="majorLevel3"
+      :on-edit-major1-change="onEditMajor1Change"
+      :on-edit-major2-change="onEditMajor2Change"
+      :on-save="handleSaveProfile"
+      @close="editProfileVisible = false"
+    />
+
+    <StudentChangePasswordModal
+      :visible="changePasswordVisible"
+      :current-user="currentUser"
+      @close="changePasswordVisible = false"
+    />
     <AiAssistantWidget role="student" :current-user="currentUser" />
 </template>
 

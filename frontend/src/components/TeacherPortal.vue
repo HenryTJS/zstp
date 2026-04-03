@@ -18,6 +18,9 @@ import {
 import { deleteKnowledgePoint, updateKnowledgePoint, deleteMaterial } from '../api/point-material-ops'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
 import AiAssistantWidget from './AiAssistantWidget.vue'
+import TeacherCourses from './TeacherCourses.vue'
+import TeacherPermissionRequestModal from './TeacherPermissionRequestModal.vue'
+import TeacherKnowledge from './TeacherKnowledge.vue'
 
 const props = defineProps({
   currentUser: {
@@ -45,6 +48,54 @@ const points = ref([])
 
 /** 与课程同名的根知识点，不可删除、不可编辑名称与父级 */
 const isCourseRootPoint = (item) => Boolean(item?.courseRoot)
+
+// =========================
+// 知识点编号（章/节/知识点）
+// 例如：1、1.1、1.1.1
+// 编号用于“渲染展示”和“父级选择提示”，不影响后端数据结构
+// =========================
+const selectedPointIds = ref([])
+
+const pointNumberMap = computed(() => {
+  const out = new Map()
+  const list = Array.isArray(points.value) ? points.value : []
+  if (!list.length) return out
+
+  const nodes = list.slice().sort((a, b) => (a.id ?? 0) - (b.id ?? 0))
+  const rootNames = new Set(nodes.filter((p) => isCourseRootPoint(p)).map((p) => p.pointName))
+
+  const childrenByParent = new Map() // parentPointName|null -> children[]
+  for (const p of nodes) {
+    const key = p.parentPoint || null
+    if (!childrenByParent.has(key)) childrenByParent.set(key, [])
+    childrenByParent.get(key).push(p)
+  }
+
+  const assign = (parentKey, prefixParts) => {
+    const children = childrenByParent.get(parentKey) || []
+    let idx = 0
+    for (const child of children) {
+      if (rootNames.has(child.pointName)) continue
+      idx += 1
+      const parts = [...prefixParts, idx]
+      out.set(child.pointName, parts.join('.'))
+      assign(child.pointName, parts)
+    }
+  }
+
+  // 顶层：parentPoint 为 null 的节点（且非课程根）作为“第x章”
+  assign(null, [])
+
+  // 兼容：如果存在“课程根”作为真实父级的存储形态，也从课程根继续编号
+  const courseRoot = nodes.find((p) => isCourseRootPoint(p))
+  if (courseRoot?.pointName) {
+    assign(courseRoot.pointName, [])
+  }
+
+  return out
+})
+
+const getPointNumber = (pointName) => pointNumberMap.value.get(pointName) || ''
 
 // 上传表单与状态
 const uploadForm = ref({ title: '', description: '', course: '', chapter: '', section: '', point: '', files: [] })
@@ -413,12 +464,14 @@ const loadKnowledgePointData = async () => {
     const courseName = pointForm.value.courseName || selectedCourse.value || ''
     if (!courseName) {
       points.value = []
+      selectedPointIds.value = []
       return
     }
     const res = await listKnowledgePoints(courseName, props.currentUser.id)
     const payload = res && res.data ? res.data : res
     const rawPoints = Array.isArray(payload) ? payload : (payload && payload.points) ? payload.points : []
     points.value = Array.isArray(rawPoints) ? rawPoints : []
+    selectedPointIds.value = []
   } catch (err) {
     pointError.value = err?.response?.data?.message || '加载知识点失败。'
   }
@@ -801,8 +854,32 @@ const handleDeletePoint = async (id, item) => {
     await deleteKnowledgePoint(id)
     await loadKnowledgePointData()
     pointMessage.value = '知识点已删除。'
+    selectedPointIds.value = []
   } catch (err) {
     pointError.value = err?.response?.data?.message || '知识点删除失败。'
+  }
+}
+
+const handleDeleteSelectedPoints = async () => {
+  const ids = Array.isArray(selectedPointIds.value) ? Array.from(new Set(selectedPointIds.value)) : []
+  if (!ids.length) return
+
+  const ok = confirm(`确定要删除选中的 ${ids.length} 个知识点吗？`)
+  if (!ok) return
+
+  try {
+    // 顺序删除：避免并发触发“父子前置关系”清理时的竞态
+    for (const id of ids) {
+      // 课程根理论上不会出现在 selectedPointIds，但这里仍做兜底
+      const item = points.value.find((p) => p.id === id)
+      if (item && isCourseRootPoint(item)) continue
+      await deleteKnowledgePoint(id)
+    }
+    await loadKnowledgePointData()
+    selectedPointIds.value = []
+    pointMessage.value = '已删除选中的知识点。'
+  } catch (err) {
+    pointError.value = err?.response?.data?.message || '批量删除失败。'
   }
 }
 
@@ -1079,215 +1156,57 @@ onMounted(async () => {
       </template>
 
       <template v-else-if="currentPage === 'courses'">
-        <article class="result-card">
-          <div class="course-market-head">
-            <h3>课程广场</h3>
-            <input
-              v-model="teacherCoursesSearch"
-              class="match-height"
-              placeholder="搜索课程名称"
-              style="max-width:280px"
-            />
-          </div>
-
-          <p v-if="marketCoursesLoading && !allMarketCourses.length" class="panel-subtitle" style="margin-top:12px">
-            加载中…
-          </p>
-          <p v-else-if="marketCoursesError" class="error-text" style="margin-top:12px">{{ marketCoursesError }}</p>
-
-          <div v-if="pagedMarketCourses.length" class="course-market-grid">
-            <article v-for="course in pagedMarketCourses" :key="course" class="course-market-card">
-              <div class="course-market-card-body">
-                <h4>{{ course }}</h4>
-                <p class="panel-subtitle course-card-teachers">
-                  <template v-if="catalogCourses.includes(course)">
-                    已授权
-                  </template>
-                  <template v-else-if="permissionRequestByCourse[course]?.status === 'PENDING'">
-                    申请中
-                  </template>
-                  <template v-else-if="permissionRequestByCourse[course]?.status === 'REJECTED'">
-                    已拒绝：{{ permissionRequestByCourse[course]?.adminReason || '（无理由）' }}
-                  </template>
-                  <template v-else-if="permissionRequestByCourse[course]?.status === 'APPROVED'">
-                    已通过：等待权限同步
-                  </template>
-                  <template v-else>
-                    未获得权限
-                  </template>
-                </p>
-              </div>
-
-              <div class="course-market-card-actions course-market-card-actions--split">
-                <template v-if="catalogCourses.includes(course)">
-                  <button
-                    type="button"
-                    class="match-button"
-                    :disabled="!courseInitDone"
-                    @click="enterCourseFromMarket(course)"
-                  >
-                    进入课程
-                  </button>
-                  <button
-                    type="button"
-                    class="cancel-button"
-                    :disabled="!courseInitDone"
-                    @click="quitCourseFromMarket(course)"
-                  >
-                    退出课程
-                  </button>
-                </template>
-
-                <template v-else>
-                  <button
-                    type="button"
-                    class="match-button"
-                    :disabled="
-                      !courseInitDone ||
-                      teacherPermissionRequestsLoading ||
-                      permissionRequestByCourse[course]?.status === 'PENDING' ||
-                      permissionRequestByCourse[course]?.status === 'APPROVED'
-                    "
-                    @click="openPermissionRequest(course)"
-                  >
-                    {{
-                      permissionRequestByCourse[course]?.status === 'PENDING'
-                        ? '申请中'
-                        : permissionRequestByCourse[course]?.status === 'APPROVED'
-                          ? '已审批通过'
-                          : '加入课程'
-                    }}
-                  </button>
-                </template>
-              </div>
-            </article>
-          </div>
-
-          <p v-else class="panel-subtitle" style="margin-top:12px">暂无课程。</p>
-
-          <nav v-if="marketTotalPages > 1" class="course-market-pagination" aria-label="课程列表分页">
-            <button
-              v-for="page in marketTotalPages"
-              :key="page"
-              type="button"
-              class="course-page-num"
-              :class="{ 'is-active': teacherCoursesPage === page }"
-              :aria-current="teacherCoursesPage === page ? 'page' : undefined"
-              @click="teacherCoursesPage = page"
-            >
-              {{ page }}
-            </button>
-          </nav>
-        </article>
+        <TeacherCourses
+          :teacher-courses-search="teacherCoursesSearch"
+          :paged-market-courses="pagedMarketCourses"
+          :all-market-courses="allMarketCourses"
+          :market-courses-loading="marketCoursesLoading"
+          :market-courses-error="marketCoursesError"
+          :catalog-courses="catalogCourses"
+          :permission-request-by-course="permissionRequestByCourse"
+          :teacher-permission-requests-loading="teacherPermissionRequestsLoading"
+          :course-init-done="courseInitDone"
+          :teacher-courses-page="teacherCoursesPage"
+          :market-total-pages="marketTotalPages"
+          @update:teacher-courses-search="(v) => (teacherCoursesSearch = v)"
+          @update:teacher-courses-page="(p) => (teacherCoursesPage = p)"
+          @enter-course="enterCourseFromMarket"
+          @quit-course="quitCourseFromMarket"
+          @open-permission-request="openPermissionRequest"
+        />
       </template>
 
       <template v-else-if="currentPage === 'manage'">
-      <!-- 单条知识点上传功能已移至表格内的“上传资料”按钮 -->
-
-      <article class="result-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3>课程知识点设置</h3>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button type="button" class="cancel-button" @click="downloadKnowledgePointMdTemplate">下载 MD 模板</button>
-            <button type="button" class="cancel-button" @click="openMdImport">导入 MD</button>
-            <button type="button" class="match-button" @click="openAddPoint">新增知识点</button>
-          </div>
-        </div>
-        <div class="grid-form four-col">
-          <label>
-            <!-- 占位，保持四列布局 -->
-          </label>
-          <label>
-            <!-- 占位，保持四列布局 -->
-          </label>
-          <label>
-            <!-- 占位，保持四列布局 -->
-          </label>
-          <label>
-            <!-- 占位，保持四列布局 -->
-          </label>
-        </div>
-        <p v-if="pointMessage" class="ok-text">{{ pointMessage }}</p>
-        <p v-if="pointError" class="error-text">{{ pointError }}</p>
-        <p v-if="mdImportLoading" class="ok-text">导入中，请稍候...</p>
-        <p v-if="mdImportError" class="error-text">{{ mdImportError }}</p>
-        <p v-if="mdImportResult" class="ok-text">{{ mdImportResult }}</p>
-
-        <div style="max-height:520px;overflow:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>课程</th>
-                <th>知识点</th>
-                <th>父级知识点</th>
-                <!-- 顺序 列已移除 -->
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in points" :key="item.id">
-                <td>{{ item.courseName }}</td>
-                <td>{{ item.pointName }}<span v-if="isCourseRootPoint(item)" class="panel-subtitle" style="margin-left:6px">（课程根）</span></td>
-                <td>{{ item.parentPoint || '-' }}</td>
-                <!-- 顺序 值已移除 -->
-                <td>
-                  <button v-if="!isCourseRootPoint(item)" type="button" @click="openEditPoint(item)">编辑</button>
-                  <button @click="openUploadModal(item)" style="margin-left:8px;">上传资料</button>
-                  <button @click="openViewMaterials(item)" style="margin-left:8px;">查看资料</button>
-                  <button
-                    v-if="!isCourseRootPoint(item)"
-                    type="button"
-                    @click="handleDeletePoint(item.id, item)"
-                    style="margin-left:8px;color:red;"
-                  >删除</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-
-      <!-- 已上传资料表格已移除；教师可在知识点行内上传，学生端会展示相应资料 -->
+        <TeacherKnowledge
+          :points="points"
+          :selected-point-ids="selectedPointIds"
+          :point-message="pointMessage"
+          :point-error="pointError"
+          :md-import-loading="mdImportLoading"
+          :md-import-error="mdImportError"
+          :md-import-result="mdImportResult"
+          :get-point-number="getPointNumber"
+          @update:selected-point-ids="selectedPointIds = $event"
+          :on-download-template="downloadKnowledgePointMdTemplate"
+          :on-open-md-import="openMdImport"
+          :on-open-add-point="openAddPoint"
+          :on-delete-selected-points="handleDeleteSelectedPoints"
+          :on-open-edit-point="openEditPoint"
+          :on-open-upload-modal="openUploadModal"
+          :on-open-view-materials="openViewMaterials"
+        />
     </template>
     </section>
-    <div v-if="permissionRequestDialogVisible" class="modal-mask" @click.self="permissionRequestDialogVisible = false">
-      <div class="modal-wrapper">
-        <div class="modal-container">
-          <button class="modal-close" @click="permissionRequestDialogVisible = false" aria-label="关闭">×</button>
-          <h3>获得权限申请书 - {{ permissionRequestCourseName }}</h3>
-
-          <div class="grid-form single-col" style="margin-top:12px;">
-            <label>
-              申请内容
-              <textarea
-                v-model="permissionRequestText"
-                rows="6"
-                placeholder="请写明希望获得该课程权限的理由、计划或相关经验。"
-              ></textarea>
-            </label>
-          </div>
-
-          <div style="display:flex;gap:8px;margin-top:12px;">
-            <button
-              class="match-height match-button"
-              :disabled="permissionRequestSubmitting"
-              @click="submitPermissionRequest"
-            >
-              {{ permissionRequestSubmitting ? '提交中…' : '提交申请' }}
-            </button>
-            <button
-              class="match-height cancel-button"
-              @click="permissionRequestDialogVisible = false"
-              style="margin-left:8px;"
-            >
-              取消
-            </button>
-          </div>
-
-          <p v-if="permissionRequestError" class="error-text" style="margin-top:10px">{{ permissionRequestError }}</p>
-        </div>
-      </div>
-    </div>
+    <TeacherPermissionRequestModal
+      :visible="permissionRequestDialogVisible"
+      :course-name="permissionRequestCourseName"
+      :request-text="permissionRequestText"
+      :submitting="permissionRequestSubmitting"
+      :error="permissionRequestError"
+      @close="permissionRequestDialogVisible = false"
+      @update:request-text="(v) => (permissionRequestText = v)"
+      @submit="submitPermissionRequest"
+    />
 
       <div v-if="editDialogVisible" class="modal-mask" @click.self="editDialogVisible = false">
       <div class="modal-wrapper">
@@ -1303,7 +1222,20 @@ onMounted(async () => {
               父节点（层级关系）
               <select v-model="editPointForm.parentPoint" class="match-height">
                 <option value="">无</option>
-                <option v-for="point in points" :key="point.id" :value="point.pointName">{{ point.pointName }}</option>
+                <option
+                  v-for="point in points"
+                  :key="point.id"
+                  :value="point.pointName"
+                  :disabled="isCourseRootPoint(point)"
+                >
+                  {{
+                    getPointNumber(point.pointName)
+                      ? getPointNumber(point.pointName) + ' · '
+                      : ''
+                  }}{{
+                    point.pointName
+                  }}
+                </option>
               </select>
             </label>
           </div>
