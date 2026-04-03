@@ -1,4 +1,4 @@
 package com.teacher.backend.dto;
 
-public record UpdateUserRequest(Long userId, String username, String email, String workId) {
+public record UpdateUserRequest(Long userId, String username, String email, String workId, String college) {
 }

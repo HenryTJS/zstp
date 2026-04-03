@@ -16,11 +16,16 @@ import {
   createTeacherCoursePermissionRequest
 } from '../api/client'
 import { deleteKnowledgePoint, updateKnowledgePoint, deleteMaterial } from '../api/point-material-ops'
-import AccountSecurityPanel from './AccountSecurityPanel.vue'
 import AiAssistantWidget from './AiAssistantWidget.vue'
 import TeacherCourses from './TeacherCourses.vue'
 import TeacherPermissionRequestModal from './TeacherPermissionRequestModal.vue'
 import TeacherKnowledge from './TeacherKnowledge.vue'
+import TeacherEditPointModal from './TeacherEditPointModal.vue'
+import TeacherUploadMaterialModal from './TeacherUploadMaterialModal.vue'
+import TeacherViewMaterialsModal from './TeacherViewMaterialsModal.vue'
+import TeacherEditProfileModal from './TeacherEditProfileModal.vue'
+import TeacherChangePasswordModal from './TeacherChangePasswordModal.vue'
+import TeacherMdImportInput from './TeacherMdImportInput.vue'
 
 const props = defineProps({
   currentUser: {
@@ -349,7 +354,6 @@ const profileForm = ref({ username: props.currentUser.username || '', email: pro
 const editProfileVisible = ref(false)
 const editProfileForm = ref({ username: '', email: '', college: '' })
 const changePasswordVisible = ref(false)
-const passwordPanelRef = ref(null)
 
 const userInitial = computed(() => (props.currentUser && props.currentUser.username ? props.currentUser.username.charAt(0).toUpperCase() : '?'))
 const selectedCourse = ref(pointForm.value.courseName || '')
@@ -705,7 +709,7 @@ const openMdImport = () => {
   mdImportCourse.value = selectedCourse.value || pointForm.value.courseName || ''
 
   // 触发系统文件选择器（选择本地 .md 文件）
-  mdFileInputRef.value?.click()
+  mdFileInputRef.value?.open()
 }
 
 const onMdFileChange = async (e) => {
@@ -943,7 +947,12 @@ const handleSaveProfile = async () => {
   } catch (e) {}
   // 尝试同步基础用户信息到服务器（后端目前仅支持用户名/邮箱）
   try {
-    const payload = { userId: props.currentUser.id, username: profileForm.value.username, email: profileForm.value.email }
+    const payload = {
+      userId: props.currentUser.id,
+      username: profileForm.value.username,
+      email: profileForm.value.email,
+      college: selectedCollege.value || ''
+    }
     const resp = await updateUser(payload)
     const updatedUser = resp?.data?.user
       ? resp.data.user
@@ -988,11 +997,6 @@ const openPasswordPage = () => {
   changePasswordVisible.value = true
 }
 
-const handlePasswordSave = async () => {
-  if (!passwordPanelRef.value || !passwordPanelRef.value.submitChange) return
-  const ok = await passwordPanelRef.value.submitChange()
-  if (ok) changePasswordVisible.value = false
-}
 
 onMounted(async () => {
   try {
@@ -1027,40 +1031,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <!-- 查看已上传资料模态框 -->
-    <div v-if="viewMaterialsDialogVisible" class="modal-mask" @click.self="viewMaterialsDialogVisible = false">
-      <div class="modal-wrapper">
-        <div class="modal-container">
-          <button class="modal-close" @click="viewMaterialsDialogVisible = false" aria-label="关闭">×</button>
-          <h3>已上传资料 - {{ viewMaterialsPoint }}</h3>
-          <div v-if="!viewMaterialsList.length" class="panel-subtitle">暂无资料。</div>
-          <table v-else class="data-table">
-            <thead>
-              <tr>
-                <th>标题</th>
-                <th>描述</th>
-                <th>文件名</th>
-                <th>上传者</th>
-                <th>时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="m in viewMaterialsList" :key="m.id">
-                <td>{{ m.title }}</td>
-                <td>{{ m.description || '-' }}</td>
-                <td>{{ m.fileName || '-' }}</td>
-                <td>{{ m.teacherName || '-' }}</td>
-                <td>{{ m.createdAt ? new Date(m.createdAt).toLocaleString() : '-' }}</td>
-                <td>
-                  <button @click="handleDeleteMaterial(m.id)" style="color:red;">删除</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+  <TeacherViewMaterialsModal
+    :visible="viewMaterialsDialogVisible"
+    :point-name="viewMaterialsPoint"
+    :materials="viewMaterialsList"
+    @close="viewMaterialsDialogVisible = false"
+    @delete-material="handleDeleteMaterial"
+  />
     <section class="panel-stack">
       <template v-if="currentPage === 'profile'">
       <article class="result-card profile-hero-card">
@@ -1208,134 +1185,44 @@ onMounted(async () => {
       @submit="submitPermissionRequest"
     />
 
-      <div v-if="editDialogVisible" class="modal-mask" @click.self="editDialogVisible = false">
-      <div class="modal-wrapper">
-        <div class="modal-container">
-          <button class="modal-close" @click="editDialogVisible = false" aria-label="关闭">×</button>
-          <h3>{{ editingPoint ? '编辑知识点' : '新增知识点' }}</h3>
-          <div class="grid-form single-col">
-            <label>
-              知识点名称
-              <input v-model="editPointForm.pointName" class="match-height" />
-            </label>
-            <label>
-              父节点（层级关系）
-              <select v-model="editPointForm.parentPoint" class="match-height">
-                <option value="">无</option>
-                <option
-                  v-for="point in points"
-                  :key="point.id"
-                  :value="point.pointName"
-                  :disabled="isCourseRootPoint(point)"
-                >
-                  {{
-                    getPointNumber(point.pointName)
-                      ? getPointNumber(point.pointName) + ' · '
-                      : ''
-                  }}{{
-                    point.pointName
-                  }}
-                </option>
-              </select>
-            </label>
-          </div>
-          <div class="inline-form">
-            <!-- 顺序 输入已移除 -->
-            <div class="button-row">
-              <button class="match-height match-button" @click="editingPoint ? handleUpdatePoint() : handleCreatePoint()">保存</button>
-              <button class="match-height cancel-button" @click="editDialogVisible = false" style="margin-left:8px;">取消</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <TeacherEditPointModal
+      :visible="editDialogVisible"
+      :editing-point="editingPoint"
+      :edit-point-form="editPointForm"
+      :points="points"
+      :get-point-number="getPointNumber"
+      :is-course-root-point="isCourseRootPoint"
+      @close="editDialogVisible = false"
+      @save="editingPoint ? handleUpdatePoint() : handleCreatePoint()"
+    />
 
-        <!-- 单条上传资料模态框 -->
-        <div v-if="uploadDialogVisible" class="modal-mask" @click.self="uploadDialogVisible = false">
-          <div class="modal-wrapper">
-            <div class="modal-container">
-              <button class="modal-close" @click="uploadDialogVisible = false" aria-label="关闭">×</button>
-              <h3>上传资料 - {{ uploadForm.point || (uploadTargetPoint && uploadTargetPoint.pointName) }}</h3>
-              <div class="grid-form single-col" style="margin-top:12px;">
-                <label>
-                  资料标题
-                  <input v-model="uploadForm.title" class="match-height" placeholder="例如：讲义" />
-                </label>
-                <label>
-                  描述
-                  <textarea v-model="uploadForm.description" rows="3" placeholder="输入资料说明"></textarea>
-                </label>
-                <label>
-                  文件（可多选）
-                  <input type="file" multiple @change="handleFileChange" />
-                </label>
-              </div>
-              <div style="display:flex;gap:8px;margin-top:12px;">
-                <button class="match-height match-button" :disabled="loading || !uploadForm.files.length || !uploadForm.title" @click="submitMaterial">上传</button>
-                <button class="match-height cancel-button" @click="uploadDialogVisible = false">取消</button>
-              </div>
-              <p v-if="message" class="ok-text">{{ message }}</p>
-              <p v-if="error" class="error-text">{{ error }}</p>
-            </div>
-          </div>
-        </div>
+    <TeacherUploadMaterialModal
+      :visible="uploadDialogVisible"
+      :upload-form="uploadForm"
+      :upload-target-point="uploadTargetPoint"
+      :loading="loading"
+      :message="message"
+      :error="error"
+      @close="uploadDialogVisible = false"
+      @file-change="handleFileChange"
+      @submit="submitMaterial"
+    />
 
-        <!-- MD 导入：使用系统文件选择器（无弹窗） -->
-        <input
-          ref="mdFileInputRef"
-          type="file"
-          accept=".md,text/markdown"
-          style="display:none"
-          @change="onMdFileChange"
-        />
+    <TeacherMdImportInput ref="mdFileInputRef" @change="onMdFileChange" />
 
-        <!-- 编辑个人资料模态框（页面根级） -->
-    <div v-if="editProfileVisible" class="modal-mask" @click.self="editProfileVisible = false">
-      <div class="modal-wrapper">
-        <div class="modal-container">
-          <button class="modal-close" @click="editProfileVisible = false" aria-label="关闭">×</button>
-          <h3>编辑个人资料</h3>
-          <div class="grid-form single-col" style="margin-top:12px;">
-            <label>
-              用户名
-              <input v-model="editProfileForm.username" class="match-height" />
-            </label>
-            <label>
-              邮箱
-              <input v-model="editProfileForm.email" type="email" class="match-height" />
-            </label>
-            <label>
-              学院
-              <select v-model="editProfileForm.college" class="match-height">
-                <option value="">请选择学院</option>
-                <option v-for="c in colleges" :key="c.code" :value="c.code">{{ c.name }}</option>
-              </select>
-            </label>
-          </div>
-          <div style="display:flex;gap:8px;margin-top:12px;">
-            <button class="match-height match-button" @click="handleSaveProfile">保存</button>
-            <button class="match-height cancel-button" @click="editProfileVisible = false">取消</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <TeacherEditProfileModal
+      :visible="editProfileVisible"
+      :edit-profile-form="editProfileForm"
+      :colleges="colleges"
+      @close="editProfileVisible = false"
+      @save="handleSaveProfile"
+    />
 
-    <!-- 修改密码模态框（页面根级） -->
-    <div v-if="changePasswordVisible" class="modal-mask" @click.self="changePasswordVisible = false">
-      <div class="modal-wrapper">
-        <div class="modal-container">
-          <button class="modal-close" @click="changePasswordVisible = false" aria-label="关闭">×</button>
-          <h3>修改密码</h3>
-          <div style="margin-top:12px;">
-            <AccountSecurityPanel ref="passwordPanelRef" :current-user="currentUser" :embedded="true" />
-          </div>
-          <div style="display:flex;gap:8px;margin-top:12px;">
-            <button class="match-height match-button" @click="handlePasswordSave">保存</button>
-            <button class="match-height cancel-button" @click="changePasswordVisible = false">取消</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <TeacherChangePasswordModal
+      :visible="changePasswordVisible"
+      :current-user="currentUser"
+      @close="changePasswordVisible = false"
+    />
     <AiAssistantWidget role="teacher" :current-user="currentUser" />
 </template>
 

@@ -39,6 +39,10 @@ public class User {
     @Column(nullable = false, length = 20)
     private String role = "student";
 
+    /** 教师所在学院（code，与前端 colleges.json 对应）；学生可为空 */
+    @Column(name = "college", length = 64)
+    private String college;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -98,6 +102,14 @@ public class User {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public String getCollege() {
+        return college;
+    }
+
+    public void setCollege(String college) {
+        this.college = college;
     }
 
     public LocalDateTime getCreatedAt() {

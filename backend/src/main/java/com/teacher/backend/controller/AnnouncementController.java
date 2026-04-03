@@ -3,6 +3,7 @@ package com.teacher.backend.controller;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import com.teacher.backend.dto.CreateAnnouncementRequest;
 import com.teacher.backend.entity.Announcement;
@@ -93,10 +94,10 @@ public class AnnouncementController {
         m.put("content", a.getContent());
         m.put("publisherId", a.getPublisherId());
         m.put("createdAt", a.getCreatedAt() == null ? null : a.getCreatedAt().toString());
-        String publisherName = null;
-        if (a.getPublisherId() != null) {
-            publisherName = userRepository.findById(a.getPublisherId()).map(User::getUsername).orElse(null);
-        }
+        String publisherName = Optional.ofNullable(a.getPublisherId())
+            .flatMap(userRepository::findById)
+            .map(User::getUsername)
+            .orElse(null);
         m.put("publisherName", publisherName);
         return m;
     }

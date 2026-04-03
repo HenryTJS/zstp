@@ -18,6 +18,7 @@ import {
 } from '../api/client'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
 import AiAssistantWidget from './AiAssistantWidget.vue'
+import colleges from '../data/colleges.json'
 
 const props = defineProps({
   currentUser: {
@@ -510,6 +511,12 @@ const submitBulkImport = async () => {
   }
 }
 
+const collegeDisplayName = (code) => {
+  if (!code) return '未填写'
+  const row = colleges.find((c) => c.code === code)
+  return row ? row.name : String(code)
+}
+
 const formatAnnTime = (iso) => {
   if (!iso) return ''
   try {
@@ -733,6 +740,9 @@ const handlePasswordSave = async () => {
                 <th>用户名</th>
                 <th>学工号</th>
                 <th>邮箱</th>
+                <th>专业（一级）</th>
+                <th>专业（二级）</th>
+                <th>专业（三级）</th>
               </tr>
             </thead>
             <tbody>
@@ -740,6 +750,9 @@ const handlePasswordSave = async () => {
                 <td>{{ s.username || '-' }}</td>
                 <td>{{ s.workId || '-' }}</td>
                 <td>{{ s.email || '-' }}</td>
+                <td>{{ s.major1 || '—' }}</td>
+                <td>{{ s.major2 || '—' }}</td>
+                <td>{{ s.major3 || '—' }}</td>
               </tr>
             </tbody>
           </table>
@@ -757,6 +770,7 @@ const handlePasswordSave = async () => {
                 <th>用户名</th>
                 <th>学工号</th>
                 <th>邮箱</th>
+                <th>学院</th>
               </tr>
             </thead>
             <tbody>
@@ -764,6 +778,7 @@ const handlePasswordSave = async () => {
                 <td>{{ t.username || '-' }}</td>
                 <td>{{ t.workId || '-' }}</td>
                 <td>{{ t.email || '-' }}</td>
+                <td>{{ collegeDisplayName(t.college) }}</td>
               </tr>
             </tbody>
           </table>

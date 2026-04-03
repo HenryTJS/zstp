@@ -139,6 +139,10 @@ public class UserController {
                     }
                     nonNullUser.setWorkId(newWorkId);
                 }
+                if (request.college() != null) {
+                    String c = request.college().trim();
+                    nonNullUser.setCollege(StringUtils.hasText(c) ? c : null);
+                }
                 try {
                     User saved = userRepository.save(nonNullUser);
                     return ResponseEntity.ok(Map.of("message", "user updated", "user", responseMapper.toUserMap(saved)));
