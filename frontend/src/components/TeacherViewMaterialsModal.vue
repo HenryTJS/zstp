@@ -12,7 +12,7 @@ const emit = defineEmits(['close', 'delete-material'])
   <div v-if="visible" class="modal-mask" @click.self="emit('close')">
     <div class="modal-wrapper">
       <div class="modal-container">
-        <button class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
+        <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
         <h3>已上传资料 - {{ pointName }}</h3>
         <div v-if="!materials.length" class="panel-subtitle">暂无资料。</div>
         <table v-else class="data-table">
@@ -34,7 +34,7 @@ const emit = defineEmits(['close', 'delete-material'])
               <td>{{ m.teacherName || '-' }}</td>
               <td>{{ m.createdAt ? new Date(m.createdAt).toLocaleString() : '-' }}</td>
               <td>
-                <button type="button" style="color:red;" @click="emit('delete-material', m.id)">删除</button>
+                <button type="button" class="danger-btn" @click="emit('delete-material', m.id)">删除</button>
               </td>
             </tr>
           </tbody>

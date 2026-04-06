@@ -85,7 +85,7 @@ const emit = defineEmits([
         <div class="profile-btn-row">
           <button type="button" class="nav-btn" @click="emit('edit-profile')">编辑资料</button>
           <button type="button" class="nav-btn" @click="emit('change-password')">修改密码</button>
-          <button class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
+          <button type="button" class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
         </div>
         <p v-if="profileMessage" class="ok-text">{{ profileMessage }}</p>
       </article>

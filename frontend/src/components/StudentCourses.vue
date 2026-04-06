@@ -99,7 +99,7 @@ const onQuit = (course) => emit('quit', course)
           </div>
         </article>
       </div>
-      <p v-else class="panel-subtitle" style="margin-top:12px">未找到匹配课程。</p>
+      <p v-else class="panel-subtitle ui-mt-12">未找到匹配课程。</p>
 
       <nav v-if="marketTotalPages > 1" class="course-market-pagination" aria-label="课程列表分页">
         <button

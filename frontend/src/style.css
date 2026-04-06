@@ -18,6 +18,33 @@
   --line: #e4e6eb;
   --ok: #0f766e;
   --danger: #be123c;
+  --ui-btn-h: 36px;
+  --ui-btn-radius: 8px;
+  --ui-btn-font-size: 14px;
+  --ui-btn-padding: 7px 14px;
+  --ui-input-h: 36px;
+  --ui-card-radius: 14px;
+  --ui-card-padding: 16px 18px;
+  --ui-table-radius: 12px;
+  --ui-primary: #1f6fbf;
+  --ui-primary-hover: #1a64ad;
+  --ui-primary-border: #1a64ad;
+  --ui-secondary-bg: #f8fafc;
+  --ui-secondary-border: #ccd8e6;
+  --ui-secondary-text: #2e4b68;
+  --ui-secondary-hover-bg: #edf3f8;
+  --ui-secondary-hover-border: #b7c8db;
+  --ui-card-border: #d8e3ef;
+  --ui-table-border: #dbe7f5;
+  --ui-nav-btn-border: #9bc2ef;
+  --ui-nav-btn-bg: #f5f9ff;
+  --ui-nav-btn-text: #1f4f86;
+  --ui-nav-btn-hover-bg: #e9f2ff;
+  --ui-nav-btn-hover-border: #6fa7e5;
+  --ui-nav-btn-hover-text: #123a67;
+  --ui-nav-btn-active-bg-from: #0f5da8;
+  --ui-nav-btn-active-bg-to: #2679ce;
+  --ui-user-card-border: #b8d0eb;
 }
 
 /* 日间模式下主色加深，夜间输入框描边加亮 */
@@ -150,9 +177,12 @@ h3 {
   border: 1px solid var(--line);
   background: transparent;
   color: var(--ink);
-  border-radius: 6px;
+  border-radius: var(--ui-btn-radius);
   font-weight: 600;
-  padding: 8px 12px;
+  min-height: var(--ui-btn-h);
+  padding: 7px 14px;
+  font-size: var(--ui-btn-font-size);
+  line-height: 1.2;
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
@@ -178,6 +208,32 @@ h3 {
   background: #991b1b;
 }
 
+/* 兜底：仍未加 class 的原生按钮统一到新按钮风格 */
+.app-shell button:not([class]):not(.modal-close):not(.ai-close):not(.ap-close):not(.dn-close),
+.app-shell button[class=""]:not(.modal-close):not(.ai-close):not(.ap-close):not(.dn-close) {
+  min-height: var(--ui-btn-h);
+  padding: var(--ui-btn-padding);
+  border-radius: var(--ui-btn-radius);
+  font-size: var(--ui-btn-font-size);
+  line-height: 1.2;
+  font-weight: 600;
+  border: 1px solid var(--ui-primary-border);
+  background: var(--ui-primary);
+  color: #fff;
+  cursor: pointer;
+}
+
+.app-shell button:not([class]):not(.modal-close):not(.ai-close):not(.ap-close):not(.dn-close):hover:not(:disabled),
+.app-shell button[class=""]:not(.modal-close):not(.ai-close):not(.ap-close):not(.dn-close):hover:not(:disabled) {
+  background: var(--ui-primary-hover);
+}
+
+.app-shell button:not([class]):not(.modal-close):not(.ai-close):not(.ap-close):not(.dn-close):disabled,
+.app-shell button[class=""]:not(.modal-close):not(.ai-close):not(.ap-close):not(.dn-close):disabled {
+  opacity: .62;
+  cursor: not-allowed;
+}
+
 .section-nav {
   display: flex;
   gap: 10px;
@@ -193,6 +249,97 @@ h3 {
 
 .section-nav-btn {
   min-width: 92px;
+}
+
+.ui-toolbar-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+
+.ui-actions-row{
+  display:flex;
+  gap:8px;
+  margin-top:12px;
+  align-items:center;
+}
+
+.ui-mt-12{
+  margin-top:12px;
+}
+
+.ui-mt-6{ margin-top:6px; }
+.ui-mt-8{ margin-top:8px; }
+.ui-mt-10{ margin-top:10px; }
+.ui-mt-14{ margin-top:14px; }
+.ui-mt-16{ margin-top:16px; }
+.ui-block{ display:block; }
+.ui-overflow-x-auto{ overflow-x:auto; }
+.ui-muted-tag{
+  font-size:12px;
+  opacity:.8;
+  margin-left:6px;
+}
+
+/* 师生管顶部导航统一皮肤 */
+.top-nav-inner-student,
+.top-nav-inner-teacher,
+.top-nav-inner-admin{
+  gap:10px;
+}
+
+.top-nav-inner-student .section-nav-inline,
+.top-nav-inner-teacher .section-nav-inline,
+.top-nav-inner-admin .section-nav-inline{
+  gap:8px;
+}
+
+.top-nav-inner-student .section-nav-btn,
+.top-nav-inner-teacher .section-nav-btn,
+.top-nav-inner-admin .section-nav-btn{
+  min-width:78px;
+  border:1px solid var(--ui-nav-btn-border);
+  background:var(--ui-nav-btn-bg);
+  color:var(--ui-nav-btn-text);
+  border-radius:10px;
+  padding:7px 10px;
+  font-weight:700;
+}
+
+.top-nav-inner-student .section-nav-btn:hover,
+.top-nav-inner-teacher .section-nav-btn:hover,
+.top-nav-inner-admin .section-nav-btn:hover{
+  background:var(--ui-nav-btn-hover-bg);
+  border-color:var(--ui-nav-btn-hover-border);
+  color:var(--ui-nav-btn-hover-text);
+}
+
+.top-nav-inner-student .section-nav-btn.active,
+.top-nav-inner-teacher .section-nav-btn.active,
+.top-nav-inner-admin .section-nav-btn.active{
+  background:linear-gradient(135deg,var(--ui-nav-btn-active-bg-from),var(--ui-nav-btn-active-bg-to));
+  border-color:var(--ui-nav-btn-active-bg-from);
+  color:#fff;
+}
+
+.top-nav-inner-student .top-user-card,
+.top-nav-inner-teacher .top-user-card,
+.top-nav-inner-admin .top-user-card{
+  border:1px solid var(--ui-user-card-border);
+  background:#f6fbff;
+}
+
+.top-nav-inner-student .top-user-name,
+.top-nav-inner-teacher .top-user-name,
+.top-nav-inner-admin .top-user-name{
+  color:var(--ui-nav-btn-text);
+}
+
+.top-nav-inner-student .top-user-role,
+.top-nav-inner-teacher .top-user-role,
+.top-nav-inner-admin .top-user-role{
+  color:#5f738c;
 }
 
 .tabs {
@@ -292,8 +439,9 @@ input,
 select,
 textarea {
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 10px 12px;
+  border-radius: 10px;
+  min-height: var(--ui-input-h);
+  padding: 7px 10px;
   background: #fff;
   color: var(--ink);
 }
@@ -304,11 +452,14 @@ textarea {
 
 button {
   border: none;
-  border-radius: 6px;
+  border-radius: var(--ui-btn-radius);
   background: var(--accent);
   color: #fff;
   font-weight: 600;
-  padding: 10px 14px;
+  min-height: var(--ui-btn-h);
+  padding: 7px 14px;
+  font-size: var(--ui-btn-font-size);
+  line-height: 1.2;
   cursor: pointer;
 }
 

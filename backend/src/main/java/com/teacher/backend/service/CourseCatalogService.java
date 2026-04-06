@@ -63,6 +63,15 @@ public class CourseCatalogService {
             .toList();
     }
 
+    /** 课程目录中是否已有该名称（经 {@link #normalizeCourseName} 归一化后比较，忽略大小写）。 */
+    public boolean isCourseInCatalog(String rawCourseName) {
+        if (!StringUtils.hasText(rawCourseName)) {
+            return false;
+        }
+        String normalized = normalizeCourseName(rawCourseName);
+        return courseCatalogEntryRepository.existsByCourseNameIgnoreCase(normalized);
+    }
+
     public String defaultCourse() {
         List<String> courses = allCourses();
         return courses.isEmpty() ? DEFAULT_COURSES.get(0) : courses.get(0);
@@ -126,6 +135,29 @@ public class CourseCatalogService {
         }
 
         return allCourses();
+    }
+
+    /**
+     * 仅按字面（trim + 忽略大小写判重）写入课程目录，不做别名/子串归一化。
+     * <p>审批教师申请时必须使用此方法：{@link #normalizeCourseName} 可能把新课名归并到已有课名，
+     * 导致 {@link #addCourse} 跳过插入，而权限表里仍是原课名，从而出现「已通过但广场看不到新课程」。</p>
+     */
+    public void ensureCatalogContainsExactCourseName(String courseName) {
+        if (!StringUtils.hasText(courseName)) {
+            return;
+        }
+        String name = courseName.trim();
+        if (courseCatalogEntryRepository.existsByCourseNameIgnoreCase(name)) {
+            return;
+        }
+        int maxSort = courseCatalogEntryRepository.findAllByOrderBySortOrderAscIdAsc().stream()
+            .mapToInt(CourseCatalogEntry::getSortOrder)
+            .max()
+            .orElse(-1);
+        CourseCatalogEntry e = new CourseCatalogEntry();
+        e.setCourseName(name);
+        e.setSortOrder(maxSort + 1);
+        courseCatalogEntryRepository.save(e);
     }
 
     public List<String> deleteCourse(String rawCourseName) {

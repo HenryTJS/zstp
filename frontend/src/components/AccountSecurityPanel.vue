@@ -82,7 +82,7 @@ defineExpose({ submitChange, form, loading, message, error })
           确认新密码
           <input v-model="form.confirmPassword" type="password" class="match-height" />
         </label>
-        <button :disabled="loading" @click="submitChange">修改密码</button>
+        <button type="button" class="match-button" :disabled="loading" @click="submitChange">修改密码</button>
       </div>
 
       <p v-if="message" class="ok-text">{{ message }}</p>
@@ -92,7 +92,7 @@ defineExpose({ submitChange, form, loading, message, error })
 
   <template v-else>
     <div>
-      <div class="grid-form single-col" style="margin-top:12px;">
+      <div class="grid-form single-col ui-mt-12">
         <label>
           当前密码
           <input v-model="form.currentPassword" type="password" class="match-height" />

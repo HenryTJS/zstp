@@ -103,7 +103,7 @@ const emit = defineEmits(['go-courses'])
               <td>{{ item.knowledgePoint }}</td>
               <td>{{ item.score }} / {{ item.fullScore }}</td>
               <td>
-                <button type="button" @click="removeLearningRecord(item.id)">删除</button>
+                <button type="button" class="cancel-button" @click="removeLearningRecord(item.id)">删除</button>
               </td>
             </tr>
           </tbody>
@@ -126,23 +126,35 @@ const emit = defineEmits(['go-courses'])
               <td>{{ e.title || ('试卷-' + e.id) }}</td>
               <td>{{ e.createdAt ? new Date(e.createdAt).toLocaleString() : '-' }}</td>
               <td>
-                <div style="display:flex;gap:8px;align-items:center">
+                <div class="ui-toolbar-row">
                   <button
+                    type="button"
+                    class="match-button"
                     :disabled="!e.mdPaper"
                     @click="downloadExam(e.id, 'md_paper')"
                     :title="e.mdPaper ? '下载原卷 (Markdown)' : 'Markdown 未生成'"
                   >
                     下载 MD
                   </button>
-                  <button v-if="!(e.mdPaper && e.mdAnswer)" @click="renderExamPdfs(e.id)" title="生成 Markdown 文件">生成 MD</button>
                   <button
+                    v-if="!(e.mdPaper && e.mdAnswer)"
+                    type="button"
+                    class="match-button"
+                    @click="renderExamPdfs(e.id)"
+                    title="生成 Markdown 文件"
+                  >
+                    生成 MD
+                  </button>
+                  <button
+                    type="button"
+                    class="match-button"
                     :disabled="!e.mdAnswer"
                     @click="downloadExam(e.id, 'md_answer')"
                     :title="e.mdAnswer ? '下载答案 (Markdown)' : 'Markdown 未生成'"
                   >
                     下载 答案 (MD)
                   </button>
-                  <button @click="confirmDeleteExam(e.id)">删除</button>
+                  <button type="button" class="cancel-button" @click="confirmDeleteExam(e.id)">删除</button>
                 </div>
               </td>
             </tr>

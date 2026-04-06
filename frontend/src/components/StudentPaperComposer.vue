@@ -234,7 +234,7 @@ const goCourses = () => emit('go-courses')
           每题可单独设置分值（1–100）；整张试卷最多 15 题。保存后 Markdown 中会显示各题分值。
         </p>
 
-        <div class="grid-form two-col" style="margin-top: 12px">
+        <div class="grid-form two-col ui-mt-12">
           <label>
             课程
             <select v-model="paperCourse" class="match-height">
@@ -251,12 +251,12 @@ const goCourses = () => emit('go-courses')
           </label>
         </div>
 
-        <label style="display: block; margin-top: 12px">
+        <label class="ui-block ui-mt-12">
           试卷标题（可选）
           <input v-model="paperTitle" class="match-height" placeholder="默认使用「课程名 试卷」" />
         </label>
 
-        <div style="margin-top: 16px; overflow-x: auto">
+        <div class="ui-mt-16 ui-overflow-x-auto">
           <table class="data-table">
             <thead>
               <tr>
@@ -305,18 +305,14 @@ const goCourses = () => emit('go-courses')
                   />
                 </td>
                 <td>
-                  <button type="button" :disabled="row.loading" @click="generateRow(row)">
-                    {{ row.loading ? '生成中…' : '生成本题' }}
-                  </button>
-                  <button
-                    type="button"
-                    class="cancel-button"
-                    style="margin-left: 6px"
-                    :disabled="rows.length <= 1"
-                    @click="removeRow(idx)"
-                  >
-                    删除行
-                  </button>
+                  <div class="spc-row-actions">
+                    <button type="button" class="match-button" :disabled="row.loading" @click="generateRow(row)">
+                      {{ row.loading ? '生成中…' : '生成本题' }}
+                    </button>
+                    <button type="button" class="cancel-button" :disabled="rows.length <= 1" @click="removeRow(idx)">
+                      删除行
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -327,9 +323,9 @@ const goCourses = () => emit('go-courses')
           <p v-if="row.rowError" class="error-text" style="margin-top: 6px">第 {{ idx + 1 }} 题：{{ row.rowError }}</p>
         </template>
 
-        <div class="inline-form" style="margin-top: 12px">
+        <div class="inline-form ui-mt-12">
           <button type="button" class="cancel-button" :disabled="rows.length >= 15" @click="addRow">增加一题</button>
-          <button type="button" :disabled="saving || !previewRows.length" @click="persistPaper">
+          <button type="button" class="match-button" :disabled="saving || !previewRows.length" @click="persistPaper">
             {{ saving ? '保存中…' : '保存试卷并生成 MD' }}
           </button>
         </div>
@@ -338,7 +334,7 @@ const goCourses = () => emit('go-courses')
 
       <article v-if="previewRows.length" class="result-card">
         <h3>已生成题目预览</h3>
-        <div v-for="(pr, idx) in previewRows" :key="pr.id + '-pv'" style="margin-top: 14px">
+        <div v-for="(pr, idx) in previewRows" :key="pr.id + '-pv'" class="ui-mt-14">
           <h4>
             第 {{ idx + 1 }} 题（{{ pr.question?.question_type || '—' }} · {{ clampFullScore(pr.fullScore) }} 分）
           </h4>

@@ -39,7 +39,7 @@ const props = defineProps({
     default: 'profile'
   }
 })
-const emit = defineEmits(['logout', 'update-user'])
+const emit = defineEmits(['logout', 'update-user', 'login-success'])
 const route = useRoute()
 const router = useRouter()
 // 当前激活子页，优先使用路由 param，再使用 props 作为回退
@@ -63,87 +63,133 @@ const isCourseRootPoint = (item) => Boolean(item?.courseRoot)
 // =========================
 const selectedPointIds = ref([])
 
+/** 与列表接口一致：同级按 sortOrder 再按 id，避免仅按 id 时「第10章」等顺序与编号错位 */
+const cmpNodeOrder = (a, b) => {
+  const oa = Number(a?.sortOrder ?? 0)
+  const ob = Number(b?.sortOrder ?? 0)
+  if (oa !== ob) return oa - ob
+
+  // 如果 sortOrder 都是 0（MD 导入未传 sortOrder 的常见情况），
+  // 用 createdAt（导入/插入顺序）来稳定确定“最近父节点”的选择。
+  const ta = a?.createdAt ? Date.parse(String(a.createdAt)) : NaN
+  const tb = b?.createdAt ? Date.parse(String(b.createdAt)) : NaN
+  const fa = Number.isFinite(ta)
+  const fb = Number.isFinite(tb)
+  if (fa && fb && ta !== tb) return ta - tb
+  if (fa && !fb) return -1
+  if (!fa && fb) return 1
+
+  return (Number(a?.id ?? 0) - Number(b?.id ?? 0))
+}
+
 const pointNumberMap = computed(() => {
-  const out = new Map()
+  const outById = new Map() // key: String(id)
   const list = Array.isArray(points.value) ? points.value : []
-  if (!list.length) return out
+  if (!list.length) return outById
 
-  const nodes = list.slice().sort((a, b) => (a.id ?? 0) - (b.id ?? 0))
-  const rootNames = new Set(nodes.filter((p) => isCourseRootPoint(p)).map((p) => p.pointName))
+  const nodes = list.slice().sort(cmpNodeOrder)
+  const childrenByParentId = new Map()
+  const lastByTrimPointName = new Map() // 兼容历史数据：pointName(trim) -> 最近节点
 
-  const childrenByParent = new Map() // parentPointName|null -> children[]
   for (const p of nodes) {
-    const key = p.parentPoint || null
-    if (!childrenByParent.has(key)) childrenByParent.set(key, [])
-    childrenByParent.get(key).push(p)
+    let parentId = p?.parentId == null ? null : Number(p.parentId)
+    // 兼容旧数据：若没有 parentId，再回退到 parentPoint 名称推断
+    if (parentId == null) {
+      const rawParent = p.parentPoint == null || p.parentPoint === undefined ? null : String(p.parentPoint).trim()
+      parentId = rawParent ? lastByTrimPointName.get(rawParent)?.id ?? null : null
+    }
+    if (!childrenByParentId.has(parentId)) childrenByParentId.set(parentId, [])
+    childrenByParentId.get(parentId).push(p)
+
+    const selfName = String(p.pointName || '').trim()
+    if (selfName) lastByTrimPointName.set(selfName, p)
   }
 
-  const assign = (parentKey, prefixParts) => {
-    const children = childrenByParent.get(parentKey) || []
+  const assign = (parentId, prefixParts, guard) => {
+    // guard 用于避免极端脏数据造成的循环（以节点 id 为界）
+    const visiting = new Set(guard || [])
+    if (prefixParts.length > 12) return
+    if (parentId != null) {
+      const key = String(parentId)
+      if (visiting.has(key)) return
+      visiting.add(key)
+    }
+
+    const children = (childrenByParentId.get(parentId) || []).slice().sort(cmpNodeOrder)
     let idx = 0
     for (const child of children) {
-      if (rootNames.has(child.pointName)) continue
+      if (isCourseRootPoint(child)) continue
       idx += 1
       const parts = [...prefixParts, idx]
-      out.set(child.pointName, parts.join('.'))
-      assign(child.pointName, parts)
+      outById.set(String(child.id), parts.join('.'))
+      assign(child.id, parts, visiting)
     }
   }
 
-  // 顶层：parentPoint 为 null 的节点（且非课程根）作为“第x章”
-  assign(null, [])
+  // 顶层：parentPoint 为 null 的节点（且非课程根）作为“第 x 章”
+  assign(null, [], new Set())
 
   // 兼容：如果存在“课程根”作为真实父级的存储形态，也从课程根继续编号
   const courseRoot = nodes.find((p) => isCourseRootPoint(p))
-  if (courseRoot?.pointName) {
-    assign(courseRoot.pointName, [])
+  if (courseRoot?.id != null) {
+    assign(courseRoot.id, [], new Set())
   }
 
-  return out
+  return outById
 })
 
-const getPointNumber = (pointName) => pointNumberMap.value.get(pointName) || ''
+const getPointNumber = (pointOrName) => {
+  if (pointOrName && typeof pointOrName === 'object') {
+    return pointNumberMap.value.get(String(pointOrName.id)) || ''
+  }
+  const name = String(pointOrName || '').trim()
+  if (!name) return ''
+  const exact = (Array.isArray(points.value) ? points.value : []).find((p) => String(p?.pointName || '').trim() === name)
+  return exact ? pointNumberMap.value.get(String(exact.id)) || '' : ''
+}
 
 /** 任意层级知识点均可发布测试（课程根仍为「期末测试」文案） */
 const canPublishPointTest = (item) =>
   Boolean(item?.courseName && String(item?.pointName || '').trim())
 
 /** 锚点及其所有下级知识点（深度优先，编号排序），供每题选择考查点 */
-const buildSubtreeTopicOptions = (anchorPointName, allPoints, getPointNumberFn) => {
+const buildSubtreeTopicOptions = (anchorPointId, allPoints, getPointNumberFn) => {
   const list = Array.isArray(allPoints) ? allPoints : []
-  const anchor = String(anchorPointName || '').trim()
-  if (!anchor) return []
+  const anchor = anchorPointId == null ? null : Number(anchorPointId)
+  if (anchor == null) return []
   const byParent = new Map()
   for (const p of list) {
-    const par = p.parentPoint == null || p.parentPoint === undefined ? '' : String(p.parentPoint)
+    const par = p.parentId == null ? null : Number(p.parentId)
     if (!byParent.has(par)) byParent.set(par, [])
     byParent.get(par).push(p)
   }
-  const orderedNames = []
-  const walk = (name) => {
-    orderedNames.push(name)
-    const rawKids = byParent.get(name) || []
+  const orderedNodes = []
+  const walk = (id) => {
+    const node = list.find((p) => Number(p.id) === Number(id))
+    if (!node) return
+    orderedNodes.push(node)
+    const rawKids = byParent.get(Number(id)) || []
     const kids = rawKids.slice().sort((a, b) => {
-      const na = String(getPointNumberFn(a.pointName) || a.pointName || '')
-      const nb = String(getPointNumberFn(b.pointName) || b.pointName || '')
+      const na = String(getPointNumberFn(a) || a.pointName || '')
+      const nb = String(getPointNumberFn(b) || b.pointName || '')
       return na.localeCompare(nb, undefined, { numeric: true })
     })
-    for (const c of kids) walk(c.pointName)
+    for (const c of kids) walk(c.id)
   }
   walk(anchor)
-  return orderedNames.map((name) => {
-    const num = getPointNumberFn(name) || ''
+  return orderedNodes.map((node) => {
+    const num = getPointNumberFn(node) || ''
     return {
-      value: name,
-      label: num ? `${num} ${name}` : name
+      value: node.pointName,
+      label: num ? `${num} ${node.pointName}` : node.pointName
     }
   })
 }
 
 const pointTestTopicOptions = computed(() => {
   const t = pointTestTarget.value
-  if (!t?.pointName || !Array.isArray(points.value) || !points.value.length) return []
-  return buildSubtreeTopicOptions(t.pointName, points.value, getPointNumber)
+  if (t?.id == null || !Array.isArray(points.value) || !points.value.length) return []
+  return buildSubtreeTopicOptions(t.id, points.value, getPointNumber)
 })
 
 // 上传表单与状态
@@ -165,7 +211,7 @@ const pointError = ref('')
 // 编辑弹窗
 const editingPoint = ref(null)
 const editDialogVisible = ref(false)
-const editPointForm = ref({ courseName: '', pointName: '', parentPoint: '' })
+const editPointForm = ref({ courseName: '', pointName: '', parentId: null, parentPoint: '' })
 
 // =========================
 // MD 导入知识点（无弹窗：用系统文件选择器）
@@ -229,7 +275,6 @@ const courseMarketPageSize = 8
 const teacherCoursesPage = ref(1)
 
 const allMarketCourses = ref([])
-const marketCoursesLoaded = ref(false)
 const marketCoursesLoading = ref(false)
 const marketCoursesError = ref('')
 
@@ -239,6 +284,8 @@ const teacherPermissionRequestsLoading = ref(false)
 const teacherPermissionRequestsError = ref('')
 
 const permissionRequestDialogVisible = ref(false)
+/** join：广场已有课程；create：新课程 */
+const permissionRequestMode = ref('join')
 const permissionRequestCourseName = ref('')
 const permissionRequestText = ref('')
 const permissionRequestSubmitting = ref(false)
@@ -274,6 +321,11 @@ const permissionRequestByCourse = computed(() => {
   return map
 })
 
+const pendingTeacherCoursePermissionRequestsList = computed(() => {
+  const list = Array.isArray(teacherCoursePermissionRequests.value) ? teacherCoursePermissionRequests.value : []
+  return list.filter((r) => r && r.status === 'PENDING')
+})
+
 const loadTeacherCoursePermissionRequests = async () => {
   teacherPermissionRequestsLoading.value = true
   teacherPermissionRequestsError.value = ''
@@ -293,12 +345,9 @@ const loadTeacherCourseMarket = async () => {
   marketCoursesLoading.value = true
   marketCoursesError.value = ''
   try {
-    if (!marketCoursesLoaded.value) {
-      const res = await listCoursesByMajor()
-      const payload = res && res.data ? res.data : res
-      allMarketCourses.value = Array.isArray(payload) ? payload : []
-      marketCoursesLoaded.value = true
-    }
+    const res = await listCoursesByMajor()
+    const payload = res && res.data ? res.data : res
+    allMarketCourses.value = Array.isArray(payload) ? payload : []
 
     // 权限/申请记录需要实时一些（管理员可能刚审批完）
     await refreshTeacherCoursePermissionsIfNeeded(true)
@@ -320,7 +369,16 @@ watch(
 )
 
 const openPermissionRequest = (courseName) => {
+  permissionRequestMode.value = 'join'
   permissionRequestCourseName.value = String(courseName || '').trim()
+  permissionRequestText.value = ''
+  permissionRequestError.value = ''
+  permissionRequestDialogVisible.value = true
+}
+
+const openNewCoursePermissionRequest = () => {
+  permissionRequestMode.value = 'create'
+  permissionRequestCourseName.value = ''
   permissionRequestText.value = ''
   permissionRequestError.value = ''
   permissionRequestDialogVisible.value = true
@@ -328,7 +386,11 @@ const openPermissionRequest = (courseName) => {
 
 const submitPermissionRequest = async () => {
   permissionRequestError.value = ''
-  if (!permissionRequestCourseName.value) {
+  if (permissionRequestMode.value === 'create' && !String(permissionRequestCourseName.value || '').trim()) {
+    permissionRequestError.value = '请填写新课程名称。'
+    return
+  }
+  if (permissionRequestMode.value === 'join' && !permissionRequestCourseName.value) {
     permissionRequestError.value = '课程名为空。'
     return
   }
@@ -341,8 +403,9 @@ const submitPermissionRequest = async () => {
   try {
     await createTeacherCoursePermissionRequest({
       teacherId: props.currentUser.id,
-      courseName: permissionRequestCourseName.value,
-      requestText: permissionRequestText.value.trim()
+      courseName: permissionRequestCourseName.value.trim(),
+      requestText: permissionRequestText.value.trim(),
+      requestKind: permissionRequestMode.value === 'create' ? 'CREATE_NEW' : 'JOIN_EXISTING'
     })
     permissionRequestDialogVisible.value = false
     await loadTeacherCoursePermissionRequests()
@@ -359,7 +422,7 @@ const enterCourseFromMarket = (courseName) => {
   if (!Array.isArray(catalogCourses.value) || !catalogCourses.value.includes(cn)) return
   if (selectedCourse.value === cn) {
     // 已进入该课程：允许“再次点击”但不重复切换与刷新
-    router.push('/teacher/manage')
+    router.push({ path: '/teacher/manage', query: { course: cn } })
     return
   }
 
@@ -371,7 +434,9 @@ const enterCourseFromMarket = (courseName) => {
     localStorage.setItem(teacherEnteredCourseStorageKey, cn)
   } catch (e) {}
 
-  router.push('/teacher/manage')
+  // 携带显式 course 参数，并清空可能残留的讨论深链参数（dc/dp/dpost）
+  // 避免知识点页被 deepLink 覆盖课程（造成“点A跳B”的偶发情况）
+  router.push({ path: '/teacher/manage', query: { course: cn } })
 }
 
 const quitCourseFromMarket = (courseName) => {
@@ -390,7 +455,8 @@ const quitCourseFromMarket = (courseName) => {
     localStorage.setItem(teacherEnteredCourseStorageKey, '')
   } catch (e) {}
 
-  router.push('/teacher/courses')
+  // 清空可能残留的讨论深链参数（dc/dp/dpost）
+  router.push({ path: '/teacher/courses', query: {} })
 }
 
 // 与学生端保持一致的个人信息编辑/修改密码逻辑（简化）
@@ -432,6 +498,7 @@ const pointTestTarget = ref(null)
 const openPointTest = (item) => {
   if (!item || !canPublishPointTest(item)) return
   pointTestTarget.value = {
+    id: item.id,
     courseName: item.courseName || '',
     pointName: item.pointName || '',
     courseRoot: Boolean(item.courseRoot)
@@ -720,9 +787,15 @@ watch(() => uploadForm.value.point, (val) => {
 })
 
 const openEditPoint = (point) => {
+  const resolvedParentId =
+    point?.parentId ??
+    (point?.parentPoint
+      ? (points.value.find((p) => String(p?.pointName || '').trim() === String(point.parentPoint || '').trim())?.id ?? null)
+      : null)
   editingPoint.value = point
   editPointForm.value = {
-    ...point
+    ...point,
+    parentId: resolvedParentId
   }
   editDialogVisible.value = true
 }
@@ -737,6 +810,7 @@ const openAddPoint = () => {
   editPointForm.value = {
     courseName: cn,
     pointName: '',
+    parentId: null,
     parentPoint: ''
   }
   editDialogVisible.value = true
@@ -785,9 +859,8 @@ const parseKnowledgePointsFromMd = (text, defaultCourseName) => {
   // 避免模板/文档里的 course 字段抢占当前选择。
   const courseName = defaultCourseName || parseCourseFromMdHeader(src) || ''
   const out = []
-  const seen = new Set()
-
-  const headingStack = [] // { level, pointName }
+  const headingStack = [] // { level, pointName, nodeKey }
+  let seq = 0
   let inCode = false
   const lines = src.split(/\r?\n/)
 
@@ -817,15 +890,17 @@ const parseKnowledgePointsFromMd = (text, defaultCourseName) => {
     while (headingStack.length && headingStack[headingStack.length - 1].level >= level) {
       headingStack.pop()
     }
-    const parentPoint = headingStack.length ? headingStack[headingStack.length - 1].pointName : null
+    const parent = headingStack.length ? headingStack[headingStack.length - 1] : null
+    const nodeKey = `md-${++seq}`
+    out.push({
+      courseName,
+      pointName,
+      parentPoint: parent ? parent.pointName : null,
+      nodeKey,
+      parentNodeKey: parent ? parent.nodeKey : null
+    })
 
-    const key = `${courseName}||${pointName}||${parentPoint || ''}`
-    if (!seen.has(key)) {
-      seen.add(key)
-      out.push({ courseName, pointName, parentPoint })
-    }
-
-    headingStack.push({ level, pointName })
+    headingStack.push({ level, pointName, nodeKey })
   }
 
   return { courseName, items: out }
@@ -902,14 +977,22 @@ const submitMdImport = async () => {
   const failSamples = []
 
   try {
-    // 逐条导入，避免瞬时并发过大；后续如需可改小批量并发
+    // 逐条导入（按 MD 顺序），用 parentId 精确建立层级，彻底规避“重名父节点串层级”。
+    const savedIdByNodeKey = new Map()
     for (const it of items) {
       try {
-        await saveKnowledgePoint({
+        const parentId = it.parentNodeKey ? savedIdByNodeKey.get(it.parentNodeKey) ?? null : null
+        const resp = await saveKnowledgePoint({
           courseName,
           pointName: String(it.pointName || '').trim(),
+          parentId,
+          // 兼容后端旧字段：即便未来只用 parentId，这里保留 parentPoint 不影响正确性
           parentPoint: it.parentPoint ? String(it.parentPoint).trim() : null,
         })
+        const savedId = resp?.data?.point?.id
+        if (it.nodeKey && savedId != null) {
+          savedIdByNodeKey.set(it.nodeKey, Number(savedId))
+        }
         ok++
       } catch (e) {
         fail++
@@ -936,7 +1019,7 @@ const handleUpdatePoint = async () => {
     const payload = {
       courseName: editPointForm.value.courseName,
       pointName: (editPointForm.value.pointName || '').trim(),
-      parentPoint: editPointForm.value.parentPoint || null,
+      parentId: editPointForm.value.parentId == null ? null : Number(editPointForm.value.parentId),
       sortOrder: Number(editPointForm.value.sortOrder) || 0,
     }
 
@@ -967,7 +1050,7 @@ const handleCreatePoint = async () => {
     const payload = {
       courseName: editPointForm.value.courseName,
       pointName: editPointForm.value.pointName.trim(),
-      parentPoint: editPointForm.value.parentPoint || null,
+      parentId: editPointForm.value.parentId == null ? null : Number(editPointForm.value.parentId),
     }
     await saveKnowledgePoint(payload)
     pointForm.value.courseName = payload.courseName
@@ -984,11 +1067,11 @@ const handleDeletePoint = async (id, item) => {
     pointError.value = '课程根知识点不可删除。'
     return
   }
-  if (!confirm('确定要删除该知识点吗？')) return
+  if (!confirm('确定要删除该知识点及其所有下级知识点吗？')) return
   try {
     await deleteKnowledgePoint(id)
     await loadKnowledgePointData()
-    pointMessage.value = '知识点已删除。'
+    pointMessage.value = '知识点及其下级已删除。'
     selectedPointIds.value = []
   } catch (err) {
     pointError.value = err?.response?.data?.message || '知识点删除失败。'
@@ -999,7 +1082,7 @@ const handleDeleteSelectedPoints = async () => {
   const ids = Array.isArray(selectedPointIds.value) ? Array.from(new Set(selectedPointIds.value)) : []
   if (!ids.length) return
 
-  const ok = confirm(`确定要删除选中的 ${ids.length} 个知识点吗？`)
+  const ok = confirm(`确定要删除选中的 ${ids.length} 个知识点及其所有下级知识点吗？`)
   if (!ok) return
 
   try {
@@ -1148,6 +1231,32 @@ onMounted(async () => {
     // 初始化：拉取管理员分配给当前教师的可见课程
     await refreshTeacherCoursePermissionsIfNeeded(true)
 
+    // 若从课程广场显式携带了 course 参数，则以该参数为准；
+    // 同时清空讨论深链参数，避免后续 deepLink 抢占 selectedCourse。
+    const incomingCourse = route.query.course ? String(route.query.course).trim() : ''
+    if (incomingCourse) {
+      const opts = Array.isArray(catalogCourses.value) ? catalogCourses.value : []
+      if (opts.includes(incomingCourse)) {
+        autoSelectCourseEnabled.value = false
+        suppressCourseWatch.value = true
+        selectedCourse.value = incomingCourse
+        pointForm.value.courseName = incomingCourse
+        statCourse.value = incomingCourse
+        suppressCourseWatch.value = false
+      }
+      // 清理深链参数，避免组件挂载后被 deepLink 覆盖
+      try {
+        const nextQ = { ...route.query }
+        delete nextQ.course
+        delete nextQ.dc
+        delete nextQ.dp
+        delete nextQ.dpost
+        await router.replace({ path: route.path, query: nextQ })
+      } catch (e) {
+        // ignore
+      }
+    }
+
     await loadKnowledgePointData()
     courseInitDone.value = true
     loadTeacherProfile()
@@ -1155,7 +1264,9 @@ onMounted(async () => {
     if (currentPage.value === 'courses') {
       await loadTeacherCourseMarket()
     }
-    if (route.query.dc && route.query.dp) {
+    // 若已携带显式 course 覆盖，则不再应用讨论深链
+    const shouldApplyDeepLink = !incomingCourse && route.query.dc && route.query.dp
+    if (shouldApplyDeepLink) {
       await applyTeacherDiscussionDeepLink()
     }
   } catch (e) {
@@ -1180,7 +1291,7 @@ watch(
     @close="viewMaterialsDialogVisible = false"
     @delete-material="handleDeleteMaterial"
   />
-    <section class="panel-stack">
+    <section class="panel-stack teacher-theme">
       <template v-if="currentPage === 'profile'">
       <article class="result-card profile-hero-card">
         <div class="profile-hero-main">
@@ -1247,7 +1358,7 @@ watch(
             <button type="button" class="nav-btn" @click="openEditProfile">编辑资料</button>
             <button type="button" class="nav-btn" @click="openPasswordPage">修改密码</button>
             
-            <button class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
+            <button type="button" class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
           </div>
           <p v-if="profileMessage" class="ok-text">{{ profileMessage }}</p>
         </article>
@@ -1283,6 +1394,7 @@ watch(
           :market-courses-error="marketCoursesError"
           :catalog-courses="catalogCourses"
           :permission-request-by-course="permissionRequestByCourse"
+          :pending-permission-requests="pendingTeacherCoursePermissionRequestsList"
           :teacher-permission-requests-loading="teacherPermissionRequestsLoading"
           :course-init-done="courseInitDone"
           :teacher-courses-page="teacherCoursesPage"
@@ -1292,6 +1404,7 @@ watch(
           @enter-course="enterCourseFromMarket"
           @quit-course="quitCourseFromMarket"
           @open-permission-request="openPermissionRequest"
+          @open-new-course-permission-request="openNewCoursePermissionRequest"
         />
       </template>
 
@@ -1321,11 +1434,13 @@ watch(
     </section>
     <TeacherPermissionRequestModal
       :visible="permissionRequestDialogVisible"
+      :mode="permissionRequestMode"
       :course-name="permissionRequestCourseName"
       :request-text="permissionRequestText"
       :submitting="permissionRequestSubmitting"
       :error="permissionRequestError"
       @close="permissionRequestDialogVisible = false"
+      @update:course-name="(v) => (permissionRequestCourseName = v)"
       @update:request-text="(v) => (permissionRequestText = v)"
       @submit="submitPermissionRequest"
     />

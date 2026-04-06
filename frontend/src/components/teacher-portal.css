@@ -2,12 +2,22 @@
 
 .grid-form.four-col{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:end}
 .grid-form.four-col label{display:flex;flex-direction:column}
-.match-height{height:36px;padding:6px 8px;box-sizing:border-box}
-.match-button{padding:6px 12px;border:1px solid #2d6cdf;background:#2d6cdf;color:#fff;border-radius:4px;cursor:pointer}
-.small-input{width:80px}
+.match-height{height:var(--ui-input-h);padding:7px 10px;box-sizing:border-box}
+.match-button{
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  line-height:1.2;
+  border:1px solid var(--ui-primary-border);
+  background:var(--ui-primary);
+  color:#fff;
+  border-radius:var(--ui-btn-radius);
+  cursor:pointer
+}
+.small-input{width:80px;min-height:var(--ui-input-h)}
 .order-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 /* ensure modal layout keeps consistent heights */
-.modal-container .match-height{height:36px}
+.modal-container .match-height{height:var(--ui-input-h)}
 /* modal overlay and container */
 .modal-mask{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:1200}
 .modal-wrapper{max-width:900px;width:92%;}
@@ -15,8 +25,18 @@
 .modal-close{position:absolute;right:10px;top:8px;border:none;background:transparent;font-size:20px;line-height:1;color:#666;cursor:pointer}
 .grid-form.single-col{display:grid;grid-template-columns:1fr;gap:12px}
 .grid-form.single-col label{display:flex;flex-direction:column}
-.button-row{display:flex;align-items:center}
-.cancel-button{background:#fff;border:1px solid #ccc;color:#333;border-radius:4px;padding:6px 12px;cursor:pointer}
+.button-row{display:flex;align-items:center;gap:8px}
+.cancel-button{
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  line-height:1.2;
+  background:var(--ui-secondary-bg);
+  border:1px solid var(--ui-secondary-border);
+  color:var(--ui-secondary-text);
+  border-radius:var(--ui-btn-radius);
+  cursor:pointer
+}
 
 .announcement-read-list{display:flex;flex-direction:column;gap:12px;margin-top:12px}
 .announcement-read-card{margin:0;padding:14px 16px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
@@ -33,6 +53,13 @@
   justify-content:space-between;
   gap:12px;
   flex-wrap:wrap;
+}
+
+.course-market-head-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
 }
 
 .course-market-grid{
@@ -96,15 +123,15 @@
 
 .course-page-num{
   min-width:26px;
-  height:26px;
-  padding:0 4px;
+  min-height:26px;
+  padding:0 6px;
   border:none;
   background:transparent;
   font-size:13px;
   line-height:1;
   color:#64748b;
   cursor:pointer;
-  border-radius:4px;
+  border-radius:6px;
 }
 
 .course-page-num:hover{
@@ -121,4 +148,87 @@
 
 @media (max-width:1024px){
   .course-market-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
+/* 知识点表「编号」列：保证 10、10.1 等两位数不被窄列裁切 */
+.kp-num-col{
+  min-width:4.25em;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+
+.kp-actions > button + button{
+  margin-left:8px;
+}
+
+/* Teacher portal visual sync */
+.teacher-theme .result-card{
+  border:1px solid var(--ui-card-border);
+  border-radius:var(--ui-card-radius);
+  box-shadow:0 2px 8px rgba(15,23,42,.04);
+  padding:var(--ui-card-padding);
+}
+
+.teacher-theme .result-card h3{
+  color:#1f3f5f;
+}
+
+.teacher-theme .data-table{
+  border-collapse:separate;
+  border-spacing:0;
+  border:1px solid var(--ui-table-border);
+  border-radius:var(--ui-table-radius);
+  overflow:hidden;
+}
+
+.teacher-theme .data-table th{
+  background:#f2f7fd;
+  color:#2a4e72;
+  font-weight:700;
+  border-bottom:1px solid var(--ui-table-border);
+}
+
+.teacher-theme .data-table td{
+  border-bottom:1px solid #edf2f8;
+}
+
+.teacher-theme .data-table tr:last-child td{ border-bottom:none; }
+
+.teacher-theme .match-button{
+  border-radius:var(--ui-btn-radius);
+  background:var(--ui-primary);
+  border:1px solid var(--ui-primary-border);
+  color:#fff;
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  font-weight:700;
+}
+
+.teacher-theme .match-button:hover{ background:var(--ui-primary-hover); }
+
+.teacher-theme .cancel-button,
+.teacher-theme .nav-btn{
+  border-radius:var(--ui-btn-radius);
+  border:1px solid var(--ui-secondary-border);
+  background:var(--ui-secondary-bg);
+  color:var(--ui-secondary-text);
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  font-weight:600;
+}
+
+.teacher-theme .cancel-button:hover,
+.teacher-theme .nav-btn:hover{
+  background:var(--ui-secondary-hover-bg);
+  border-color:var(--ui-secondary-hover-border);
+}
+
+.teacher-theme input,
+.teacher-theme select,
+.teacher-theme textarea{
+  border:1px solid #cdddf0;
+  border-radius:10px;
+  min-height:36px;
 }

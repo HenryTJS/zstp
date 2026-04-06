@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 const props = defineProps({
   // 表格数据
   points: { type: Array, required: true },
@@ -36,6 +36,36 @@ const selectedPointIdsModel = computed({
 })
 
 const isCourseRootPoint = (item) => Boolean(item?.courseRoot)
+const selectablePointIds = computed(() =>
+  (Array.isArray(props.points) ? props.points : [])
+    .filter((p) => !isCourseRootPoint(p))
+    .map((p) => p.id)
+)
+const allSelectableChecked = computed(() => {
+  const all = selectablePointIds.value
+  if (!all.length) return false
+  const selected = new Set(selectedPointIdsModel.value || [])
+  return all.every((id) => selected.has(id))
+})
+const partiallyChecked = computed(() => {
+  const all = selectablePointIds.value
+  if (!all.length) return false
+  const selected = new Set(selectedPointIdsModel.value || [])
+  const picked = all.filter((id) => selected.has(id)).length
+  return picked > 0 && picked < all.length
+})
+const selectAllRef = ref(null)
+watch(partiallyChecked, (v) => {
+  if (selectAllRef.value) selectAllRef.value.indeterminate = Boolean(v)
+}, { immediate: true })
+const toggleSelectAll = (e) => {
+  const checked = Boolean(e?.target?.checked)
+  if (checked) {
+    selectedPointIdsModel.value = selectablePointIds.value.slice()
+    return
+  }
+  selectedPointIdsModel.value = []
+}
 
 const onDeleteSelected = () => props.onDeleteSelectedPoints()
 </script>
@@ -44,7 +74,7 @@ const onDeleteSelected = () => props.onDeleteSelectedPoints()
   <article class="result-card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <h3>课程知识点设置</h3>
-      <div style="display:flex;gap:8px;align-items:center;">
+      <div class="ui-toolbar-row">
         <button type="button" class="cancel-button" @click="onDownloadTemplate">下载 MD 模板</button>
         <button type="button" class="cancel-button" @click="onOpenMdImport">导入 MD</button>
         <button type="button" class="match-button" @click="onOpenAddPoint">新增知识点</button>
@@ -76,16 +106,25 @@ const onDeleteSelected = () => props.onDeleteSelectedPoints()
       <table class="data-table">
         <thead>
           <tr>
-            <th>多选</th>
+            <th>
+              <input
+                ref="selectAllRef"
+                type="checkbox"
+                :checked="allSelectableChecked"
+                :disabled="!selectablePointIds.length"
+                aria-label="全选知识点"
+                @change="toggleSelectAll"
+              />
+            </th>
             <th>课程</th>
-            <th>编号</th>
+            <th class="kp-num-col">编号</th>
             <th>知识点</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="item in points" :key="item.id">
-            <td>
+            <td class="kp-actions">
               <input
                 type="checkbox"
                 v-model="selectedPointIdsModel"
@@ -95,23 +134,33 @@ const onDeleteSelected = () => props.onDeleteSelectedPoints()
               />
             </td>
             <td>{{ item.courseName }}</td>
-            <td>{{ getPointNumber(item.pointName) || '-' }}</td>
+            <td class="kp-num-col">{{ getPointNumber(item) || '-' }}</td>
             <td>
               {{ item.pointName
               }}<span v-if="isCourseRootPoint(item)" class="panel-subtitle" style="margin-left:6px">（课程根）</span>
             </td>
             <td>
-              <button v-if="!isCourseRootPoint(item)" type="button" @click="onOpenEditPoint(item)">编辑</button>
-              <button @click="onOpenUploadModal(item)" style="margin-left:8px;">上传资料</button>
-              <button @click="onOpenViewMaterials(item)" style="margin-left:8px;">查看资料</button>
-              <button type="button" class="cancel-button" style="margin-left:8px;" @click="onOpenDiscussion(item)">
+              <button
+                v-if="!isCourseRootPoint(item)"
+                type="button"
+                class="match-button"
+                @click="onOpenEditPoint(item)"
+              >
+                编辑
+              </button>
+              <button type="button" class="cancel-button" @click="onOpenUploadModal(item)">
+                上传资料
+              </button>
+              <button type="button" class="cancel-button" @click="onOpenViewMaterials(item)">
+                查看资料
+              </button>
+              <button type="button" class="cancel-button" @click="onOpenDiscussion(item)">
                 交流区
               </button>
               <button
                 v-if="canPublishPointTest(item)"
                 type="button"
                 class="cancel-button"
-                style="margin-left:8px;"
                 @click="onOpenPointTest(item)"
               >
                 {{ isCourseRootPoint(item) ? '发布期末测试' : '发布测试' }}

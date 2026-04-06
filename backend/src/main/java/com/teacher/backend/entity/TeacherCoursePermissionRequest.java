@@ -23,6 +23,12 @@ public class TeacherCoursePermissionRequest {
     @Column(name = "course_name", nullable = false, length = 120)
     private String courseName;
 
+    /**
+     * JOIN_EXISTING — 申请已有目录课程的查看权限；CREATE_NEW — 申请新增课程并在通过后自动入库且授权。
+     */
+    @Column(name = "request_kind", length = 24)
+    private String requestKind;
+
     @Column(name = "request_text", nullable = false, columnDefinition = "TEXT")
     private String requestText;
 
@@ -45,6 +51,9 @@ public class TeacherCoursePermissionRequest {
     void onCreate() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (requestKind == null || requestKind.isBlank()) {
+            requestKind = "JOIN_EXISTING";
         }
     }
 
@@ -70,6 +79,14 @@ public class TeacherCoursePermissionRequest {
 
     public void setCourseName(String courseName) {
         this.courseName = courseName;
+    }
+
+    public String getRequestKind() {
+        return requestKind;
+    }
+
+    public void setRequestKind(String requestKind) {
+        this.requestKind = requestKind;
     }
 
     public String getRequestText() {

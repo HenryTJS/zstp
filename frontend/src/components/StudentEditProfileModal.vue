@@ -17,9 +17,9 @@ const emit = defineEmits(['close'])
   <div v-if="visible" class="modal-mask" @click.self="emit('close')">
     <div class="modal-wrapper">
       <div class="modal-container">
-        <button class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
+        <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
         <h3>编辑个人资料</h3>
-        <div class="grid-form single-col" style="margin-top:12px;">
+        <div class="grid-form single-col ui-mt-12">
           <label>
             用户名
             <input v-model="editProfileForm.username" class="match-height" />
@@ -50,9 +50,9 @@ const emit = defineEmits(['close'])
             </div>
           </label>
         </div>
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <button class="match-height match-button" @click="onSave">保存</button>
-          <button class="match-height cancel-button" @click="emit('close')">取消</button>
+        <div class="ui-actions-row">
+          <button type="button" class="match-height match-button" @click="onSave">保存</button>
+          <button type="button" class="match-height cancel-button" @click="emit('close')">取消</button>
         </div>
       </div>
     </div>

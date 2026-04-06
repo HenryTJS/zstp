@@ -15,7 +15,7 @@ import jakarta.persistence.UniqueConstraint;
 @Table(
     name = "course_knowledge_points",
     uniqueConstraints = {
-        @UniqueConstraint(name = "uk_course_point", columnNames = {"course_name", "point_name"})
+        @UniqueConstraint(name = "uk_course_point_parent", columnNames = {"course_name", "point_name", "parent_id"})
     }
 )
 public class CourseKnowledgePoint {
@@ -32,6 +32,9 @@ public class CourseKnowledgePoint {
 
     @Column(name = "parent_point", length = 120)
     private String parentPoint;
+
+    @Column(name = "parent_id")
+    private Long parentId;
 
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;
@@ -79,6 +82,14 @@ public class CourseKnowledgePoint {
 
     public void setParentPoint(String parentPoint) {
         this.parentPoint = parentPoint;
+    }
+
+    public Long getParentId() {
+        return parentId;
+    }
+
+    public void setParentId(Long parentId) {
+        this.parentId = parentId;
     }
 
     public Integer getSortOrder() {

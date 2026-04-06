@@ -24,6 +24,7 @@ const routes = [
     props: (route) => ({ currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'), activePage: route.params.page || 'home' })
   },
   { path: '/teacher/:page?', component: TeacherPortal, props: (route) => ({ currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'), activePage: route.params.page || 'profile' }) },
+  { path: '/admin/course-permissions', redirect: '/admin/profile' },
   {
     path: '/admin/:page?',
     component: AdminPortal,

@@ -12,5 +12,9 @@ public interface CourseKnowledgePointRepository extends JpaRepository<CourseKnow
 
     Optional<CourseKnowledgePoint> findByCourseNameAndPointName(String courseName, String pointName);
 
+    Optional<CourseKnowledgePoint> findByCourseNameAndPointNameAndParentId(String courseName, String pointName, Long parentId);
+
+    Optional<CourseKnowledgePoint> findByCourseNameAndPointNameAndParentPoint(String courseName, String pointName, String parentPoint);
+
     void deleteByCourseName(String courseName);
 }

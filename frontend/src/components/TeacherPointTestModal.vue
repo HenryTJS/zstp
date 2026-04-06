@@ -293,17 +293,11 @@ const close = () => emit('close')
               <input v-model.number="q.fullScore" type="number" min="1" max="100" class="match-height" />
             </label>
           </div>
-          <div class="inline-form" style="margin-top: 8px">
+          <div class="inline-form tpt-actions-inline">
             <button type="button" class="cancel-button" :disabled="q.aiLoading" @click="onAiQuestion(idx)">
               {{ q.aiLoading ? '生成中…' : 'AI 生成本题' }}
             </button>
-            <button
-              type="button"
-              class="cancel-button"
-              style="margin-left: 8px"
-              :disabled="q.explainLoading"
-              @click="onAiExplanation(idx)"
-            >
+            <button type="button" class="cancel-button" :disabled="q.explainLoading" @click="onAiExplanation(idx)">
               {{ q.explainLoading ? '解析中…' : 'AI 生成解析' }}
             </button>
           </div>
@@ -328,11 +322,11 @@ const close = () => emit('close')
           </label>
         </div>
 
-        <div class="inline-form" style="margin-top: 16px">
+        <div class="inline-form tpt-actions-submit">
           <button type="button" class="match-button" :disabled="saving" @click="publish">
             {{ saving ? '发布中…' : '发布测试' }}
           </button>
-          <button type="button" class="cancel-button" style="margin-left: 8px" @click="close">关闭</button>
+          <button type="button" class="cancel-button" @click="close">关闭</button>
         </div>
       </div>
     </div>
@@ -350,6 +344,8 @@ const close = () => emit('close')
   padding-top: 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
+.tpt-actions-inline{ margin-top:8px; }
+.tpt-actions-submit{ margin-top:16px; }
 .ok-text {
   color: #15803d;
   margin-top: 8px;

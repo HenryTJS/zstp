@@ -10,6 +10,7 @@ const props = defineProps({
 
   catalogCourses: { type: Array, required: true },
   permissionRequestByCourse: { type: Object, required: true },
+  pendingPermissionRequests: { type: Array, required: true },
   teacherPermissionRequestsLoading: { type: Boolean, required: true },
 
   courseInitDone: { type: Boolean, required: true },
@@ -23,7 +24,8 @@ const emit = defineEmits([
   'update:teacherCoursesPage',
   'enter-course',
   'quit-course',
-  'open-permission-request'
+  'open-permission-request',
+  'open-new-course-permission-request'
 ])
 
 const searchModel = computed({
@@ -38,18 +40,23 @@ const setPage = (p) => emit('update:teacherCoursesPage', p)
   <article class="result-card">
     <div class="course-market-head">
       <h3>课程广场</h3>
-      <input
-        v-model="searchModel"
-        class="match-height"
-        placeholder="搜索课程名称"
-        style="max-width:280px"
-      />
+      <div class="course-market-head-actions">
+        <input
+          v-model="searchModel"
+          class="match-height"
+          placeholder="搜索课程名称"
+          style="max-width: 280px"
+        />
+        <button type="button" class="match-button match-height" @click="emit('open-new-course-permission-request')">
+          申请新课程
+        </button>
+      </div>
     </div>
 
-    <p v-if="marketCoursesLoading && !allMarketCourses.length" class="panel-subtitle" style="margin-top:12px">
+    <p v-if="marketCoursesLoading && !allMarketCourses.length" class="panel-subtitle ui-mt-12">
       加载中…
     </p>
-    <p v-else-if="marketCoursesError" class="error-text" style="margin-top:12px">{{ marketCoursesError }}</p>
+    <p v-else-if="marketCoursesError" class="error-text ui-mt-12">{{ marketCoursesError }}</p>
 
     <div v-if="pagedMarketCourses.length" class="course-market-grid">
       <article v-for="course in pagedMarketCourses" :key="course" class="course-market-card">
@@ -119,7 +126,23 @@ const setPage = (p) => emit('update:teacherCoursesPage', p)
       </article>
     </div>
 
-    <p v-else class="panel-subtitle" style="margin-top:12px">暂无课程。</p>
+    <p v-else class="panel-subtitle ui-mt-12">暂无课程。</p>
+
+    <div
+      v-if="pendingPermissionRequests.length"
+      class="panel-subtitle"
+      style="margin-top: 16px; padding: 12px 14px; border-radius: 8px; background: rgba(0, 0, 0, 0.04)"
+    >
+      <strong>待审批申请</strong>
+      <ul class="panel-bullets" style="margin-top: 8px; margin-bottom: 0">
+        <li v-for="r in pendingPermissionRequests" :key="r.id">
+          {{ r.courseName }}
+          <span class="ui-muted-tag">
+            {{ r.requestKind === 'CREATE_NEW' ? '（新课程）' : '（加入已有课程）' }}
+          </span>
+        </li>
+      </ul>
+    </div>
 
     <nav v-if="marketTotalPages > 1" class="course-market-pagination" aria-label="课程列表分页">
       <button

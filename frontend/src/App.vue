@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import DiscussionNotificationBell from './components/DiscussionNotificationBell.vue'
+import AdminPermissionRequestBell from './components/AdminPermissionRequestBell.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -25,7 +26,6 @@ const teacherPageList = [
 const adminPageList = [
   { key: 'user-stats', label: '用户与导入' },
   { key: 'announcements', label: '公告管理' },
-  { key: 'course-permissions', label: '课程权限' },
   { key: 'profile', label: '个人中心' }
 ]
 
@@ -84,7 +84,14 @@ const handleUpdateUser = (patch) => {
   <div class="app-page">
     <header class="top-nav">
       <div class="top-nav-shell">
-        <div class="top-nav-inner" :class="{ 'top-nav-inner-student': isStudentUser && isOnStudentRoute }">
+        <div
+          class="top-nav-inner"
+          :class="{
+            'top-nav-inner-student': isStudentUser && isOnStudentRoute,
+            'top-nav-inner-teacher': isTeacherUser && isOnTeacherRoute,
+            'top-nav-inner-admin': isAdminUser && isOnAdminRoute
+          }"
+        >
           <div class="brand-block">
             <h1>学生自学平台</h1>
             <p class="brand-en">AI Self-Learning Platform</p>
@@ -126,6 +133,11 @@ const handleUpdateUser = (patch) => {
           <DiscussionNotificationBell
             v-if="currentUser?.id && ((isStudentUser && isOnStudentRoute) || (isTeacherUser && isOnTeacherRoute))"
             :user-id="currentUser.id"
+          />
+
+          <AdminPermissionRequestBell
+            v-if="currentUser?.id && isAdminUser && isOnAdminRoute"
+            :admin-user-id="currentUser.id"
           />
 
           <div v-if="(isStudentUser && isOnStudentRoute) || (isTeacherUser && isOnTeacherRoute) || (isAdminUser && isOnAdminRoute)" class="top-user-card">

@@ -8,6 +8,7 @@ import java.util.List;
 public record UpsertKnowledgePointRequest(
     String courseName,
     String pointName,
+    Long parentId,
     String parentPoint,
     Integer sortOrder,
     List<Long> prereqIds

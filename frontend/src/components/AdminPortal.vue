@@ -2,17 +2,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  assignTeacherCourses,
-  addCourse,
   bulkImportUsers,
   createAnnouncement,
   deleteAnnouncement,
   fetchAnnouncements,
-  listCoursesByMajor,
-  listTeacherCoursePermissions,
-  listTeacherCoursePermissionRequests,
-  decideTeacherCoursePermissionRequest,
-  deleteCourse,
   listUsers,
   updateUser
 } from '../api/client'
@@ -124,227 +117,6 @@ onMounted(() => {
   void loadAnnouncements()
   void loadAllStudentsAndTeachers()
 })
-
-// =========================
-// 课程权限（给每个老师分配可见课程）
-// =========================
-const allCourses = ref([])
-const selectedTeacherId = ref(null)
-const assignedCourseNames = ref([])
-const coursePermCandidate = ref('')
-const coursePermLoading = ref(false)
-const coursePermError = ref('')
-const coursePermMessage = ref('')
-
-const courseManageName = ref('')
-const courseManageLoading = ref(false)
-const courseManageError = ref('')
-const courseManageMessage = ref('')
-
-// =========================
-// 教师权限申请审批（带理由）
-// =========================
-const permReqLoading = ref(false)
-const permReqError = ref('')
-const pendingTeacherCoursePermissionRequests = ref([])
-
-const permDecisionDialogVisible = ref(false)
-const permDecisionSubmitting = ref(false)
-const permDecisionError = ref('')
-const permDecisionForm = ref({ requestId: null, decision: 'approve', reason: '', courseName: '', teacherUsername: '' })
-
-const loadPendingTeacherCoursePermissionRequests = async () => {
-  permReqLoading.value = true
-  permReqError.value = ''
-  try {
-    const res = await listTeacherCoursePermissionRequests({ adminUserId: props.currentUser.id, status: 'PENDING' })
-    const payload = res && res.data ? res.data : res
-    pendingTeacherCoursePermissionRequests.value = Array.isArray(payload) ? payload : []
-  } catch (e) {
-    permReqError.value = e?.response?.data?.message || e?.message || '加载申请失败。'
-    pendingTeacherCoursePermissionRequests.value = []
-  } finally {
-    permReqLoading.value = false
-  }
-}
-
-const openPermDecisionDialog = (req, decision) => {
-  permDecisionError.value = ''
-  permDecisionForm.value = {
-    requestId: req?.id ?? null,
-    decision,
-    reason: '',
-    courseName: req?.courseName ?? '',
-    teacherUsername: req?.teacherUsername ?? ''
-  }
-  permDecisionDialogVisible.value = true
-}
-
-const submitPermDecision = async () => {
-  permDecisionError.value = ''
-  if (!permDecisionForm.value.requestId) {
-    permDecisionError.value = '申请记录不存在。'
-    return
-  }
-  if (!permDecisionForm.value.reason || !permDecisionForm.value.reason.trim()) {
-    permDecisionError.value = '请填写理由（通过或不通过都需要）。'
-    return
-  }
-
-  permDecisionSubmitting.value = true
-  try {
-    await decideTeacherCoursePermissionRequest({
-      adminUserId: props.currentUser.id,
-      requestId: permDecisionForm.value.requestId,
-      decision: permDecisionForm.value.decision,
-      reason: permDecisionForm.value.reason.trim()
-    })
-
-    permDecisionDialogVisible.value = false
-    await loadPendingTeacherCoursePermissionRequests()
-    // 若正在查看同一位老师，也刷新其已授权课程列表
-    if (selectedTeacherId.value) await loadAssignedCoursesForTeacher(selectedTeacherId.value)
-  } catch (e) {
-    permDecisionError.value = e?.response?.data?.message || e?.message || '操作失败。'
-  } finally {
-    permDecisionSubmitting.value = false
-  }
-}
-
-const loadAllCoursesCatalog = async (force = false) => {
-  if (!force && allCourses.value.length) return
-  try {
-    const res = await listCoursesByMajor()
-    const payload = res && res.data ? res.data : res
-    allCourses.value = Array.isArray(payload) ? payload : []
-  } catch (e) {
-    allCourses.value = []
-  }
-}
-
-const loadAssignedCoursesForTeacher = async (teacherId) => {
-  if (!teacherId) {
-    assignedCourseNames.value = []
-    return
-  }
-  coursePermError.value = ''
-  try {
-    const res = await listTeacherCoursePermissions(teacherId)
-    const payload = res && res.data ? res.data : res
-    assignedCourseNames.value = Array.isArray(payload?.courses) ? payload.courses : []
-  } catch (e) {
-    coursePermError.value = e?.response?.data?.message || e?.message || '加载课程权限失败。'
-    assignedCourseNames.value = []
-  }
-}
-
-const addTeacherCourse = () => {
-  const name = String(coursePermCandidate.value || '').trim()
-  if (!name) return
-  if (!allCourses.value.includes(name)) return
-  if (!assignedCourseNames.value.includes(name)) {
-    assignedCourseNames.value = [...assignedCourseNames.value, name]
-  }
-}
-
-const removeTeacherCourse = (name) => {
-  assignedCourseNames.value = assignedCourseNames.value.filter((c) => c !== name)
-}
-
-const ensureCoursePermissionsPageReady = async () => {
-  if (!usersLoaded.value) {
-    await loadAllStudentsAndTeachers()
-    // 避免在用户列表请求未完成时切到本页导致 teacher 列表为空
-    let guard = 0
-    while (!usersLoaded.value && guard < 20) {
-      await new Promise((r) => setTimeout(r, 100))
-      guard++
-    }
-  }
-  await loadAllCoursesCatalog()
-  if (!selectedTeacherId.value && Array.isArray(teachers.value) && teachers.value.length) {
-    selectedTeacherId.value = teachers.value[0]?.id ?? null
-  }
-  await loadAssignedCoursesForTeacher(selectedTeacherId.value)
-  await loadPendingTeacherCoursePermissionRequests()
-}
-
-watch(
-  () => currentPage.value,
-  (v) => {
-    if (v === 'course-permissions') void ensureCoursePermissionsPageReady()
-  },
-  { immediate: true }
-)
-
-const saveTeacherCoursePermissions = async () => {
-  coursePermLoading.value = true
-  coursePermError.value = ''
-  coursePermMessage.value = ''
-  try {
-    if (!selectedTeacherId.value) {
-      coursePermError.value = '请选择老师。'
-      return
-    }
-    await assignTeacherCourses({
-      adminUserId: props.currentUser.id,
-      teacherId: selectedTeacherId.value,
-      courseNames: assignedCourseNames.value
-    })
-    coursePermMessage.value = '课程权限已更新。'
-  } catch (e) {
-    coursePermError.value = e?.response?.data?.message || e?.message || '保存失败。'
-  } finally {
-    coursePermLoading.value = false
-  }
-}
-
-const refreshAllCoursesCatalog = async () => {
-  await loadAllCoursesCatalog(true)
-}
-
-const handleAddCourse = async () => {
-  courseManageLoading.value = true
-  courseManageError.value = ''
-  courseManageMessage.value = ''
-  try {
-    const name = (courseManageName.value || '').trim()
-    if (!name) {
-      courseManageError.value = '请输入课程名称。'
-      return
-    }
-    await addCourse({ adminUserId: props.currentUser.id, courseName: name })
-    courseManageName.value = ''
-    courseManageMessage.value = '课程已添加。'
-
-    await refreshAllCoursesCatalog()
-    await loadAssignedCoursesForTeacher(selectedTeacherId.value)
-  } catch (e) {
-    courseManageError.value = e?.response?.data?.message || e?.message || '添加课程失败。'
-  } finally {
-    courseManageLoading.value = false
-  }
-}
-
-const handleDeleteCourse = async (courseName) => {
-  if (!courseName) return
-  const ok = confirm(`确定删除课程「${courseName}」吗？该课程的知识点与权限会被一并清理。`)
-  if (!ok) return
-  courseManageLoading.value = true
-  courseManageError.value = ''
-  courseManageMessage.value = ''
-  try {
-    await deleteCourse({ adminUserId: props.currentUser.id, courseName })
-    courseManageMessage.value = '课程已删除。'
-
-    await refreshAllCoursesCatalog()
-    await loadAssignedCoursesForTeacher(selectedTeacherId.value)
-  } catch (e) {
-    courseManageError.value = e?.response?.data?.message || e?.message || '删除课程失败。'
-  } finally {
-    courseManageLoading.value = false
-  }
-}
 
 const submitAnnouncement = async () => {
   annMessage.value = ''
@@ -574,7 +346,7 @@ const handlePasswordSave = async () => {
 </script>
 
 <template>
-    <section v-if="currentPage === 'profile'" class="panel-stack">
+    <section v-if="currentPage === 'profile'" class="panel-stack admin-theme">
       <article class="result-card profile-hero-card">
         <div class="profile-hero-main">
           <div class="profile-avatar">{{ userInitial }}</div>
@@ -622,14 +394,14 @@ const handlePasswordSave = async () => {
           <div class="profile-btn-row">
             <button type="button" class="nav-btn" @click="openEditProfile">编辑资料</button>
             <button type="button" class="nav-btn" @click="changePasswordVisible = true">修改密码</button>
-            <button class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
+            <button type="button" class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
           </div>
           <p v-if="profileMessage" class="ok-text">{{ profileMessage }}</p>
         </article>
       </div>
     </section>
 
-    <section v-else-if="currentPage === 'user-stats'" class="panel-stack">
+    <section v-else-if="currentPage === 'user-stats'" class="panel-stack admin-theme">
       <article class="result-card">
         <h3>用户统计与批量导入</h3>
         <div class="inline-form admin-import-actions" style="margin-top:12px;flex-wrap:wrap;gap:10px;align-items:center">
@@ -786,7 +558,7 @@ const handlePasswordSave = async () => {
       </article>
     </section>
 
-    <section v-else-if="currentPage === 'announcements'" class="panel-stack">
+    <section v-else-if="currentPage === 'announcements'" class="panel-stack admin-theme">
       <article class="result-card">
         <h3>发布公告</h3>
         <p v-if="annError" class="error-text">{{ annError }}</p>
@@ -833,208 +605,6 @@ const handlePasswordSave = async () => {
       </article>
     </section>
 
-    <section v-else-if="currentPage === 'course-permissions'" class="panel-stack">
-      <article class="result-card">
-        <h3>课程权限分配</h3>
-        <p class="panel-subtitle" style="margin-top:10px">
-          选择一个教师后，为其逐个添加允许查看的课程。教师端只会展示这些被授权课程。
-        </p>
-
-        <div class="grid-form single-col" style="margin-top:12px">
-          <label>
-            选择教师
-            <select v-model="selectedTeacherId" class="match-height" @change="loadAssignedCoursesForTeacher(selectedTeacherId)">
-              <option v-for="t in teachers" :key="t.id || t.workId || t.username" :value="t.id">
-                {{ t.username || '-' }}（{{ t.workId || '-' }}）
-              </option>
-            </select>
-          </label>
-
-          <label>
-            允许查看的课程
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px">
-              <select v-model="coursePermCandidate" class="match-height" style="min-width:10em">
-                <option value="">选择课程</option>
-                <option v-for="c in allCourses" :key="c" :value="c">{{ c }}</option>
-              </select>
-              <button type="button" class="match-button" :disabled="!coursePermCandidate" @click="addTeacherCourse">
-                添加
-              </button>
-            </div>
-            <div class="selected-chips" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">
-              <span v-for="c in assignedCourseNames" :key="c" class="chip">
-                {{ c }}
-                <button type="button" class="chip-remove" @click="removeTeacherCourse(c)">×</button>
-              </span>
-            </div>
-          </label>
-        </div>
-
-        <p v-if="coursePermError" class="error-text">{{ coursePermError }}</p>
-        <p v-if="coursePermMessage" class="ok-text">{{ coursePermMessage }}</p>
-
-        <div class="inline-form" style="margin-top:12px">
-          <button type="button" class="match-button" :disabled="coursePermLoading" @click="saveTeacherCoursePermissions">
-            {{ coursePermLoading ? '保存中…' : '保存权限' }}
-          </button>
-        </div>
-      </article>
-
-      <article class="result-card">
-        <h3>当前授权概览</h3>
-        <p v-if="coursePermLoading && selectedTeacherId" class="panel-subtitle">加载中…</p>
-        <p v-else-if="selectedTeacherId && !assignedCourseNames.length" class="panel-subtitle">该教师当前没有可见课程。</p>
-        <div v-else-if="selectedTeacherId && assignedCourseNames.length">
-          <div class="profile-stat-list" style="margin-top:12px">
-            <div>
-              <span>授权课程数</span>
-              <strong>{{ assignedCourseNames.length }}</strong>
-            </div>
-          </div>
-          <ul class="panel-bullets" style="margin-top:10px">
-            <li v-for="c in assignedCourseNames" :key="c">{{ c }}</li>
-          </ul>
-        </div>
-        <p v-else class="panel-subtitle">请选择一名教师。</p>
-      </article>
-
-      <article class="result-card">
-        <h3>课程管理</h3>
-        <p class="panel-subtitle" style="margin-top:10px">
-          添加/删除课程后，相关知识点与教师权限会被同步清理。
-        </p>
-
-        <div class="grid-form single-col" style="margin-top:12px">
-          <label>
-            新增课程名称
-            <input v-model="courseManageName" class="match-height" placeholder="例如：高等数学" />
-          </label>
-        </div>
-
-        <div class="inline-form" style="margin-top:12px">
-          <button type="button" class="match-button" :disabled="courseManageLoading" @click="handleAddCourse">
-            {{ courseManageLoading ? '处理中…' : '添加课程' }}
-          </button>
-        </div>
-
-        <p v-if="courseManageError" class="error-text" style="margin-top:10px">{{ courseManageError }}</p>
-        <p v-if="courseManageMessage" class="ok-text" style="margin-top:10px">{{ courseManageMessage }}</p>
-
-        <div v-if="allCourses.length" style="margin-top:16px;max-height:320px;overflow:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>课程名称</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="c in allCourses" :key="c">
-                <td>{{ c }}</td>
-                <td>
-                  <button
-                    type="button"
-                    class="cancel-button"
-                    :disabled="courseManageLoading"
-                    @click="handleDeleteCourse(c)"
-                  >
-                    删除
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p v-else class="panel-subtitle" style="margin-top:12px">暂无课程。</p>
-      </article>
-
-      <article class="result-card">
-        <h3>教师权限申请（待审批）</h3>
-        <p v-if="permReqLoading && !pendingTeacherCoursePermissionRequests.length" class="panel-subtitle" style="margin-top:10px">
-          加载中…
-        </p>
-        <p v-else-if="permReqError" class="error-text" style="margin-top:10px">{{ permReqError }}</p>
-        <p v-else-if="!pendingTeacherCoursePermissionRequests.length" class="panel-subtitle" style="margin-top:10px">
-          暂无待审批申请。
-        </p>
-        <div v-else style="margin-top:16px;max-height:360px;overflow:auto;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>申请教师</th>
-                <th>课程</th>
-                <th>申请书</th>
-                <th>审批</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in pendingTeacherCoursePermissionRequests" :key="r.id">
-                <td>{{ r.teacherUsername || '-' }}</td>
-                <td>{{ r.courseName }}</td>
-                <td>
-                  <div style="white-space:pre-wrap;max-width:520px;word-break:break-word;">{{ r.requestText }}</div>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    class="match-button"
-                    :disabled="permReqLoading"
-                    @click="openPermDecisionDialog(r, 'approve')"
-                  >
-                    同意
-                  </button>
-                  <button
-                    type="button"
-                    class="cancel-button"
-                    :disabled="permReqLoading"
-                    style="margin-left:8px;"
-                    @click="openPermDecisionDialog(r, 'reject')"
-                  >
-                    不同意
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </article>
-    </section>
-
-    <div v-if="permDecisionDialogVisible" class="modal-mask" @click.self="permDecisionDialogVisible = false">
-      <div class="modal-wrapper">
-        <div class="modal-container">
-          <button class="modal-close" type="button" @click="permDecisionDialogVisible = false" aria-label="关闭">×</button>
-          <h3>审批教师权限申请</h3>
-          <p class="panel-subtitle" style="margin-top:8px">
-            教师：<strong>{{ permDecisionForm.teacherUsername || '-' }}</strong> · 课程：<strong>{{ permDecisionForm.courseName }}</strong>
-          </p>
-
-          <div class="grid-form single-col" style="margin-top:12px">
-            <label>
-              理由（通过或不通过都需要）
-              <textarea v-model="permDecisionForm.reason" rows="5" placeholder="请填写审批理由"></textarea>
-            </label>
-          </div>
-
-          <div style="display:flex;gap:8px;margin-top:12px;">
-            <button
-              type="button"
-              class="match-button"
-              :disabled="permDecisionSubmitting"
-              @click="submitPermDecision"
-            >
-              {{ permDecisionForm.decision === 'approve' ? (permDecisionSubmitting ? '处理中…' : '同意并授予') : (permDecisionSubmitting ? '处理中…' : '不同意并保留拒绝') }}
-            </button>
-            <button type="button" class="cancel-button" :disabled="permDecisionSubmitting" @click="permDecisionDialogVisible = false" style="margin-left:8px;">
-              取消
-            </button>
-          </div>
-
-          <p v-if="permDecisionError" class="error-text" style="margin-top:10px">{{ permDecisionError }}</p>
-        </div>
-      </div>
-    </div>
-
     <div v-if="editProfileVisible" class="modal-mask" @click.self="editProfileVisible = false">
       <div class="modal-wrapper">
         <div class="modal-container">
@@ -1067,10 +637,10 @@ const handlePasswordSave = async () => {
         <div class="modal-container">
           <button class="modal-close" type="button" @click="changePasswordVisible = false" aria-label="关闭">×</button>
           <h3>修改密码</h3>
-          <div style="margin-top:12px">
+          <div class="ui-mt-12">
             <AccountSecurityPanel ref="passwordPanelRef" :current-user="currentUser" :embedded="true" />
           </div>
-          <div style="display:flex;gap:8px;margin-top:12px">
+          <div class="ui-actions-row">
             <button type="button" class="match-button match-height" @click="handlePasswordSave">保存</button>
             <button type="button" class="cancel-button match-height" @click="changePasswordVisible = false">取消</button>
           </div>

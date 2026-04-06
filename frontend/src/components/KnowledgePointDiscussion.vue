@@ -197,8 +197,8 @@ const onToggleLike = async (postId) => {
     </div>
     <div v-else-if="!disabled && !currentUserId" class="panel-subtitle">请登录后发帖。</div>
 
-    <p v-if="loading" class="panel-subtitle" style="margin-top: 12px">加载中…</p>
-    <div v-else-if="!threads.length" class="panel-subtitle" style="margin-top: 12px">暂无帖子，来发第一条吧。</div>
+    <p v-if="loading" class="panel-subtitle ui-mt-12">加载中…</p>
+    <div v-else-if="!threads.length" class="panel-subtitle ui-mt-12">暂无帖子，来发第一条吧。</div>
     <div v-else class="kp-disc-threads">
       <KnowledgePointDiscussionNode
         v-for="p in threads"

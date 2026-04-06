@@ -28,14 +28,14 @@ const handleSave = async () => {
   <div v-if="visible" class="modal-mask" @click.self="emit('close')">
     <div class="modal-wrapper">
       <div class="modal-container">
-        <button class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
+        <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
         <h3>修改密码</h3>
-        <div style="margin-top:12px;">
+        <div class="ui-mt-12">
           <AccountSecurityPanel ref="passwordPanelRef" :current-user="currentUser" :embedded="true" />
         </div>
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <button class="match-height match-button" :disabled="saving" @click="handleSave">保存</button>
-          <button class="match-height cancel-button" @click="emit('close')">取消</button>
+        <div class="ui-actions-row">
+          <button type="button" class="match-height match-button" :disabled="saving" @click="handleSave">保存</button>
+          <button type="button" class="match-height cancel-button" @click="emit('close')">取消</button>
         </div>
       </div>
     </div>

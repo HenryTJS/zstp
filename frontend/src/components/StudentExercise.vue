@@ -68,7 +68,7 @@ const goCourses = () => {
         <p v-else-if="teacherKpTestError" class="error-text">{{ teacherKpTestError }}</p>
 
         <template v-else-if="!teacherKpTestSubmitted">
-          <div v-for="(q, idx) in teacherKpTest.questions" :key="'tk-' + idx" style="margin-top: 14px">
+          <div v-for="(q, idx) in teacherKpTest.questions" :key="'tk-' + idx" class="ui-mt-14">
             <h4>第 {{ idx + 1 }} 题（{{ q.question_type }} · {{ q.fullScore ?? 5 }} 分）</h4>
             <p v-if="q.focusPointName" class="panel-subtitle">考查知识点：{{ q.focusPointName }}</p>
             <div class="latex-block" v-html="renderLatexText(q.question)"></div>
@@ -93,8 +93,8 @@ const goCourses = () => {
             </div>
           </div>
 
-          <div class="inline-form" style="margin-top: 12px">
-            <button type="button" :disabled="teacherKpTestSubmitting" @click="submitTeacherKpTest">
+          <div class="inline-form ui-mt-12">
+            <button type="button" class="match-button" :disabled="teacherKpTestSubmitting" @click="submitTeacherKpTest">
               {{ teacherKpTestSubmitting ? '提交中…' : '提交教师测试' }}
             </button>
           </div>
@@ -104,11 +104,7 @@ const goCourses = () => {
           <p>
             <strong>总分：</strong>{{ teacherKpTestResult.totalScore }} / {{ teacherKpTestResult.fullScore }}
           </p>
-          <div
-            v-for="(q, idx) in teacherKpTest.questions"
-            :key="'tkr-' + idx"
-            style="margin-top: 14px"
-          >
+          <div v-for="(q, idx) in teacherKpTest.questions" :key="'tkr-' + idx" class="ui-mt-14">
             <h4>第 {{ idx + 1 }} 题</h4>
             <p v-if="q.focusPointName" class="panel-subtitle">考查知识点：{{ q.focusPointName }}</p>
             <p class="panel-subtitle">
@@ -133,16 +129,16 @@ const goCourses = () => {
 
       <article class="result-card">
         <h3>出题与做题</h3>
-        <p class="panel-subtitle" style="margin-top:6px">
+        <p class="panel-subtitle ui-mt-6">
           当前知识点：<strong>{{ selectedKnowledgePoint || '-' }}</strong>
         </p>
 
-        <p v-if="!selectedKnowledgePoint" class="panel-subtitle" style="margin-top:12px">
+        <p v-if="!selectedKnowledgePoint" class="panel-subtitle ui-mt-12">
           请先回到「知识图谱」点击一个知识点，再在此进行测试。
         </p>
 
         <div v-else>
-          <div class="grid-form two-col" style="margin-top:12px">
+          <div class="grid-form two-col ui-mt-12">
             <label>
               难度
               <select v-model="questionForm.difficulty" class="match-height">
@@ -153,12 +149,12 @@ const goCourses = () => {
             </label>
             <label>
               规则
-              <div class="panel-subtitle" style="margin-top:6px">测试：固定 5 题（单选）</div>
+              <div class="panel-subtitle ui-mt-6">测试：固定 5 题（单选）</div>
             </label>
           </div>
 
-          <div class="inline-form" style="margin-top:12px;">
-            <button :disabled="testLoading" @click="generateTest">
+          <div class="inline-form ui-mt-12">
+            <button type="button" class="match-button" :disabled="testLoading" @click="generateTest">
               {{ testLoading ? '生成中...' : '开始测试' }}
             </button>
           </div>
@@ -174,7 +170,7 @@ const goCourses = () => {
         <h3>测试题目</h3>
         <p class="panel-subtitle">作答完成后点击“提交并查看成绩与解析”。</p>
 
-        <div v-for="(q, idx) in testQuestions" :key="idx" style="margin-top:14px;">
+        <div v-for="(q, idx) in testQuestions" :key="idx" class="ui-mt-14">
           <h4>第 {{ idx + 1 }} 题（{{ q.question_type }}）</h4>
           <div class="latex-block" v-html="renderLatexText(q.question)"></div>
 
@@ -221,8 +217,10 @@ const goCourses = () => {
           </div>
         </div>
 
-        <div class="inline-form" style="margin-top:12px;">
-          <button :disabled="testLoading" @click="submitTest">提交并查看成绩与解析</button>
+        <div class="inline-form ui-mt-12">
+          <button type="button" class="match-button" :disabled="testLoading" @click="submitTest">
+            提交并查看成绩与解析
+          </button>
         </div>
         <p v-if="testError" class="error-text">{{ testError }}</p>
       </article>
@@ -234,7 +232,7 @@ const goCourses = () => {
         <h3>成绩与解析</h3>
         <p><strong>总分：</strong>{{ testResult.totalScore }} / {{ testResult.fullScore }}</p>
 
-        <div v-for="(q, idx) in testQuestions" :key="idx" style="margin-top:14px;">
+        <div v-for="(q, idx) in testQuestions" :key="idx" class="ui-mt-14">
           <h4>第 {{ idx + 1 }} 题</h4>
           <p class="panel-subtitle">
             得分：{{ (testResult.perQuestionScores[idx]?.score) || 0 }} / 10
@@ -247,7 +245,7 @@ const goCourses = () => {
             <strong>正确答案：</strong><span v-html="renderLatexText(resolveAnswerText(q, q.answer))"></span>
           </p>
 
-          <div style="margin-top:10px;">
+          <div class="ui-mt-10">
             <h4>解析</h4>
             <div class="latex-block" v-html="renderLatexText(q.explanation)"></div>
           </div>

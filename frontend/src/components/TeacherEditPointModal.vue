@@ -15,7 +15,7 @@ const emit = defineEmits(['close', 'save'])
   <div v-if="visible" class="modal-mask" @click.self="emit('close')">
     <div class="modal-wrapper">
       <div class="modal-container">
-        <button class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
+        <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
         <h3>{{ editingPoint ? '编辑知识点' : '新增知识点' }}</h3>
         <div class="grid-form single-col">
           <label>
@@ -24,29 +24,29 @@ const emit = defineEmits(['close', 'save'])
           </label>
           <label>
             父节点（层级关系）
-            <select v-model="editPointForm.parentPoint" class="match-height">
-              <option value="">无</option>
+            <select v-model="editPointForm.parentId" class="match-height">
+              <option :value="null">无</option>
               <option
                 v-for="point in points"
                 :key="point.id"
-                :value="point.pointName"
+                :value="point.id"
                 :disabled="isCourseRootPoint(point)"
               >
                 {{
-                  getPointNumber(point.pointName)
-                    ? getPointNumber(point.pointName) + ' · '
+                  getPointNumber(point)
+                    ? getPointNumber(point) + ' · '
                     : ''
                 }}{{
                   point.pointName
-                }}
+                }}{{ point.id != null ? ` (#${point.id})` : '' }}
               </option>
             </select>
           </label>
         </div>
         <div class="inline-form">
           <div class="button-row">
-            <button class="match-height match-button" @click="emit('save')">保存</button>
-            <button class="match-height cancel-button" @click="emit('close')" style="margin-left:8px;">取消</button>
+            <button type="button" class="match-height match-button" @click="emit('save')">保存</button>
+            <button type="button" class="match-height cancel-button" @click="emit('close')">取消</button>
           </div>
         </div>
       </div>

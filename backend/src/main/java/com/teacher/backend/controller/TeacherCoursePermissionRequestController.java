@@ -40,6 +40,11 @@ public class TeacherCoursePermissionRequestController {
     private static final String DECISION_APPROVE = "approve";
     private static final String DECISION_REJECT = "reject";
 
+    /** 申请已有目录中的课程权限 */
+    private static final String KIND_JOIN_EXISTING = "JOIN_EXISTING";
+    /** 申请新增一门课程（通过后写入目录并授权） */
+    private static final String KIND_CREATE_NEW = "CREATE_NEW";
+
     private final UserRepository userRepository;
     private final TeacherCoursePermissionRepository permissionRepository;
     private final TeacherCoursePermissionRequestRepository requestRepository;
@@ -117,6 +122,29 @@ public class TeacherCoursePermissionRequestController {
 
         String normalizedCourseName = courseCatalogService.normalizeCourseName(rawCourseName);
 
+        String rawKind = request.requestKind();
+        String requestKind = KIND_JOIN_EXISTING;
+        if (StringUtils.hasText(rawKind)) {
+            String k = rawKind.trim().toUpperCase();
+            if (KIND_CREATE_NEW.equals(k)) {
+                requestKind = KIND_CREATE_NEW;
+            } else if (KIND_JOIN_EXISTING.equals(k)) {
+                requestKind = KIND_JOIN_EXISTING;
+            } else {
+                return error(HttpStatus.BAD_REQUEST, "requestKind must be JOIN_EXISTING or CREATE_NEW");
+            }
+        }
+
+        if (KIND_JOIN_EXISTING.equals(requestKind)) {
+            if (!courseCatalogService.isCourseInCatalog(normalizedCourseName)) {
+                return error(HttpStatus.BAD_REQUEST, "该课程不在课程目录中；若需新增课程，请使用「申请新课程」并选择对应类型。");
+            }
+        } else {
+            if (courseCatalogService.isCourseInCatalog(normalizedCourseName)) {
+                return error(HttpStatus.CONFLICT, "该课程已在目录中，请在课程广场找到该课程后使用「加入课程」申请权限。");
+            }
+        }
+
         boolean alreadyHasPermission = permissionRepository.existsByTeacherIdAndCourseName(teacherId, normalizedCourseName);
         if (alreadyHasPermission) {
             return error(HttpStatus.CONFLICT, "teacher already has permission for this course");
@@ -134,6 +162,7 @@ public class TeacherCoursePermissionRequestController {
         TeacherCoursePermissionRequest row = new TeacherCoursePermissionRequest();
         row.setTeacherId(teacherId);
         row.setCourseName(normalizedCourseName);
+        row.setRequestKind(requestKind);
         row.setRequestText(requestText.trim());
         row.setStatus(STATUS_PENDING);
         row.setAdminUserId(null);
@@ -192,6 +221,8 @@ public class TeacherCoursePermissionRequestController {
         row.setDecidedAt(LocalDateTime.now());
 
         if (STATUS_APPROVED.equals(nextStatus)) {
+            // 必须与申请/权限表中的 course_name 一致写入目录（不能用 addCourse+normalize，子串/别名会把新课名归并到旧课导致不插入）
+            courseCatalogService.ensureCatalogContainsExactCourseName(row.getCourseName());
             // 若已存在则不重复写（幂等）
             boolean exists = permissionRepository.existsByTeacherIdAndCourseName(row.getTeacherId(), row.getCourseName());
             if (!exists) {
@@ -228,6 +259,8 @@ public class TeacherCoursePermissionRequestController {
             m.put("id", r.getId());
             m.put("teacherId", r.getTeacherId());
             m.put("courseName", r.getCourseName());
+            String rk = r.getRequestKind();
+            m.put("requestKind", (rk == null || rk.isBlank()) ? KIND_JOIN_EXISTING : rk);
             m.put("requestText", r.getRequestText());
             m.put("status", r.getStatus());
             m.put("createdAt", r.getCreatedAt());

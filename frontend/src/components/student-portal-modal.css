@@ -3,8 +3,28 @@
 .modal-wrapper{max-width:680px;width:92%;}
 .modal-container{background:#fff;padding:20px;border-radius:8px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.12)}
 .modal-close{position:absolute;right:10px;top:8px;border:none;background:transparent;font-size:20px;line-height:1;color:#666;cursor:pointer}
-.match-height{height:36px;padding:6px 8px;box-sizing:border-box}
-.match-button{padding:6px 12px;border:1px solid #2d6cdf;background:#2d6cdf;color:#fff;border-radius:4px;cursor:pointer}
-.cancel-button{background:#fff;border:1px solid #ccc;color:#333;border-radius:4px;padding:6px 12px;cursor:pointer}
+.match-height{height:var(--ui-input-h);padding:7px 10px;box-sizing:border-box}
+.match-button{
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  line-height:1.2;
+  border:1px solid var(--ui-primary-border);
+  background:var(--ui-primary);
+  color:#fff;
+  border-radius:var(--ui-btn-radius);
+  cursor:pointer
+}
+.cancel-button{
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  line-height:1.2;
+  background:var(--ui-secondary-bg);
+  border:1px solid var(--ui-secondary-border);
+  color:var(--ui-secondary-text);
+  border-radius:var(--ui-btn-radius);
+  cursor:pointer
+}
 .grid-form.single-col{display:grid;grid-template-columns:1fr;gap:12px}
 .grid-form.single-col label{display:flex;flex-direction:column}

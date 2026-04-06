@@ -1,5 +1,330 @@
 @import './student-portal-modal.css';
 
+/* Step 1: LMS-like shell layout for student portal */
+.student-lms-shell{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:16px;
+}
+
+.student-lms-main{
+  min-width:0;
+}
+
+.student-lms-header{
+  background:linear-gradient(120deg,#0f5da8,#2679ce);
+  color:#fff;
+  border-radius:14px;
+  padding:16px 18px;
+  margin-bottom:14px;
+  box-shadow:0 4px 16px rgba(29,88,158,.22);
+}
+
+.student-lms-header h2{
+  margin:0;
+  font-size:20px;
+}
+
+.student-lms-header .panel-subtitle{
+  color:rgba(255,255,255,.86);
+  margin:6px 0 0;
+}
+
+.student-lms-content{
+  display:grid;
+  gap:14px;
+}
+
+
+/* --- Step 2 visual polish --- */
+.student-lms-main .result-card{
+  border:1px solid var(--ui-card-border);
+  border-radius:var(--ui-card-radius);
+  box-shadow:0 2px 8px rgba(15,23,42,.04);
+  padding:var(--ui-card-padding);
+  background:#fff;
+}
+
+.student-lms-main .result-card h3{
+  color:#1f3f5f;
+  font-size:17px;
+  margin-bottom:8px;
+}
+
+.student-lms-main .panel-subtitle{
+  color:#5f738c;
+}
+
+.student-lms-main .data-table{
+  border-collapse:separate;
+  border-spacing:0;
+  border:1px solid var(--ui-table-border);
+  border-radius:var(--ui-table-radius);
+  overflow:hidden;
+}
+
+.student-lms-main .data-table th{
+  background:#f2f7fd;
+  color:#2a4e72;
+  font-weight:700;
+  border-bottom:1px solid var(--ui-table-border);
+}
+
+.student-lms-main .data-table td{
+  border-bottom:1px solid #edf2f8;
+}
+
+.student-lms-main .data-table tr:last-child td{
+  border-bottom:none;
+}
+
+.student-lms-main .match-button{
+  border-radius:var(--ui-btn-radius);
+  background:var(--ui-primary);
+  border:1px solid var(--ui-primary-border);
+  box-shadow:none;
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  font-weight:700;
+  letter-spacing:.2px;
+}
+
+.student-lms-main .match-button:hover{
+  background:var(--ui-primary-hover);
+}
+
+.student-lms-main .cancel-button,
+.student-lms-main .nav-btn{
+  border-radius:var(--ui-btn-radius);
+  border:1px solid var(--ui-secondary-border);
+  background:var(--ui-secondary-bg);
+  color:var(--ui-secondary-text);
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  font-weight:600;
+}
+
+.student-lms-main .cancel-button:hover,
+.student-lms-main .nav-btn:hover{
+  background:var(--ui-secondary-hover-bg);
+  border-color:var(--ui-secondary-hover-border);
+}
+
+.student-lms-main input,
+.student-lms-main select,
+.student-lms-main textarea{
+  border:1px solid #cdddf0;
+  border-radius:10px;
+  background:#fff;
+  min-height:36px;
+}
+
+.student-lms-main input:focus,
+.student-lms-main select:focus,
+.student-lms-main textarea:focus{
+  outline:none;
+  border-color:#4c8fd7;
+  box-shadow:0 0 0 3px rgba(62,129,204,.15);
+}
+
+.student-lms-main .announcement-read-card{
+  border:1px solid #d9e7f6;
+  border-radius:var(--ui-table-radius);
+  background:#fcfeff;
+}
+
+/* 课程页：卡片更像教务系统入口块 */
+.student-lms-main .course-market-head{
+  padding-bottom:8px;
+  border-bottom:1px solid #e7eef8;
+}
+
+.student-lms-main .course-market-card{
+  border:1px solid #d5e1ee;
+  border-radius:var(--ui-card-radius);
+  background:#fff;
+  box-shadow:0 2px 8px rgba(16,52,90,.05);
+  min-height:216px;
+  transition:transform .18s ease, box-shadow .18s ease;
+}
+
+.student-lms-main .course-market-card:hover{
+  transform:translateY(-1px);
+  box-shadow:0 4px 10px rgba(16,52,90,.08);
+}
+
+.student-lms-main .course-market-card h4{
+  color:#284766;
+  font-size:15px;
+  margin-bottom:8px;
+}
+
+.student-lms-main .course-card-teachers{
+  color:#5f738c;
+}
+
+.student-lms-main .course-market-card-actions{
+  width:100%;
+  align-self:stretch;
+}
+
+.student-lms-main .course-market-card-actions .match-button,
+.student-lms-main .course-market-card-actions .nav-btn,
+.student-lms-main .course-market-card-actions .cancel-button{
+  min-width:110px;
+}
+
+.student-lms-main .profile-stat-list div{
+  border:1px solid #dce9f7;
+  border-radius:10px;
+  background:#f8fbff !important;
+}
+
+.student-lms-main .profile-stat-list strong{
+  color:#123f6b !important;
+}
+
+/* 图谱页：图谱画布卡与右侧信息卡更清晰 */
+.student-lms-main .panel-title{
+  color:#284766;
+}
+
+.student-lms-main [style*="height: 420px"]{
+  border:1px solid #d8e7f7;
+  border-radius:12px;
+  background:#fbfdff;
+}
+
+.student-lms-main .inline-form{
+  gap:10px;
+}
+
+.student-node-action-row{
+  margin-bottom:10px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  align-items:center;
+}
+
+.student-lms-main .panel-stack{
+  gap:14px;
+}
+
+/* 学生端按钮统一：包括未加 class 的原生 button */
+.student-lms-shell button{
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  border-radius:var(--ui-btn-radius);
+  font-size:var(--ui-btn-font-size);
+  line-height:1.2;
+  font-weight:600;
+}
+
+.student-lms-shell button:disabled{
+  opacity:.62;
+  cursor:not-allowed;
+}
+
+/* 默认按钮（无特定 class）按主按钮风格处理，避免残留旧样式 */
+.student-lms-shell button:not(.cancel-button):not(.nav-btn):not(.danger-btn):not(.course-page-num){
+  background:var(--ui-primary);
+  border:1px solid var(--ui-primary-border);
+  color:#fff;
+}
+
+.student-lms-shell button:not(.cancel-button):not(.nav-btn):not(.danger-btn):not(.course-page-num):hover:not(:disabled){
+  background:var(--ui-primary-hover);
+}
+
+/* Admin portal visual sync (AdminPortal imports this stylesheet) */
+.admin-theme .result-card{
+  border:1px solid var(--ui-card-border);
+  border-radius:var(--ui-card-radius);
+  box-shadow:0 2px 8px rgba(15,23,42,.04);
+  padding:var(--ui-card-padding);
+}
+
+.admin-theme .result-card h3{
+  color:#1f3f5f;
+}
+
+.admin-theme .data-table{
+  border-collapse:separate;
+  border-spacing:0;
+  border:1px solid var(--ui-table-border);
+  border-radius:var(--ui-table-radius);
+  overflow:hidden;
+}
+
+.admin-theme .data-table th{
+  background:#f2f7fd;
+  color:#2a4e72;
+  font-weight:700;
+  border-bottom:1px solid var(--ui-table-border);
+}
+
+.admin-theme .data-table td{
+  border-bottom:1px solid #edf2f8;
+}
+
+.admin-theme .data-table tr:last-child td{ border-bottom:none; }
+
+.admin-theme .match-button{
+  border-radius:var(--ui-btn-radius);
+  background:var(--ui-primary);
+  border:1px solid var(--ui-primary-border);
+  color:#fff;
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  font-weight:700;
+}
+
+.admin-theme .match-button:hover{ background:var(--ui-primary-hover); }
+
+.admin-theme .cancel-button,
+.admin-theme .nav-btn{
+  border-radius:var(--ui-btn-radius);
+  border:1px solid var(--ui-secondary-border);
+  background:var(--ui-secondary-bg);
+  color:var(--ui-secondary-text);
+  min-height:var(--ui-btn-h);
+  padding:var(--ui-btn-padding);
+  font-size:var(--ui-btn-font-size);
+  font-weight:600;
+}
+
+.admin-theme .cancel-button:hover,
+.admin-theme .nav-btn:hover{
+  background:var(--ui-secondary-hover-bg);
+  border-color:var(--ui-secondary-hover-border);
+}
+
+.student-lms-main .relevance-meter-wrap{
+  padding:8px 10px;
+  border:1px solid #dbe7f6;
+  border-radius:10px;
+  background:#f8fbff;
+}
+
+.student-lms-main .wrong-book-card{
+  border:1px solid #d9e8f8;
+  border-radius:12px;
+}
+
+.spc-row-actions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+@media (max-width:1024px){
+  .student-lms-shell{grid-template-columns:1fr;}
+}
+
 .selected-chips .chip{background:#f1f5f9;padding:6px 8px;border-radius:16px;display:inline-flex;align-items:center;gap:6px}
 .selected-chips .chip-remove{border:none;background:transparent;cursor:pointer;color:#666;font-size:14px}
 .small-input{width:64px}
@@ -79,6 +404,13 @@
   flex-wrap:wrap;
 }
 
+.course-market-head-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+}
+
 .course-market-grid{
   margin-top:12px;
   display:grid;
@@ -140,15 +472,15 @@
 
 .course-page-num{
   min-width:26px;
-  height:26px;
-  padding:0 4px;
+  min-height:26px;
+  padding:0 6px;
   border:none;
   background:transparent;
   font-size:13px;
   line-height:1;
   color:#64748b;
   cursor:pointer;
-  border-radius:4px;
+  border-radius:6px;
 }
 
 .course-page-num:hover{

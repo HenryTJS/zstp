@@ -39,7 +39,7 @@ const doLogin = async () => {
             密码
             <input v-model="loginForm.password" type="password" />
           </label>
-          <button :disabled="loading" @click="doLogin">登录</button>
+          <button type="button" class="match-button" :disabled="loading" @click="doLogin">登录</button>
         </div>
       </article>
     </div>

@@ -323,8 +323,8 @@ const graphClickedNodeCategory = ref(null)
 const graphChartRef = ref(null)
 let graphChart = null
 
-// 测试：从课程名/章节名/节开始（不在第 3 级叶子上直接测试）
-const practiceTestAllowed = computed(() => graphClickedNodeCategory.value !== 3)
+// 放开限制：任意层级知识点都可直接进入测试
+const practiceTestAllowed = computed(() => true)
 
 // 学习建议：不再只依赖 knowledge-graph 返回的固定建议，而是对“当前知识点”实时调用 API 生成
 const learningSuggestions = ref([])
@@ -446,7 +446,6 @@ const clearCascadeAfterAdd = () => {
 // 从知识图谱点击节点后：进入“固定规则”的测试
 const enterFixedTestFromGraph = () => {
   if (!selectedKnowledgePoint.value) return
-  if (!practiceTestAllowed.value) return
   // 固定：5题、仅单选
   testCounts.value.singleChoiceCount = 5
   testCounts.value.multiChoiceCount = 0
@@ -1197,7 +1196,9 @@ const enterCourseFromMarket = async (courseName) => {
   if (!course || !joinedCourses.value.includes(course)) return
   previewUnjoinedCourse.value = ''
   learningContextCourse.value = course
+  selectedCourse.value = course
   currentPage.value = 'graph'
+  await router.push({ path: '/student/graph', query: { course } })
   await persistStudentState(false)
   await nextTick()
   await loadGraph()
@@ -1210,6 +1211,7 @@ const viewCourseWithoutJoin = async (courseName) => {
   learningContextCourse.value = ''
   previewUnjoinedCourse.value = course
   currentPage.value = 'graph'
+  await router.push({ path: '/student/graph', query: { course } })
   await nextTick()
   await loadGraph()
 }
@@ -1592,6 +1594,39 @@ const applyDiscussionDeepLinkFromRoute = async () => {
   }
   await nextTick()
   await loadGraph()
+}
+
+const applyCourseQueryFromRoute = async () => {
+  const rawCourse = route.query.course
+  if (!rawCourse) return false
+  const raw = Array.isArray(rawCourse) ? rawCourse[0] : rawCourse
+  const courseName = String(raw || '').trim()
+  if (!courseName) return false
+
+  // 已加入课程：直接进入学习上下文
+  if (joinedCourses.value.includes(courseName)) {
+    previewUnjoinedCourse.value = ''
+    learningContextCourse.value = courseName
+    selectedCourse.value = courseName
+    currentPage.value = 'graph'
+    pendingGraphPointLabel.value = ''
+    await nextTick()
+    await loadGraph()
+    return true
+  }
+
+  // 未加入课程：仅预览图谱
+  if (availableCourses.value.includes(courseName)) {
+    learningContextCourse.value = ''
+    previewUnjoinedCourse.value = courseName
+    currentPage.value = 'graph'
+    pendingGraphPointLabel.value = ''
+    await nextTick()
+    await loadGraph()
+    return true
+  }
+
+  return false
 }
 
 const loadGraph = async () => {
@@ -1992,11 +2027,24 @@ watch(
   }
 )
 
+watch(
+  () => route.query.course,
+  () => {
+    if (!stateHydrated.value) return
+    void applyCourseQueryFromRoute()
+  }
+)
+
 onMounted(async () => {
   await loadStudentState()
-  const hadDiscussionDeepLink = Boolean(route.query.dc && route.query.dp)
-  await applyDiscussionDeepLinkFromRoute()
-  if (!hadDiscussionDeepLink && (canStudyCurrentCourse.value || previewUnjoinedCourse.value)) loadGraph()
+  const hadCourseQuery = Boolean(route.query.course)
+  const appliedCourseQuery = hadCourseQuery ? await applyCourseQueryFromRoute() : false
+  const shouldApplyDiscussionDeepLink = !appliedCourseQuery && Boolean(route.query.dc && route.query.dp)
+  if (shouldApplyDiscussionDeepLink) {
+    await applyDiscussionDeepLinkFromRoute()
+  } else if (canStudyCurrentCourse.value || previewUnjoinedCourse.value) {
+    loadGraph()
+  }
   await loadSavedExams()
   window.addEventListener('resize', handleWindowResize)
 })
@@ -2050,6 +2098,9 @@ const confirmDeleteExam = async (id) => {
 </script>
 
 <template>
+  <div class="student-lms-shell">
+    <section class="student-lms-main">
+      <div class="student-lms-content">
     <StudentHome
       v-if="currentPage === 'home'"
       :user-initial="userInitial"
@@ -2111,7 +2162,9 @@ const confirmDeleteExam = async (id) => {
         <article class="result-card">
           <h3 class="panel-title">{{ graphData.title }}</h3>
           <div class="inline-form">
-            <button :disabled="graphLoading" @click="loadGraph">{{ graphLoading ? '加载中...' : '刷新图谱' }}</button>
+            <button type="button" class="match-button" :disabled="graphLoading" @click="loadGraph">
+              {{ graphLoading ? '加载中...' : '刷新图谱' }}
+            </button>
           </div>
           <p v-if="graphError" class="error-text">{{ graphError }}</p>
           <div ref="graphChartRef" style="width: 100%; height: 420px;"></div>
@@ -2119,7 +2172,7 @@ const confirmDeleteExam = async (id) => {
 
         <article v-if="selectedNode && !isUnjoinedPreviewMode" class="result-card">
           <h3>{{ selectedNode.label }}</h3>
-          <div style="margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <div class="student-node-action-row">
             <button
               type="button"
               class="match-button"
@@ -2128,13 +2181,7 @@ const confirmDeleteExam = async (id) => {
             >
               进入测试
             </button>
-            <span v-if="!practiceTestAllowed" class="panel-subtitle" style="margin-left:4px;">
-              测试需从课程名、章节名或节进入；当前为更深层级知识点时，请回到上一级。
-            </span>
           </div>
-          <p class="panel-subtitle" style="margin-bottom:10px">
-            自定义组卷请使用顶部导航「组卷」，可任选课程与每题的题型、知识点。
-          </p>
           <div style="margin-bottom:14px">
             <h3>掌握程度</h3>
             <p v-if="graphNodeMastery.noData" class="panel-subtitle">
@@ -2156,7 +2203,7 @@ const confirmDeleteExam = async (id) => {
               <li v-if="!learningSuggestions.length" class="panel-subtitle">暂无建议。</li>
             </ul>
           </div>
-          <div style="margin-top:12px;">
+          <div class="ui-mt-12">
             <h3>专业关联度分析</h3>
             <p v-if="relevanceLoading" class="panel-subtitle">正在分析该知识点与当前专业的关联度...</p>
             <p v-else-if="relevanceError" class="error-text">{{ relevanceError }}</p>
@@ -2188,7 +2235,7 @@ const confirmDeleteExam = async (id) => {
               <p v-if="!majorRelevance.scoreLevel" class="panel-subtitle">请选择已设置专业后查看分析结果。</p>
             </div>
           </div>
-          <div style="margin-top:12px;">
+          <div class="ui-mt-12">
             <h3>相关资料</h3>
             <div v-if="!materials.length" class="panel-subtitle">当前知识点暂无资料。</div>
             <table v-else class="data-table">
@@ -2310,6 +2357,9 @@ const confirmDeleteExam = async (id) => {
       :current-user="currentUser"
       @close="changePasswordVisible = false"
     />
+      </div>
+    </section>
+  </div>
     <AiAssistantWidget role="student" :current-user="currentUser" />
 </template>
 
