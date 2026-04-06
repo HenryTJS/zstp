@@ -22,7 +22,10 @@ const props = defineProps({
   onDeleteSelectedPoints: { type: Function, required: true },
   onOpenEditPoint: { type: Function, required: true },
   onOpenUploadModal: { type: Function, required: true },
-  onOpenViewMaterials: { type: Function, required: true }
+  onOpenViewMaterials: { type: Function, required: true },
+  onOpenDiscussion: { type: Function, required: true },
+  onOpenPointTest: { type: Function, required: true },
+  canPublishPointTest: { type: Function, required: true }
 })
 
 const emit = defineEmits(['update:selectedPointIds'])
@@ -101,6 +104,18 @@ const onDeleteSelected = () => props.onDeleteSelectedPoints()
               <button v-if="!isCourseRootPoint(item)" type="button" @click="onOpenEditPoint(item)">编辑</button>
               <button @click="onOpenUploadModal(item)" style="margin-left:8px;">上传资料</button>
               <button @click="onOpenViewMaterials(item)" style="margin-left:8px;">查看资料</button>
+              <button type="button" class="cancel-button" style="margin-left:8px;" @click="onOpenDiscussion(item)">
+                交流区
+              </button>
+              <button
+                v-if="canPublishPointTest(item)"
+                type="button"
+                class="cancel-button"
+                style="margin-left:8px;"
+                @click="onOpenPointTest(item)"
+              >
+                {{ isCourseRootPoint(item) ? '发布期末测试' : '发布测试' }}
+              </button>
             </td>
           </tr>
         </tbody>

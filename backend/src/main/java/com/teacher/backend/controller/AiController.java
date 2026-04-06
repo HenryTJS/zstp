@@ -3,8 +3,6 @@ import java.util.Map;
 import java.util.List;
 import com.teacher.backend.dto.GenerateQuestionRequest;
 import com.teacher.backend.dto.GenerateQuestionsRequest;
-import com.teacher.backend.dto.GenerateTestRequest;
-import com.teacher.backend.dto.GenerateExamRequest;
 import com.teacher.backend.dto.AgentChatRequest;
 import com.teacher.backend.dto.GradeAnswerRequest;
 import com.teacher.backend.dto.KnowledgeGraphRequest;
@@ -110,37 +108,6 @@ public class AiController {
             request == null ? null : request.studentAnswerImageName(),
             request == null || request.fullScore() == null ? 10 : request.fullScore()
         );
-    }
-
-    @PostMapping("/generate-test")
-    public Map<String, Object> generateTest(@RequestBody(required = false) GenerateTestRequest request) {
-        log.info("Hit /api/generate-test, topic={}, gradeLevel={}, count={}",
-            request == null ? null : request.topic(),
-            request == null ? null : request.gradeLevel(),
-            request == null ? null : request.count());
-        return aiService.generateTest(
-            request == null ? null : request.topic(),
-            request == null ? null : request.gradeLevel(),
-            request == null || request.count() == null ? 8 : request.count()
-        );
-    }
-
-    @PostMapping("/generate-exam")
-    public Map<String, Object> generateExam(@RequestBody(required = false) GenerateExamRequest request) {
-        log.info("Hit /api/generate-exam, points={}, choice={}, fill={}, essay={}",
-            request == null ? null : request.knowledgePoints(),
-            request == null ? null : request.choiceCount(),
-            request == null ? null : request.fillCount(),
-            request == null ? null : request.essayCount());
-        Map<String, Object> result = aiService.generateExam(
-            request == null ? List.of() : request.knowledgePoints(),
-            request == null || request.choiceCount() == null ? 0 : request.choiceCount(),
-            request == null || request.fillCount() == null ? 0 : request.fillCount(),
-            request == null || request.essayCount() == null ? 0 : request.essayCount(),
-            request == null ? "试卷" : (request.title() == null ? "试卷" : request.title()),
-            request == null || request.durationMinutes() == null ? 60 : request.durationMinutes()
-        );
-        return result;
     }
 
     @PostMapping("/exams/save")

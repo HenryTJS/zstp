@@ -79,191 +79,6 @@ public class AiService {
         }
     }
 
-
-    public Map<String, Object> generateExam(List<String> knowledgePoints, int choiceCount, int fillCount, int essayCount, String title, int durationMinutes) {
-        List<Map<String, Object>> questions = new ArrayList<>();
-        int qid = 1;
-
-        // For each requested question, call generateQuestion to get a real question (AI or fallback)
-        try {
-            // 选择题
-            for (int i = 0; i < Math.max(0, choiceCount); i++) {
-                String kp = pickOrDefault(knowledgePoints, i);
-                Map<String, Object> q = generateQuestion(
-                    kp + " (第" + (i + 1) + "题)",
-                    "中等",
-                    "选择题",
-                    null
-                );
-                // 如果返回的题目缺少题干（仅有选项），尝试重试一次以提高命中率
-                int _attempt = 0;
-                while ((_attempt < 2) && (q == null || !StringUtils.hasText(String.valueOf(q.getOrDefault("question", q.get("stem")))))) {
-                    try {
-                        _attempt++;
-                        q = generateQuestion(kp, "中等", "选择题", null);
-                    } catch (Exception _e) {
-                        break;
-                    }
-                }
-                // ensure q is non-null before normalization
-                if (q == null) q = new LinkedHashMap<>();
-                // normalize keys: ensure both 'question' and 'stem' exist, and 'analysis' mirrors 'explanation'
-                try {
-                    Object qQuestion = q.getOrDefault("question", q.get("stem"));
-                    if (qQuestion != null) {
-                        q.put("question", qQuestion);
-                        q.put("stem", qQuestion);
-                    }
-                    Object expl = q.getOrDefault("explanation", q.get("analysis"));
-                    if (expl != null) {
-                        q.put("explanation", expl);
-                        q.put("analysis", expl);
-                    }
-                } catch (Exception e) {
-                    // ignore normalization errors
-                }
-                q.putIfAbsent("id", "Q" + (qid++));
-                q.putIfAbsent("type", "选择题");
-                q.putIfAbsent("knowledge_points", List.of(kp));
-                q.putIfAbsent("score", 5);
-                questions.add(q);
-            }
-            // 填空题
-            for (int i = 0; i < Math.max(0, fillCount); i++) {
-                String kp = pickOrDefault(knowledgePoints, i + choiceCount);
-                Map<String, Object> q = generateQuestion(kp + " (第" + (i + choiceCount + 1) + "题)", "中等", "填空题", null);
-                int _attempt2 = 0;
-                while ((_attempt2 < 2) && (q == null || !StringUtils.hasText(String.valueOf(q.getOrDefault("question", q.get("stem")))))) {
-                    try {
-                        _attempt2++;
-                        q = generateQuestion(kp, "中等", "填空题", null);
-                    } catch (Exception _e) {
-                        break;
-                    }
-                }
-                if (q == null) q = new LinkedHashMap<>();
-                try {
-                    Object qQuestion = q.getOrDefault("question", q.get("stem"));
-                    if (qQuestion != null) {
-                        q.put("question", qQuestion);
-                        q.put("stem", qQuestion);
-                    }
-                    Object expl = q.getOrDefault("explanation", q.get("analysis"));
-                    if (expl != null) {
-                        q.put("explanation", expl);
-                        q.put("analysis", expl);
-                    }
-                } catch (Exception e) {}
-                q.putIfAbsent("id", "Q" + (qid++));
-                q.putIfAbsent("type", "填空题");
-                q.putIfAbsent("knowledge_points", List.of(kp));
-                q.putIfAbsent("score", 4);
-                questions.add(q);
-            }
-            // 解答题
-            for (int i = 0; i < Math.max(0, essayCount); i++) {
-                String kp = pickOrDefault(knowledgePoints, i + choiceCount + fillCount);
-                Map<String, Object> q = generateQuestion(kp + " (第" + (i + choiceCount + fillCount + 1) + "题)", "中等", "解答题", null);
-                int _attempt3 = 0;
-                while ((_attempt3 < 2) && (q == null || !StringUtils.hasText(String.valueOf(q.getOrDefault("question", q.get("stem")))))) {
-                    try {
-                        _attempt3++;
-                        q = generateQuestion(kp, "中等", "解答题", null);
-                    } catch (Exception _e) {
-                        break;
-                    }
-                }
-                if (q == null) q = new LinkedHashMap<>();
-                try {
-                    Object qQuestion = q.getOrDefault("question", q.get("stem"));
-                    if (qQuestion != null) {
-                        q.put("question", qQuestion);
-                        q.put("stem", qQuestion);
-                    }
-                    Object expl = q.getOrDefault("explanation", q.get("analysis"));
-                    if (expl != null) {
-                        q.put("explanation", expl);
-                        q.put("analysis", expl);
-                    }
-                } catch (Exception e) {}
-                q.putIfAbsent("id", "Q" + (qid++));
-                q.putIfAbsent("type", "解答题");
-                q.putIfAbsent("knowledge_points", List.of(kp));
-                q.putIfAbsent("score", 10);
-                questions.add(q);
-            }
-        } catch (Exception ex) {
-            log.warn("generateExam: failed to generate questions via API, falling back to templates: {}", ex.getMessage());
-            // fallback: if AI generation fails, add simple placeholders
-            if (questions.isEmpty()) {
-                Map<String, Object> q = new LinkedHashMap<>();
-                q.put("id", "Q1");
-                q.put("type", "解答题");
-                q.put("stem", "示例题干：请填写答案。");
-                q.put("answer", "参考答案");
-                q.put("analysis", "解析示例");
-                q.put("knowledge_points", List.of("综合知识点"));
-                q.put("score", 10);
-                questions.add(q);
-            }
-        }
-
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("title", title == null || title.isBlank() ? "试卷" : title);
-        response.put("duration_minutes", durationMinutes);
-        response.put("questions", questions);
-
-        // persist generated exam record (questions JSON only) and generate Markdown immediately
-        try {
-            if (this.generatedExamRepository != null) {
-                com.teacher.backend.entity.GeneratedExam ge = new com.teacher.backend.entity.GeneratedExam();
-                ge.setTitle(title == null || title.isBlank() ? "试卷" : title);
-                ge.setDurationMinutes(durationMinutes);
-                try {
-                    ge.setQuestionsJson(objectMapper.writeValueAsString(questions));
-                } catch (Exception ex) {
-                    ge.setQuestionsJson("[]");
-                }
-                ge.setPdfOriginal(null);
-                ge.setPdfAnswer(null);
-                // attempt to generate Markdown immediately (may fail silently)
-                try {
-                    byte[] mdOrig = createMarkdownFromQuestions(ge.getTitle(), questions, false);
-                    if (mdOrig != null) ge.setMdOriginal(new String(mdOrig, java.nio.charset.StandardCharsets.UTF_8));
-                } catch (Exception ex) {
-                    log.debug("createMarkdownFromQuestions(original) failed: {}", ex.getMessage());
-                }
-                try {
-                    byte[] mdAns = createMarkdownFromQuestions(ge.getTitle(), questions, true);
-                    if (mdAns != null) ge.setMdAnswer(new String(mdAns, java.nio.charset.StandardCharsets.UTF_8));
-                } catch (Exception ex) {
-                    log.debug("createMarkdownFromQuestions(answer) failed: {}", ex.getMessage());
-                }
-                com.teacher.backend.entity.GeneratedExam saved = this.generatedExamRepository.save(ge);
-                // Repository save is expected to return a non-null entity; use its values directly.
-                response.put("examId", saved.getId());
-                response.put("mdOriginalPresent", saved.getMdOriginal() != null);
-                response.put("mdAnswerPresent", saved.getMdAnswer() != null);
-            } else {
-                log.debug("GeneratedExamRepository not available; skipping persist.");
-                response.put("examId", null);
-            }
-        } catch (Exception ex) {
-            log.warn("Failed to persist GeneratedExam: {}", ex.getMessage());
-            response.put("examId", null);
-        }
-
-        return response;
-    }
-
-
-
-    private String pickOrDefault(List<String> list, int idx) {
-        if (list == null || list.isEmpty()) return "综合知识点";
-        if (idx < 0) idx = 0;
-        return list.get(idx % list.size());
-    }
-
     /**
      * Generate and persist Markdown (original and answer) for an existing GeneratedExam.
      * This method creates Markdown text for paper and answer versions.
@@ -367,7 +182,7 @@ public class AiService {
             m.put("options", options instanceof List<?> ? options : List.of());
             m.put("answer", answer == null ? "" : String.valueOf(answer));
             m.put("analysis", explanation == null ? "" : String.valueOf(explanation));
-            m.put("score", guessScoreByType(qt));
+            m.put("score", resolvePerQuestionScore(q, qt));
             // keep knowledge_points if present (not used by markdown but useful for debugging)
             if (q.containsKey("knowledge_points")) {
                 m.put("knowledge_points", q.get("knowledge_points"));
@@ -412,6 +227,35 @@ public class AiService {
             log.warn("saveExamFromQuestions: persist failed: {}", ex.getMessage());
             response.put("message", "persist-failed");
             return response;
+        }
+    }
+
+    /**
+     * 前端可在题目上带 fullScore（1–100）；否则按题型猜默认分值（兼容旧组卷/测试）。
+     */
+    private int resolvePerQuestionScore(Map<String, Object> q, String questionType) {
+        int fallback = guessScoreByType(questionType);
+        if (q == null) {
+            return fallback;
+        }
+        Object fs = q.get("fullScore");
+        if (fs == null) {
+            fs = q.get("perScore");
+        }
+        if (fs == null) {
+            return fallback;
+        }
+        try {
+            double raw;
+            if (fs instanceof Number number) {
+                raw = number.doubleValue();
+            } else {
+                raw = Double.parseDouble(String.valueOf(fs).trim());
+            }
+            int v = (int) Math.round(raw);
+            return Math.max(1, Math.min(100, v));
+        } catch (Exception ex) {
+            return fallback;
         }
     }
 
@@ -911,43 +755,6 @@ public class AiService {
         response.put("weaknesses", correct ? List.of() : List.of("最终答案与标准答案不一致"));
         response.put("revised_answer", "标准答案：" + safe(referenceAnswer));
         response.put("summary", correct ? questionType + "自动判分：满分。" : questionType + "自动判分：0分。");
-        return response;
-    }
-
-    public Map<String, Object> generateTest(String topic, String gradeLevel, int count) {
-        String resolvedTopic = StringUtils.hasText(topic) ? topic.trim() : "函数";
-        String resolvedGradeLevel = StringUtils.hasText(gradeLevel) ? gradeLevel.trim() : "高一";
-        int resolvedCount = Math.max(3, Math.min(20, count));
-
-        if (aiEnabled()) {
-            String systemPrompt = "你是教学组卷助手。输出 JSON:{title:string, duration_minutes:number, questions:[{id,type,stem,options,answer,analysis,score}],teaching_objectives:[string]}。questions 数量必须等于 count。";
-            String userPrompt = "主题: " + resolvedTopic + "\n年级: " + resolvedGradeLevel + "\n数量: " + resolvedCount;
-            try {
-                return chatJson(systemPrompt, userPrompt);
-            } catch (Exception exception) {
-                log.warn("AI call failed in generateTest, fallback to local template: {}", exception.getMessage());
-            }
-        }
-
-        List<Map<String, Object>> questions = new ArrayList<>();
-        for (int index = 1; index <= resolvedCount; index++) {
-            boolean objective = index % 2 == 1;
-            Map<String, Object> question = new LinkedHashMap<>();
-            question.put("id", "Q" + index);
-            question.put("type", objective ? "选择题" : "简答题");
-            question.put("stem", "[" + resolvedTopic + "] 第" + index + "题：说明该知识点在课堂情境中的应用。");
-            question.put("options", objective ? List.of("A. 定义", "B. 方法", "C. 误区", "D. 迁移") : List.of());
-            question.put("answer", objective ? "B" : "回答需覆盖定义、步骤、示例。");
-            question.put("analysis", "考查学生对知识点迁移与表达能力。");
-            question.put("score", 5);
-            questions.add(question);
-        }
-
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("title", resolvedGradeLevel + resolvedTopic + "单元测试");
-        response.put("duration_minutes", 40);
-        response.put("questions", questions);
-        response.put("teaching_objectives", List.of("理解核心概念", "能够迁移应用", "能用规范语言解释解题过程"));
         return response;
     }
 

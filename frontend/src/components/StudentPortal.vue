@@ -1,12 +1,14 @@
 <script setup>
 import StudentGraph from './StudentGraph.vue'
 import StudentExercise from './StudentExercise.vue'
+import StudentPaperComposer from './StudentPaperComposer.vue'
 import StudentReview from './StudentReview.vue'
 import StudentAnnouncements from './StudentAnnouncements.vue'
 import StudentCourses from './StudentCourses.vue'
 import StudentHome from './StudentHome.vue'
 import StudentEditProfileModal from './StudentEditProfileModal.vue'
 import StudentChangePasswordModal from './StudentChangePasswordModal.vue'
+import KnowledgePointDiscussion from './KnowledgePointDiscussion.vue'
 const props = defineProps({
   currentUser: {
     type: Object,
@@ -18,6 +20,13 @@ const props = defineProps({
   }
 })
 const emit = defineEmits(['navigate', 'logout', 'update-user'])
+
+const route = useRoute()
+const router = useRouter()
+/** 通知深链：选中图谱中的知识点标签 */
+const pendingGraphPointLabel = ref('')
+/** 通知深链：交流区滚动锚点帖子 id */
+const discussionFocusPostId = ref(null)
 
 const profileForm = ref({ username: '', email: '', role: '' })
 const practiceAnswer = ref('')
@@ -63,6 +72,7 @@ const relevanceLabel = computed(() => {
 import * as echarts from 'echarts'
 import katex from 'katex'
 import { Teleport, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AiAssistantWidget from './AiAssistantWidget.vue'
 import {
   fetchGrading,
@@ -74,7 +84,6 @@ import {
   fetchMaterialsByKnowledgePoint,
   updateUser,
   listKnowledgePoints,
-  fetchExam,
   fetchExams,
   deleteExam,
   fetchLearningSuggestions,
@@ -82,7 +91,9 @@ import {
   saveExam,
   fetchAnnouncements,
   listCoursesByMajor,
-  listTeachersForCourses
+  listTeachersForCourses,
+  getKnowledgePointPublishedTestForStudent,
+  submitKnowledgePointPublishedTest
 } from '../api/client'
 const materials = ref([])
 const selectedKnowledgePoint = ref('')
@@ -314,8 +325,6 @@ let graphChart = null
 
 // 测试：从课程名/章节名/节开始（不在第 3 级叶子上直接测试）
 const practiceTestAllowed = computed(() => graphClickedNodeCategory.value !== 3)
-// 组卷：仅支持课程名与章节名
-const practiceBatchAllowed = computed(() => graphClickedNodeCategory.value === 0 || graphClickedNodeCategory.value === 1)
 
 // 学习建议：不再只依赖 knowledge-graph 返回的固定建议，而是对“当前知识点”实时调用 API 生成
 const learningSuggestions = ref([])
@@ -339,23 +348,7 @@ const questionForm = ref({
   questionType: '解答题'
 })
 
-// 批量组卷表单
-const examForm = ref({
-  selectedPoints: [],
-  singleChoiceCount: 0,
-  multiChoiceCount: 0,
-  judgeCount: 0,
-  fillCount: 0,
-  shortCount: 0,
-  essayCount: 0,
-  title: ''
-})
-const examLoading = ref(false)
-const examResult = ref(null)
 const examError = ref('')
-
-// 出题模式：single = 单题，batch = 组卷
-const examMode = ref('single')
 
 const savedExams = ref([])
 
@@ -450,42 +443,11 @@ const clearCascadeAfterAdd = () => {
   // 仅添加 0 级（课程名）时一～三级本就为空，无需额外处理
 }
 
-// 切换“单题/组卷”时重置对应预览状态，避免串台
-watch(examMode, (mode) => {
-  if (mode === 'batch') {
-    generatedQuestion.value = null
-    questionError.value = ''
-    questionLoading.value = false
-    practiceResult.value = null
-    practiceError.value = ''
-    practiceAnswer.value = ''
-    selectedChoiceAnswer.value = ''
-    answerImageFile.value = null
-    answerImageBase64.value = ''
-
-    // 测试模式状态清空
-    testQuestions.value = []
-    testAnswers.value = []
-    testSubmitted.value = false
-    testResult.value = null
-    testError.value = ''
-    testLoading.value = false
-  } else {
-    examResult.value = null
-    examError.value = ''
-    examLoading.value = false
-
-    // 组卷模式状态清空（保留测试输入）
-    savedExams.value = savedExams.value || []
-  }
-})
-
-// 从知识图谱点击节点后：进入“固定规则”的测试/组卷
+// 从知识图谱点击节点后：进入“固定规则”的测试
 const enterFixedTestFromGraph = () => {
   if (!selectedKnowledgePoint.value) return
   if (!practiceTestAllowed.value) return
   // 固定：5题、仅单选
-  examMode.value = 'single'
   testCounts.value.singleChoiceCount = 5
   testCounts.value.multiChoiceCount = 0
   testCounts.value.judgeCount = 0
@@ -494,28 +456,6 @@ const enterFixedTestFromGraph = () => {
   if (!Array.isArray(testForm.value.selectedPoints)) testForm.value.selectedPoints = []
   testForm.value.selectedPoints = [String(selectedKnowledgePoint.value).trim()]
 
-  currentPage.value = 'exercise'
-}
-
-const enterFixedBatchFromGraph = () => {
-  if (!selectedKnowledgePoint.value) return
-  if (!practiceBatchAllowed.value) return
-
-  // 固定：10题，3单选+3填空+4解答
-  examMode.value = 'batch'
-  examForm.value.singleChoiceCount = 3
-  examForm.value.multiChoiceCount = 0
-  examForm.value.judgeCount = 0
-  examForm.value.fillCount = 3
-  examForm.value.shortCount = 0
-  examForm.value.essayCount = 4
-
-  if (!Array.isArray(examForm.value.selectedPoints)) examForm.value.selectedPoints = []
-  examForm.value.selectedPoints = [String(selectedKnowledgePoint.value).trim()]
-
-  // 切到新组卷时清空旧结果
-  examResult.value = null
-  examError.value = ''
   currentPage.value = 'exercise'
 }
 
@@ -557,6 +497,137 @@ const testLoading = ref(false)
 const testError = ref('')
 const testSubmitted = ref(false)
 const testResult = ref(null) // { totalScore, fullScore, perQuestionScores: [...] }
+
+/** 教师发布知识点测试（练习页） */
+const teacherKpTest = ref(null)
+const teacherKpTestLoading = ref(false)
+const teacherKpTestError = ref('')
+const teacherKpTestAnswers = ref([])
+const teacherKpTestSubmitted = ref(false)
+const teacherKpTestResult = ref(null)
+const teacherKpTestSubmitting = ref(false)
+
+const loadTeacherKpTest = async () => {
+  teacherKpTest.value = null
+  teacherKpTestError.value = ''
+  teacherKpTestSubmitted.value = false
+  teacherKpTestResult.value = null
+  teacherKpTestAnswers.value = []
+  if (!canStudyCurrentCourse.value || !learningContextCourse.value || !selectedKnowledgePoint.value || !props.currentUser?.id) {
+    return
+  }
+  teacherKpTestLoading.value = true
+  try {
+    const { data } = await getKnowledgePointPublishedTestForStudent({
+      courseName: learningContextCourse.value,
+      pointName: selectedKnowledgePoint.value,
+      userId: props.currentUser.id
+    })
+    const t = data?.test
+    if (t && Array.isArray(t.questions) && t.questions.length) {
+      teacherKpTest.value = t
+      teacherKpTestAnswers.value = t.questions.map(() => '')
+    } else {
+      teacherKpTest.value = null
+    }
+  } catch (e) {
+    teacherKpTestError.value = e?.response?.data?.message || ''
+    teacherKpTest.value = null
+  } finally {
+    teacherKpTestLoading.value = false
+  }
+}
+
+watch(
+  () => [currentPage.value, learningContextCourse.value, selectedKnowledgePoint.value, props.currentUser?.id],
+  () => {
+    if (currentPage.value !== 'exercise') {
+      teacherKpTest.value = null
+      teacherKpTestSubmitted.value = false
+      teacherKpTestResult.value = null
+      teacherKpTestAnswers.value = []
+      teacherKpTestError.value = ''
+      return
+    }
+    void loadTeacherKpTest()
+  }
+)
+
+const submitTeacherKpTest = async () => {
+  teacherKpTestError.value = ''
+  if (!teacherKpTest.value?.id || !props.currentUser?.id) return
+  const qs = teacherKpTest.value.questions || []
+  if (!Array.isArray(teacherKpTestAnswers.value) || teacherKpTestAnswers.value.length !== qs.length) {
+    teacherKpTestError.value = '作答数据异常。'
+    return
+  }
+  for (let i = 0; i < qs.length; i++) {
+    if (!String(teacherKpTestAnswers.value[i] ?? '').trim()) {
+      teacherKpTestError.value = `请完成第 ${i + 1} 题。`
+      return
+    }
+  }
+  teacherKpTestSubmitting.value = true
+  try {
+    const { data } = await submitKnowledgePointPublishedTest({
+      userId: props.currentUser.id,
+      testId: teacherKpTest.value.id,
+      answers: teacherKpTestAnswers.value.map((a) => String(a ?? '').trim())
+    })
+    teacherKpTestResult.value = data
+    teacherKpTestSubmitted.value = true
+
+    const now = new Date()
+    const nowDisplay = now.toLocaleString()
+    const nowIso = now.toISOString()
+    const per = Array.isArray(data?.perQuestion) ? data.perQuestion : []
+    const kpAnchor = String(selectedKnowledgePoint.value || '').trim()
+    const newLR = []
+    const newWB = []
+    for (let i = 0; i < per.length; i++) {
+      const row = per[i]
+      const score = Number(row.score ?? 0)
+      const full = Number(row.full_score ?? 0)
+      const kpRow =
+        String(qs[i]?.focusPointName || '').trim() ||
+        String(row.focusPointName || '').trim() ||
+        kpAnchor ||
+        '未标注'
+      newLR.push({
+        id: `lr-tt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+        time: nowDisplay,
+        major: selectedMajorDisplay.value || selectedMajor.value || '',
+        course: learningContextCourse.value || '',
+        knowledgePoint: kpRow,
+        score,
+        fullScore: full
+      })
+      if (score < full) {
+        newWB.push({
+          id: `wb-tt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+          major: selectedMajorDisplay.value || selectedMajor.value || '',
+          course: learningContextCourse.value || '',
+          knowledgePoint: kpRow,
+          question: row.question || '',
+          explanation: row.explanation || '',
+          myAnswer: String(teacherKpTestAnswers.value[i] ?? ''),
+          answer: '',
+          score,
+          fullScore: full,
+          collectedAt: nowDisplay,
+          collectedAtIso: nowIso
+        })
+      }
+    }
+    learningRecords.value = [...newLR, ...(learningRecords.value || [])]
+    wrongBook.value = [...newWB, ...(wrongBook.value || [])]
+    schedulePersistStudentState()
+  } catch (e) {
+    teacherKpTestError.value = e?.response?.data?.message || '提交失败'
+  } finally {
+    teacherKpTestSubmitting.value = false
+  }
+}
 
 const testTotalCount = computed(() =>
   Number(testCounts.value.singleChoiceCount || 0) +
@@ -623,19 +694,6 @@ const unescapeNewlinesSafe = (t) => {
   // 保留原始转义字符（如 \n、\t），避免影响 Markdown 内容语义
   if (t === null || t === undefined) return t
   return String(t)
-}
-
-const normalizeExamQuestionType = (label) => {
-  // UI: 单选/多选/判断/填空/简答/解答
-  // 后端 AiService 支持：选择题/多选题/判断题/填空题/解答题（简答题会被归一化为解答题）
-  const s = String(label || '').trim()
-  if (s === '单选') return '选择题'
-  if (s === '多选') return '多选题'
-  if (s === '判断') return '判断题'
-  if (s === '填空') return '填空题'
-  if (s === '简答') return '简答题'
-  if (s === '解答') return '解答题'
-  return '解答题'
 }
 
 const generateTest = async () => {
@@ -1168,12 +1226,7 @@ const clearExerciseUiAfterQuittingCurrentCourse = () => {
   answerImageBase64.value = ''
   resetTestState()
   testLoading.value = false
-  examResult.value = null
   examError.value = ''
-  examLoading.value = false
-  if (examForm.value && typeof examForm.value === 'object') {
-    examForm.value.selectedPoints = []
-  }
   if (testForm.value && typeof testForm.value === 'object') {
     testForm.value.selectedPoints = []
   }
@@ -1287,135 +1340,6 @@ const renderLatexText = (text) => {
     })
     .join('')
 }
-
-const generateExam = async () => {
-  examError.value = ''
-  examResult.value = null
-
-  // 组卷固定规则：仅支持「课程名」「章节名」
-  if (examMode.value === 'batch' && !practiceBatchAllowed.value) {
-    examError.value = '组卷仅支持「课程名」和「章节名」。请回到知识图谱重新选择。'
-    return
-  }
-
-  const total =
-    Number(examForm.value.singleChoiceCount || 0) +
-    Number(examForm.value.multiChoiceCount || 0) +
-    Number(examForm.value.judgeCount || 0) +
-    Number(examForm.value.fillCount || 0) +
-    Number(examForm.value.shortCount || 0) +
-    Number(examForm.value.essayCount || 0)
-  if (total < 1 || total > 10) {
-    examError.value = '请确保总题数在 1 到 10 之间。'
-    return
-  }
-  if (!Array.isArray(examForm.value.selectedPoints) || !examForm.value.selectedPoints.length) {
-    examError.value = '请至少选择一个知识点。'
-    return
-  }
-  examLoading.value = true
-  try {
-    // 组卷与测试一致：按 2 题一批并发请求，最多 5 次请求（=> 最多 10 题）
-    const typeList = []
-    for (let i = 0; i < Number(examForm.value.singleChoiceCount || 0); i++) typeList.push('单选')
-    for (let i = 0; i < Number(examForm.value.multiChoiceCount || 0); i++) typeList.push('多选')
-    for (let i = 0; i < Number(examForm.value.judgeCount || 0); i++) typeList.push('判断')
-    for (let i = 0; i < Number(examForm.value.fillCount || 0); i++) typeList.push('填空')
-    for (let i = 0; i < Number(examForm.value.shortCount || 0); i++) typeList.push('简答')
-    for (let i = 0; i < Number(examForm.value.essayCount || 0); i++) typeList.push('解答')
-
-    const topics = Array.isArray(examForm.value.selectedPoints) ? examForm.value.selectedPoints : []
-    const diff = questionForm.value.difficulty || '中等'
-    const major = selectedMajor.value
-
-    const specs = typeList.map((t, idx) => {
-      const kp = topics[idx % topics.length]
-      const topic = composeTopic(kp) + `（卷${idx + 1}）`
-      return { topic, difficulty: diff, questionType: normalizeExamQuestionType(t), major }
-    })
-
-    const chunk2 = (arr) => {
-      const out = []
-      for (let i = 0; i < arr.length; i += 2) out.push(arr.slice(i, i + 2))
-      return out
-    }
-
-    const batches = chunk2(specs).slice(0, 5)
-    if (batches.length > 5) {
-      examError.value = '生成请求次数超限（最多 5 次），请减少题目数量。'
-      return
-    }
-
-    const responses = await Promise.all(batches.map((items) => fetchQuestions({ items })))
-    const results = []
-    for (const resp of responses) {
-      const data = resp && resp.data ? resp.data : resp
-      const qs = Array.isArray(data?.questions) ? data.questions : []
-      for (const q of qs) results.push(q)
-    }
-
-    const trimmed = results.slice(0, 10)
-    examResult.value = (trimmed || []).map((q) => {
-      if (!q) return q
-      return {
-        ...q,
-        question: unescapeNewlinesSafe(q.question),
-        explanation: unescapeNewlinesSafe(q.explanation),
-        answer: unescapeNewlinesSafe(q.answer),
-        options: Array.isArray(q.options) ? q.options.map(unescapeNewlinesSafe) : [],
-        knowledge_points: Array.isArray(q.knowledge_points) ? q.knowledge_points.map(unescapeNewlinesSafe) : []
-      }
-    })
-  } catch (err) {
-    examError.value = err?.response?.data?.message || '题卷生成失败。'
-  } finally {
-    examLoading.value = false
-  }
-}
-
-const persistGeneratedExam = async () => {
-  examError.value = ''
-  if (!Array.isArray(examResult.value) || !examResult.value.length) {
-    examError.value = '请先生成试卷题目。'
-    return
-  }
-  try {
-    const payload = {
-      title: examForm.value.title || (learningContextCourse.value + ' 试卷'),
-      questions: examResult.value
-    }
-    const resp = await saveExam(payload)
-    const data = resp && resp.data ? resp.data : resp
-    await loadSavedExams()
-    if (data?.examId) {
-      // 保存成功后直接下载（若后端已生成 Markdown）
-      if (data.mdOriginalPresent) {
-        try { downloadExam(data.examId, 'md_paper') } catch (e) {}
-      }
-      if (data.mdAnswerPresent) {
-        try { downloadExam(data.examId, 'md_answer') } catch (e) {}
-      }
-    }
-  } catch (err) {
-    examError.value = err?.response?.data?.message || '保存试卷失败，请稍后重试。'
-  }
-}
-
-const addExamPoint = () => {
-  const p = pickCascadePoint()
-  if (!p) return
-  if (!Array.isArray(examForm.value.selectedPoints)) examForm.value.selectedPoints = []
-  if (!examForm.value.selectedPoints.includes(p)) {
-    examForm.value.selectedPoints.push(p)
-  }
-  clearCascadeAfterAdd()
-}
-const removeExamPoint = (p) => {
-  if (!Array.isArray(examForm.value.selectedPoints)) return
-  examForm.value.selectedPoints = examForm.value.selectedPoints.filter((x) => x !== p)
-}
-
-// 三级联动后不再需要 normalizeMajor
 
 const loadStudentState = async () => {
   hydrateJoiningCourses = true
@@ -1627,6 +1551,49 @@ const loadMaterialsByKnowledgePoint = async (pointName) => {
   }
 }
 
+const applyDiscussionDeepLinkFromRoute = async () => {
+  const rawDc = route.query.dc
+  const rawDp = route.query.dp
+  if (!rawDc || !rawDp) return
+  const dc = Array.isArray(rawDc) ? rawDc[0] : rawDc
+  const dp = Array.isArray(rawDp) ? rawDp[0] : rawDp
+  const courseName = String(dc || '').trim()
+  const pointName = String(dp || '').trim()
+  const rawPost = route.query.dpost
+  const dpostRaw = Array.isArray(rawPost) ? rawPost[0] : rawPost
+  const postNum = dpostRaw != null && dpostRaw !== '' ? Number(dpostRaw) : NaN
+
+  const nextQ = { ...route.query }
+  delete nextQ.dc
+  delete nextQ.dp
+  delete nextQ.dpost
+
+  if (!joinedCourses.value.includes(courseName)) {
+    discussionFocusPostId.value = null
+    pendingGraphPointLabel.value = ''
+    try {
+      await router.replace({ path: route.path, query: nextQ })
+    } catch {
+      /* ignore */
+    }
+    return
+  }
+
+  discussionFocusPostId.value = Number.isFinite(postNum) ? postNum : null
+  pendingGraphPointLabel.value = pointName
+  previewUnjoinedCourse.value = ''
+  learningContextCourse.value = courseName
+  selectedCourse.value = courseName
+  currentPage.value = 'graph'
+  try {
+    await router.replace({ path: route.path, query: nextQ })
+  } catch {
+    /* ignore */
+  }
+  await nextTick()
+  await loadGraph()
+}
+
 const loadGraph = async () => {
   const topic = learningContextCourse.value || previewUnjoinedCourse.value
   const emptyGraph = () => {
@@ -1665,14 +1632,14 @@ const loadGraph = async () => {
     }
     learningSuggestions.value = Array.isArray(graphData.value.suggestions) ? graphData.value.suggestions : []
 
-    selectedNodeId.value = 'root'
     const rootNode = graphData.value.nodes.find((n) => n.id === 'root')
-    if (rootNode?.label) {
-      selectedKnowledgePoint.value = rootNode.label
+    const pendingLabel = pendingGraphPointLabel.value
+    const applyRootSelection = async (label) => {
+      selectedKnowledgePoint.value = label
       if (currentPage.value === 'graph' && !isPreview) {
-        await loadMaterialsByKnowledgePoint(rootNode.label)
-        void loadLearningSuggestionsFor(rootNode.label)
-        void loadMajorRelevanceFor(rootNode.label)
+        await loadMaterialsByKnowledgePoint(label)
+        void loadLearningSuggestionsFor(label)
+        void loadMajorRelevanceFor(label)
       } else if (isPreview) {
         materials.value = []
         learningSuggestions.value = []
@@ -1683,6 +1650,25 @@ const loadGraph = async () => {
           lowRelevanceReason: ''
         }
       }
+    }
+    if (pendingLabel) {
+      pendingGraphPointLabel.value = ''
+      const target = graphData.value.nodes.find(
+        (n) => String(n.label || '').trim() === String(pendingLabel).trim()
+      )
+      if (target?.label) {
+        selectedNodeId.value = target.id
+        graphClickedNodeCategory.value = typeof target.category === 'number' ? target.category : null
+        await applyRootSelection(target.label)
+      } else if (rootNode?.label) {
+        selectedNodeId.value = 'root'
+        graphClickedNodeCategory.value = typeof rootNode.category === 'number' ? rootNode.category : null
+        await applyRootSelection(rootNode.label)
+      }
+    } else if (rootNode?.label) {
+      selectedNodeId.value = 'root'
+      graphClickedNodeCategory.value = typeof rootNode.category === 'number' ? rootNode.category : null
+      await applyRootSelection(rootNode.label)
     }
     await nextTick()
     renderGraphChart()
@@ -1999,9 +1985,18 @@ watch(
   }
 )
 
+watch(
+  () => route.query.dc,
+  () => {
+    void applyDiscussionDeepLinkFromRoute()
+  }
+)
+
 onMounted(async () => {
   await loadStudentState()
-  if (canStudyCurrentCourse.value || previewUnjoinedCourse.value) loadGraph()
+  const hadDiscussionDeepLink = Boolean(route.query.dc && route.query.dp)
+  await applyDiscussionDeepLinkFromRoute()
+  if (!hadDiscussionDeepLink && (canStudyCurrentCourse.value || previewUnjoinedCourse.value)) loadGraph()
   await loadSavedExams()
   window.addEventListener('resize', handleWindowResize)
 })
@@ -2109,11 +2104,9 @@ const confirmDeleteExam = async (id) => {
         :relevance-label="relevanceLabel"
         :materials="materials"
         :practice-test-allowed="practiceTestAllowed"
-        :practice-batch-allowed="practiceBatchAllowed"
         @go-courses="currentPage = 'courses'"
         @refresh-graph="loadGraph"
         @enter-test="enterFixedTestFromGraph"
-        @enter-exam="enterFixedBatchFromGraph"
       >
         <article class="result-card">
           <h3 class="panel-title">{{ graphData.title }}</h3>
@@ -2133,32 +2126,15 @@ const confirmDeleteExam = async (id) => {
               :disabled="!practiceTestAllowed"
               @click="enterFixedTestFromGraph"
             >
-              进入测试（固定 5 题，单选）
+              进入测试
             </button>
-            <button
-              type="button"
-              class="cancel-button"
-              :disabled="!practiceBatchAllowed"
-              @click="enterFixedBatchFromGraph"
-            >
-              进入组卷（固定 10 题，3单选3填空4解答）
-            </button>
-            <span
-              v-if="!practiceTestAllowed || !practiceBatchAllowed"
-              class="panel-subtitle"
-              style="margin-left:4px;"
-            >
-              <template v-if="!practiceTestAllowed && practiceBatchAllowed">
-                测试从 2 级知识点（节）开始，3 级知识点请回到上一级。
-              </template>
-              <template v-else-if="!practiceBatchAllowed && practiceTestAllowed">
-                组卷仅支持「课程名」和「章节名」。
-              </template>
-              <template v-else>
-                测试从 2 级知识点（节）开始，组卷仅支持课程名和章节名。
-              </template>
+            <span v-if="!practiceTestAllowed" class="panel-subtitle" style="margin-left:4px;">
+              测试需从课程名、章节名或节进入；当前为更深层级知识点时，请回到上一级。
             </span>
           </div>
+          <p class="panel-subtitle" style="margin-bottom:10px">
+            自定义组卷请使用顶部导航「组卷」，可任选课程与每题的题型、知识点。
+          </p>
           <div style="margin-bottom:14px">
             <h3>掌握程度</h3>
             <p v-if="graphNodeMastery.noData" class="panel-subtitle">
@@ -2240,31 +2216,48 @@ const confirmDeleteExam = async (id) => {
               </tbody>
             </table>
           </div>
+          <KnowledgePointDiscussion
+            :course-name="learningContextCourse"
+            :point-name="selectedKnowledgePoint"
+            :current-user-id="currentUser?.id"
+            :user-role="currentUser?.role"
+            :focus-post-id="discussionFocusPostId"
+            :disabled="isUnjoinedPreviewMode"
+          />
         </article>
       </StudentGraph>
     </section>
 
+    <StudentPaperComposer
+      v-if="currentPage === 'paper'"
+      :joined-courses="joinedCourses"
+      :selected-major="selectedMajor"
+      :render-latex-text="renderLatexText"
+      :refresh-saved-exams="loadSavedExams"
+      @go-courses="currentPage = 'courses'"
+    />
+
     <StudentExercise
       v-if="currentPage === 'exercise'"
+      v-model:teacher-kp-test-answers="teacherKpTestAnswers"
       :can-study-current-course="canStudyCurrentCourse"
       :selected-knowledge-point="selectedKnowledgePoint"
       :question-form="questionForm"
-      :exam-mode="examMode"
-      :practice-batch-allowed="practiceBatchAllowed"
-      :practice-test-allowed="practiceTestAllowed"
       :test-loading="testLoading"
       :test-error="testError"
       :test-questions="testQuestions"
       :test-submitted="testSubmitted"
       :test-result="testResult"
       :test-answers="testAnswers"
-      :exam-loading="examLoading"
-      :exam-error="examError"
-      :exam-result="Array.isArray(examResult) ? examResult : []"
+      :teacher-kp-test="teacherKpTest"
+      :teacher-kp-test-loading="teacherKpTestLoading"
+      :teacher-kp-test-error="teacherKpTestError"
+      :teacher-kp-test-submitted="teacherKpTestSubmitted"
+      :teacher-kp-test-result="teacherKpTestResult"
+      :teacher-kp-test-submitting="teacherKpTestSubmitting"
       :generate-test="generateTest"
       :submit-test="submitTest"
-      :generate-exam="generateExam"
-      :persist-generated-exam="persistGeneratedExam"
+      :submit-teacher-kp-test="submitTeacherKpTest"
       :render-latex-text="renderLatexText"
       :parse-option-letter="parseOptionLetter"
       :parse-option-text="parseOptionText"
@@ -2320,4 +2313,4 @@ const confirmDeleteExam = async (id) => {
     <AiAssistantWidget role="student" :current-user="currentUser" />
 </template>
 
-<style scoped src="./student-portal.css"></style>
+<style src="./student-portal.css"></style>

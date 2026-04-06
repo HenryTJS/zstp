@@ -26,6 +26,8 @@ import TeacherViewMaterialsModal from './TeacherViewMaterialsModal.vue'
 import TeacherEditProfileModal from './TeacherEditProfileModal.vue'
 import TeacherChangePasswordModal from './TeacherChangePasswordModal.vue'
 import TeacherMdImportInput from './TeacherMdImportInput.vue'
+import KnowledgePointDiscussion from './KnowledgePointDiscussion.vue'
+import TeacherPointTestModal from './TeacherPointTestModal.vue'
 
 const props = defineProps({
   currentUser: {
@@ -101,6 +103,48 @@ const pointNumberMap = computed(() => {
 })
 
 const getPointNumber = (pointName) => pointNumberMap.value.get(pointName) || ''
+
+/** 任意层级知识点均可发布测试（课程根仍为「期末测试」文案） */
+const canPublishPointTest = (item) =>
+  Boolean(item?.courseName && String(item?.pointName || '').trim())
+
+/** 锚点及其所有下级知识点（深度优先，编号排序），供每题选择考查点 */
+const buildSubtreeTopicOptions = (anchorPointName, allPoints, getPointNumberFn) => {
+  const list = Array.isArray(allPoints) ? allPoints : []
+  const anchor = String(anchorPointName || '').trim()
+  if (!anchor) return []
+  const byParent = new Map()
+  for (const p of list) {
+    const par = p.parentPoint == null || p.parentPoint === undefined ? '' : String(p.parentPoint)
+    if (!byParent.has(par)) byParent.set(par, [])
+    byParent.get(par).push(p)
+  }
+  const orderedNames = []
+  const walk = (name) => {
+    orderedNames.push(name)
+    const rawKids = byParent.get(name) || []
+    const kids = rawKids.slice().sort((a, b) => {
+      const na = String(getPointNumberFn(a.pointName) || a.pointName || '')
+      const nb = String(getPointNumberFn(b.pointName) || b.pointName || '')
+      return na.localeCompare(nb, undefined, { numeric: true })
+    })
+    for (const c of kids) walk(c.pointName)
+  }
+  walk(anchor)
+  return orderedNames.map((name) => {
+    const num = getPointNumberFn(name) || ''
+    return {
+      value: name,
+      label: num ? `${num} ${name}` : name
+    }
+  })
+}
+
+const pointTestTopicOptions = computed(() => {
+  const t = pointTestTarget.value
+  if (!t?.pointName || !Array.isArray(points.value) || !points.value.length) return []
+  return buildSubtreeTopicOptions(t.pointName, points.value, getPointNumber)
+})
 
 // 上传表单与状态
 const uploadForm = ref({ title: '', description: '', course: '', chapter: '', section: '', point: '', files: [] })
@@ -354,6 +398,93 @@ const profileForm = ref({ username: props.currentUser.username || '', email: pro
 const editProfileVisible = ref(false)
 const editProfileForm = ref({ username: '', email: '', college: '' })
 const changePasswordVisible = ref(false)
+
+const discussionVisible = ref(false)
+const discussionTarget = ref(null)
+/** 通知深链：交流区滚动锚点 */
+const discussionFocusPostId = ref(null)
+const openDiscussionPoint = (item, focusPostIdOrUnset) => {
+  if (!item) return
+  if (arguments.length >= 2) {
+    if (focusPostIdOrUnset == null || focusPostIdOrUnset === '') {
+      discussionFocusPostId.value = null
+    } else {
+      const n = Number(focusPostIdOrUnset)
+      discussionFocusPostId.value = Number.isFinite(n) ? n : null
+    }
+  } else {
+    discussionFocusPostId.value = null
+  }
+  discussionTarget.value = {
+    courseName: item.courseName || '',
+    pointName: item.pointName || ''
+  }
+  discussionVisible.value = true
+}
+const closeDiscussionPoint = () => {
+  discussionVisible.value = false
+  discussionTarget.value = null
+  discussionFocusPostId.value = null
+}
+
+const pointTestVisible = ref(false)
+const pointTestTarget = ref(null)
+const openPointTest = (item) => {
+  if (!item || !canPublishPointTest(item)) return
+  pointTestTarget.value = {
+    courseName: item.courseName || '',
+    pointName: item.pointName || '',
+    courseRoot: Boolean(item.courseRoot)
+  }
+  pointTestVisible.value = true
+}
+const closePointTest = () => {
+  pointTestVisible.value = false
+  pointTestTarget.value = null
+}
+
+const applyTeacherDiscussionDeepLink = async () => {
+  const rawDc = route.query.dc
+  const rawDp = route.query.dp
+  if (!rawDc || !rawDp) return
+  const dc = Array.isArray(rawDc) ? rawDc[0] : rawDc
+  const dp = Array.isArray(rawDp) ? rawDp[0] : rawDp
+  const courseName = String(dc || '').trim()
+  const pointName = String(dp || '').trim()
+  const rawPost = route.query.dpost
+  const dpostRaw = Array.isArray(rawPost) ? rawPost[0] : rawPost
+  const postNum = dpostRaw != null && dpostRaw !== '' ? Number(dpostRaw) : NaN
+
+  await refreshTeacherCoursePermissionsIfNeeded(false)
+  const opts = Array.isArray(catalogCourses.value) ? catalogCourses.value : []
+  const nextQ = { ...route.query }
+  delete nextQ.dc
+  delete nextQ.dp
+  delete nextQ.dpost
+
+  if (!opts.includes(courseName)) {
+    discussionFocusPostId.value = null
+    try {
+      await router.replace({ path: route.path, query: nextQ })
+    } catch {
+      /* ignore */
+    }
+    return
+  }
+
+  const anchorId = Number.isFinite(postNum) ? postNum : null
+  suppressCourseWatch.value = true
+  selectedCourse.value = courseName
+  pointForm.value.courseName = courseName
+  suppressCourseWatch.value = false
+  await loadKnowledgePointData()
+  openDiscussionPoint({ courseName, pointName }, anchorId)
+  try {
+    await router.replace({ path: route.path, query: nextQ })
+  } catch {
+    /* ignore */
+  }
+}
 
 const userInitial = computed(() => (props.currentUser && props.currentUser.username ? props.currentUser.username.charAt(0).toUpperCase() : '?'))
 const selectedCourse = ref(pointForm.value.courseName || '')
@@ -1024,10 +1155,21 @@ onMounted(async () => {
     if (currentPage.value === 'courses') {
       await loadTeacherCourseMarket()
     }
+    if (route.query.dc && route.query.dp) {
+      await applyTeacherDiscussionDeepLink()
+    }
   } catch (e) {
     error.value = '加载教师端数据失败，请确认后端与数据库已启动。'
   }
 })
+
+watch(
+  () => route.query.dc,
+  async (dc) => {
+    if (!courseInitDone.value || !dc) return
+    await applyTeacherDiscussionDeepLink()
+  }
+)
 </script>
 
 <template>
@@ -1171,6 +1313,9 @@ onMounted(async () => {
           :on-open-edit-point="openEditPoint"
           :on-open-upload-modal="openUploadModal"
           :on-open-view-materials="openViewMaterials"
+          :on-open-discussion="openDiscussionPoint"
+          :on-open-point-test="openPointTest"
+          :can-publish-point-test="canPublishPointTest"
         />
     </template>
     </section>
@@ -1223,7 +1368,41 @@ onMounted(async () => {
       :current-user="currentUser"
       @close="changePasswordVisible = false"
     />
+
+    <TeacherPointTestModal
+      :visible="pointTestVisible && !!pointTestTarget"
+      :course-name="pointTestTarget?.courseName"
+      :point-name="pointTestTarget?.pointName"
+      :is-course-root-anchor="!!pointTestTarget?.courseRoot"
+      :topic-point-options="pointTestTopicOptions"
+      :teacher-id="currentUser?.id"
+      :teacher-username="currentUser?.username"
+      @close="closePointTest"
+    />
+
+    <div
+      v-if="discussionVisible && discussionTarget"
+      class="modal-mask"
+      @click.self="closeDiscussionPoint"
+    >
+      <div class="modal-wrapper" style="max-width: 760px; width: 94vw">
+        <div class="modal-container" style="max-height: 88vh; overflow: auto">
+          <button class="modal-close" type="button" aria-label="关闭" @click="closeDiscussionPoint">×</button>
+          <h3>知识点交流区 — {{ discussionTarget.pointName }}</h3>
+          <p class="panel-subtitle" style="margin-top: 4px">课程：{{ discussionTarget.courseName }}</p>
+          <KnowledgePointDiscussion
+            :course-name="discussionTarget.courseName"
+            :point-name="discussionTarget.pointName"
+            :current-user-id="currentUser?.id"
+            :user-role="currentUser?.role"
+            :focus-post-id="discussionFocusPostId"
+            :disabled="false"
+          />
+        </div>
+      </div>
+    </div>
+
     <AiAssistantWidget role="teacher" :current-user="currentUser" />
 </template>
 
-<style scoped src="./teacher-portal.css"></style>
+<style src="./teacher-portal.css"></style>

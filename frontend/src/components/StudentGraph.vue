@@ -14,21 +14,18 @@ const props = defineProps({
   relevanceError: { type: String, required: false, default: '' },
   relevanceLabel: { type: String, required: false, default: '' },
   materials: { type: Array, required: true },
-  practiceTestAllowed: { type: Boolean, required: true },
-  practiceBatchAllowed: { type: Boolean, required: true }
+  practiceTestAllowed: { type: Boolean, required: true }
 })
 
 const emit = defineEmits([
   'go-courses',
   'refresh-graph',
-  'enter-test',
-  'enter-exam'
+  'enter-test'
 ])
 
 const goCourses = () => emit('go-courses')
 const refreshGraph = () => emit('refresh-graph')
 const enterTest = () => emit('enter-test')
-const enterExam = () => emit('enter-exam')
 </script>
 
 <template>

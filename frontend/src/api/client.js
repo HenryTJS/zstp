@@ -43,8 +43,6 @@ export const saveKnowledgePoint = (payload) => http.post('/knowledge-points', pa
 export const fetchQuestion = (payload) => http.post('/generate-question', payload)
 export const fetchQuestions = (payload) => http.post('/generate-questions', payload)
 export const fetchGrading = (payload) => http.post('/grade-answer', payload)
-export const fetchTest = (payload) => http.post('/generate-test', payload)
-export const fetchExam = (payload) => http.post('/generate-exam', payload)
 export const fetchExams = () => http.get('/exams')
 export const deleteExam = (id) => http.delete('/exams/' + id)
 export const saveExam = (payload) => http.post('/exams/save', payload)
@@ -62,3 +60,26 @@ export const uploadMaterial = (formData) =>
 export const listMaterials = () => http.get('/materials')
 export const fetchStudentState = (userId) => http.get('/student-state', { params: { userId } })
 export const saveStudentState = (payload) => http.post('/student-state', payload)
+
+/** 知识点交流区：发帖、列表、点赞（courseName + pointName 定位知识点） */
+export const listKnowledgePointDiscussions = (params) =>
+  http.get('/knowledge-point-discussions', { params })
+export const createKnowledgePointDiscussionPost = (payload) =>
+  http.post('/knowledge-point-discussions', payload)
+export const toggleKnowledgePointDiscussionLike = (postId, payload) =>
+  http.post(`/knowledge-point-discussions/${postId}/like`, payload)
+
+export const listUserNotifications = (userId, params) =>
+  http.get('/notifications', { params: { userId, ...params } })
+export const markUserNotificationRead = (id, userId) =>
+  http.post(`/notifications/${id}/read`, null, { params: { userId } })
+
+/** 教师发布知识点测试（单选+填空）、学生拉取与提交 */
+export const saveKnowledgePointPublishedTest = (payload) =>
+  http.post('/knowledge-point-published-tests', payload)
+export const getKnowledgePointPublishedTestForTeacher = (params) =>
+  http.get('/knowledge-point-published-tests/for-teacher', { params })
+export const getKnowledgePointPublishedTestForStudent = (params) =>
+  http.get('/knowledge-point-published-tests/for-student', { params })
+export const submitKnowledgePointPublishedTest = (payload) =>
+  http.post('/knowledge-point-published-tests/submit', payload)

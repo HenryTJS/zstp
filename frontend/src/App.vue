@@ -1,10 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import StudentPortal from './components/StudentPortal.vue'
-import TeacherPortal from './components/TeacherPortal.vue'
-import LoginPage from './components/LoginPage.vue'
-import AccountSecurityPanel from './components/AccountSecurityPanel.vue'
+import DiscussionNotificationBell from './components/DiscussionNotificationBell.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -13,6 +10,7 @@ const currentUser = ref(JSON.parse(localStorage.getItem('currentUser') || 'null'
 
 const studentPageList = [
   { key: 'courses', label: '课程广场' },
+  { key: 'paper', label: '组卷' },
   { key: 'review', label: '错题与记录' },
   { key: 'announcements', label: '公告' },
   { key: 'home', label: '个人中心' }
@@ -124,6 +122,11 @@ const handleUpdateUser = (patch) => {
               {{ page.label }}
             </button>
           </nav>
+
+          <DiscussionNotificationBell
+            v-if="currentUser?.id && ((isStudentUser && isOnStudentRoute) || (isTeacherUser && isOnTeacherRoute))"
+            :user-id="currentUser.id"
+          />
 
           <div v-if="(isStudentUser && isOnStudentRoute) || (isTeacherUser && isOnTeacherRoute) || (isAdminUser && isOnAdminRoute)" class="top-user-card">
             <span class="top-user-name">{{ currentUser.username }}</span>

@@ -1,11 +1,12 @@
 <script setup>
+import { defineModel } from 'vue'
+
+const teacherKpTestAnswers = defineModel('teacherKpTestAnswers', { type: Array, default: () => [] })
+
 const props = defineProps({
   canStudyCurrentCourse: { type: Boolean, required: true },
   selectedKnowledgePoint: { type: String, default: '' },
   questionForm: { type: Object, required: true },
-  examMode: { type: String, required: true },
-  practiceBatchAllowed: { type: Boolean, required: true },
-  practiceTestAllowed: { type: Boolean, required: true },
 
   // test
   testLoading: { type: Boolean, required: true },
@@ -15,16 +16,17 @@ const props = defineProps({
   testResult: { type: Object, default: null },
   testAnswers: { type: Array, required: true },
 
-  // exam/batch
-  examLoading: { type: Boolean, required: true },
-  examError: { type: String, required: true },
-  examResult: { type: Array, default: () => [] },
+  teacherKpTest: { type: Object, default: null },
+  teacherKpTestLoading: { type: Boolean, default: false },
+  teacherKpTestError: { type: String, default: '' },
+  teacherKpTestSubmitted: { type: Boolean, default: false },
+  teacherKpTestResult: { type: Object, default: null },
+  teacherKpTestSubmitting: { type: Boolean, default: false },
 
   // actions
   generateTest: { type: Function, required: true },
   submitTest: { type: Function, required: true },
-  generateExam: { type: Function, required: true },
-  persistGeneratedExam: { type: Function, required: true },
+  submitTeacherKpTest: { type: Function, required: true },
   onGoCourses: { type: Function, default: null },
 
   // render helpers
@@ -54,6 +56,81 @@ const goCourses = () => {
     </article>
 
     <template v-else>
+      <article
+        v-if="teacherKpTest && teacherKpTest.questions?.length"
+        class="result-card"
+      >
+        <h3>教师发布测试 · {{ teacherKpTest.title }}</h3>
+        <p class="panel-subtitle" style="margin-top: 6px">
+          题型为单选题与填空题；成绩与下方「自主 AI 测试」一并计入学习记录与掌握度。
+        </p>
+        <p v-if="teacherKpTestLoading" class="panel-subtitle">加载中…</p>
+        <p v-else-if="teacherKpTestError" class="error-text">{{ teacherKpTestError }}</p>
+
+        <template v-else-if="!teacherKpTestSubmitted">
+          <div v-for="(q, idx) in teacherKpTest.questions" :key="'tk-' + idx" style="margin-top: 14px">
+            <h4>第 {{ idx + 1 }} 题（{{ q.question_type }} · {{ q.fullScore ?? 5 }} 分）</h4>
+            <p v-if="q.focusPointName" class="panel-subtitle">考查知识点：{{ q.focusPointName }}</p>
+            <div class="latex-block" v-html="renderLatexText(q.question)"></div>
+
+            <div v-if="q.question_type === '选择题'" class="option-list">
+              <label v-for="opt in q.options || []" :key="opt" class="option-item">
+                <input
+                  type="radio"
+                  :name="'tk-q-' + idx"
+                  :value="parseOptionLetter(opt)"
+                  v-model="teacherKpTestAnswers[idx]"
+                />
+                <span v-html="renderLatexText(parseOptionText(opt))"></span>
+              </label>
+            </div>
+
+            <div v-else-if="q.question_type === '填空题'">
+              <label>
+                作答
+                <input class="match-height" v-model="teacherKpTestAnswers[idx]" placeholder="请输入答案" />
+              </label>
+            </div>
+          </div>
+
+          <div class="inline-form" style="margin-top: 12px">
+            <button type="button" :disabled="teacherKpTestSubmitting" @click="submitTeacherKpTest">
+              {{ teacherKpTestSubmitting ? '提交中…' : '提交教师测试' }}
+            </button>
+          </div>
+        </template>
+
+        <template v-else-if="teacherKpTestSubmitted && teacherKpTestResult">
+          <p>
+            <strong>总分：</strong>{{ teacherKpTestResult.totalScore }} / {{ teacherKpTestResult.fullScore }}
+          </p>
+          <div
+            v-for="(q, idx) in teacherKpTest.questions"
+            :key="'tkr-' + idx"
+            style="margin-top: 14px"
+          >
+            <h4>第 {{ idx + 1 }} 题</h4>
+            <p v-if="q.focusPointName" class="panel-subtitle">考查知识点：{{ q.focusPointName }}</p>
+            <p class="panel-subtitle">
+              得分：{{ teacherKpTestResult.perQuestion?.[idx]?.score ?? 0 }} /
+              {{ teacherKpTestResult.perQuestion?.[idx]?.full_score ?? q.fullScore ?? 5 }}
+            </p>
+            <div class="latex-block" v-html="renderLatexText(q.question)"></div>
+            <p>
+              <strong>你的答案：</strong>
+              <span v-html="renderLatexText(resolveAnswerText(q, teacherKpTestAnswers[idx]))"></span>
+            </p>
+            <div v-if="teacherKpTestResult.perQuestion?.[idx]?.explanation" style="margin-top: 8px">
+              <h4>解析</h4>
+              <div
+                class="latex-block"
+                v-html="renderLatexText(teacherKpTestResult.perQuestion[idx].explanation)"
+              ></div>
+            </div>
+          </div>
+        </template>
+      </article>
+
       <article class="result-card">
         <h3>出题与做题</h3>
         <p class="panel-subtitle" style="margin-top:6px">
@@ -61,7 +138,7 @@ const goCourses = () => {
         </p>
 
         <p v-if="!selectedKnowledgePoint" class="panel-subtitle" style="margin-top:12px">
-          请先回到「知识图谱」点击一个知识点，然后选择进入测试/组卷。
+          请先回到「知识图谱」点击一个知识点，再在此进行测试。
         </p>
 
         <div v-else>
@@ -76,49 +153,22 @@ const goCourses = () => {
             </label>
             <label>
               规则
-              <div class="panel-subtitle" style="margin-top:6px">
-                <template v-if="examMode === 'single'">测试：固定 5 题（单选）</template>
-                <template v-else>组卷：固定 10 题（3单选 + 3填空 + 4解答）</template>
-              </div>
+              <div class="panel-subtitle" style="margin-top:6px">测试：固定 5 题（单选）</div>
             </label>
           </div>
 
-          <div v-if="examMode === 'single'" class="inline-form" style="margin-top:12px;">
+          <div class="inline-form" style="margin-top:12px;">
             <button :disabled="testLoading" @click="generateTest">
               {{ testLoading ? '生成中...' : '开始测试' }}
             </button>
           </div>
 
           <p v-if="testError && !(testQuestions.length && !testSubmitted)" class="error-text">{{ testError }}</p>
-
-          <div v-if="examMode === 'batch'" class="inline-form" style="margin-top:12px;">
-            <button :disabled="examLoading || !practiceBatchAllowed" @click="generateExam">
-              {{ examLoading ? '生成中...' : '生成试卷' }}
-            </button>
-          </div>
-
-          <p
-            v-if="examMode === 'batch' && !practiceBatchAllowed"
-            class="panel-subtitle"
-            style="margin-top:10px"
-          >
-            组卷仅支持「课程名」和「章节名」。请回到知识图谱重新选择。
-          </p>
-
-          <p v-if="examError" class="error-text" style="margin-top:8px">{{ examError }}</p>
-
-          <div
-            v-if="examMode === 'batch' && examResult && examResult.length"
-            class="inline-form"
-            style="margin-top:8px"
-          >
-            <button :disabled="examLoading" @click="persistGeneratedExam">保存试卷并生成 MD</button>
-          </div>
         </div>
       </article>
 
       <article
-        v-if="examMode === 'single' && testQuestions.length && !testSubmitted"
+        v-if="testQuestions.length && !testSubmitted"
         class="result-card"
       >
         <h3>测试题目</h3>
@@ -178,7 +228,7 @@ const goCourses = () => {
       </article>
 
       <article
-        v-if="examMode === 'single' && testSubmitted && testResult"
+        v-if="testSubmitted && testResult"
         class="result-card"
       >
         <h3>成绩与解析</h3>

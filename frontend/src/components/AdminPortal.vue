@@ -1080,4 +1080,4 @@ const handlePasswordSave = async () => {
     <AiAssistantWidget role="admin" :current-user="currentUser" />
 </template>
 
-<style scoped src="./student-portal.css"></style>
+<style src="./student-portal.css"></style>
