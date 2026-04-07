@@ -55,6 +55,9 @@ watch(
 )
 const learningRecords = ref([])
 const wrongBook = ref([])
+const dimensionScores = ref(null)
+const dimensionScoresLoading = ref(false)
+const dimensionScoresError = ref('')
 const activeQuestionType = computed(() => generatedQuestion.value?.question_type || questionForm.value.questionType)
 const userInitial = computed(() => props.currentUser?.username?.charAt(0) || '')
 const selectedNode = computed(() => {
@@ -79,6 +82,7 @@ import {
   fetchKnowledgeGraph,
   fetchQuestion,
   fetchQuestions,
+  fetchStudentDimensionScores,
   fetchStudentState,
   saveStudentState,
   fetchMaterialsByKnowledgePoint,
@@ -911,17 +915,13 @@ const submitTest = async () => {
 }
 
 const filteredLearningRecords = computed(() => {
-  if (!selectedCourse.value) {
-    return learningRecords.value
-  }
-  return learningRecords.value.filter((item) => item.course === selectedCourse.value)
+  // 学习画像统计：直接使用所有课程数据（不再受“统计课程”筛选影响）
+  return learningRecords.value || []
 })
 
 const filteredWrongBook = computed(() => {
-  if (!selectedCourse.value) {
-    return wrongBook.value
-  }
-  return wrongBook.value.filter((item) => item.course === selectedCourse.value)
+  // 学习画像统计：直接使用所有课程数据（不再受“统计课程”筛选影响）
+  return wrongBook.value || []
 })
 
 /** 「错题与记录」页：按当前「进入课程」筛选，与个人中心统计课程无关 */
@@ -1390,6 +1390,7 @@ const loadStudentState = async () => {
 
     learningRecords.value = Array.isArray(data.learningRecords) ? data.learningRecords : []
     wrongBook.value = Array.isArray(data.wrongBook) ? data.wrongBook : []
+    void loadDimensionScores()
   } catch {
     profileMessage.value = '未读取到历史学习状态，已使用默认配置。'
   } finally {
@@ -1453,6 +1454,31 @@ const schedulePersistStudentState = () => {
   stateSaveTimer = setTimeout(() => {
     persistStudentState(false)
   }, 350)
+
+  scheduleRefreshDimensionScores()
+}
+
+let dimScoreTimer = null
+const scheduleRefreshDimensionScores = () => {
+  if (dimScoreTimer) clearTimeout(dimScoreTimer)
+  dimScoreTimer = setTimeout(() => {
+    void loadDimensionScores()
+  }, 600)
+}
+
+const loadDimensionScores = async () => {
+  if (!props.currentUser?.id) return
+  dimensionScoresLoading.value = true
+  dimensionScoresError.value = ''
+  try {
+    const resp = await fetchStudentDimensionScores(props.currentUser.id)
+    dimensionScores.value = resp?.data || null
+  } catch (e) {
+    dimensionScoresError.value = e?.response?.data?.message || e?.message || '维度分计算失败。'
+    dimensionScores.value = null
+  } finally {
+    dimensionScoresLoading.value = false
+  }
 }
 
 const loadLearningSuggestionsFor = async (pointName) => {
@@ -2110,6 +2136,9 @@ const confirmDeleteExam = async (id) => {
       :joined-courses="joinedCourses"
       :selected-major-display="selectedMajorDisplay"
       :learning-stats="learningStats"
+      :dimension-scores="dimensionScores"
+      :dimension-scores-loading="dimensionScoresLoading"
+      :dimension-scores-error="dimensionScoresError"
       :filtered-wrong-book-count="filteredWrongBook.length"
       :profile-message="profileMessage"
       @update:selected-course="(v) => (selectedCourse = v)"

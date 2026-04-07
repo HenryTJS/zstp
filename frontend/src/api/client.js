@@ -20,6 +20,17 @@ export const decideTeacherCoursePermissionRequest = (payload) =>
 export const addCourse = (payload) => http.post('/courses', payload)
 export const deleteCourse = (payload) =>
   http.delete('/courses', { params: { adminUserId: payload?.adminUserId, courseName: payload?.courseName } })
+
+// 课程配置：五维权重 + 专业学分
+export const listCourseConfigs = (adminUserId) => http.get('/course-configs', { params: { adminUserId } })
+export const getCourseConfig = (adminUserId, courseName) =>
+  http.get(`/course-configs/${encodeURIComponent(courseName)}`, { params: { adminUserId } })
+export const updateCourseConfig = (adminUserId, courseName, payload) =>
+  http.put(`/course-configs/${encodeURIComponent(courseName)}`, { adminUserId, courseName, ...payload })
+
+// 学生维度分（用于雷达图）
+export const fetchStudentDimensionScores = (userId, course) =>
+  http.get('/student-dimension-scores', { params: { userId, ...(course ? { course } : {}) } })
 import axios from 'axios'
 
 const http = axios.create({

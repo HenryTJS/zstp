@@ -1,4 +1,7 @@
 <script setup>
+import * as echarts from 'echarts'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
 const props = defineProps({
   userInitial: { type: String, required: true },
   profileForm: { type: Object, required: true },
@@ -7,6 +10,9 @@ const props = defineProps({
   joinedCourses: { type: Array, required: true },
   selectedMajorDisplay: { type: String, required: true },
   learningStats: { type: Object, required: true },
+  dimensionScores: { type: Object, required: false, default: null },
+  dimensionScoresLoading: { type: Boolean, required: false, default: false },
+  dimensionScoresError: { type: String, required: false, default: '' },
   filteredWrongBookCount: { type: Number, required: true },
   profileMessage: { type: String, required: false, default: '' }
 })
@@ -17,28 +23,87 @@ const emit = defineEmits([
   'change-password',
   'logout'
 ])
+
+const radarRef = ref(null)
+let radarChart = null
+
+const buildRadarOption = () => {
+  const dim = props.dimensionScores?.dimensionScores || {}
+  const values = [
+    Number(dim.logicReasoning || 0),
+    Number(dim.numericCalculation || 0),
+    Number(dim.semanticUnderstanding || 0),
+    Number(dim.spatialImagination || 0),
+    Number(dim.memoryRetrieval || 0)
+  ]
+  return {
+    tooltip: { trigger: 'item' },
+    radar: {
+      indicator: [
+        { name: '逻辑推理', max: 100 },
+        { name: '数量计算', max: 100 },
+        { name: '语义理解', max: 100 },
+        { name: '空间想象', max: 100 },
+        { name: '记忆检索', max: 100 }
+      ],
+      radius: '60%',
+      splitNumber: 4
+    },
+    series: [
+      {
+        type: 'radar',
+        data: [
+          {
+            value: values,
+            name: '能力维度',
+            areaStyle: { opacity: 0.18 }
+          }
+        ]
+      }
+    ]
+  }
+}
+
+const renderRadar = () => {
+  if (!radarRef.value) return
+  if (!radarChart) {
+    radarChart = echarts.init(radarRef.value)
+  }
+  radarChart.setOption(buildRadarOption(), true)
+  radarChart.resize()
+}
+
+onMounted(async () => {
+  await nextTick()
+  renderRadar()
+  window.addEventListener('resize', renderRadar)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', renderRadar)
+  if (radarChart) {
+    radarChart.dispose()
+    radarChart = null
+  }
+})
+
+watch(
+  () => props.dimensionScores,
+  async () => {
+    await nextTick()
+    renderRadar()
+  },
+  { deep: true }
+)
 </script>
 
 <template>
   <section class="panel-stack">
-    <article class="result-card profile-hero-card">
+    <article class="result-card profile-hero-card profile-hero-card--no-actions">
       <div class="profile-hero-main">
         <div class="profile-avatar">{{ userInitial }}</div>
         <div>
           <h3>{{ profileForm.username || currentUser.username }}</h3>
-        </div>
-      </div>
-      <div class="profile-hero-actions">
-        <div class="grid-form">
-          <label>
-            统计课程
-            <select :value="selectedCourse" @change="emit('update:selectedCourse', $event.target.value)">
-              <option v-for="course in joinedCourses" :key="course" :value="course">{{ course }}</option>
-            </select>
-            <div v-if="!joinedCourses.length" class="panel-subtitle" style="margin-top:6px">
-              你还没有加入课程，请先到「课程广场」加入。
-            </div>
-          </label>
         </div>
       </div>
     </article>
@@ -59,6 +124,14 @@ const emit = defineEmits([
             <span>错题收藏</span>
             <strong>{{ filteredWrongBookCount }}</strong>
           </div>
+        </div>
+
+        <div class="ui-mt-12">
+          <h3 style="margin-bottom:8px;">五维能力雷达图</h3>
+          <p v-if="dimensionScoresLoading" class="panel-subtitle">计算中…</p>
+          <p v-else-if="dimensionScoresError" class="error-text">{{ dimensionScoresError }}</p>
+          <p v-else-if="!dimensionScores?.usedCourses?.length" class="panel-subtitle">暂无足够练习记录，完成练习后将自动生成。</p>
+          <div v-else ref="radarRef" class="student-radar-box"></div>
         </div>
       </article>
 

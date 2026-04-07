@@ -6,7 +6,11 @@ import {
   createAnnouncement,
   deleteAnnouncement,
   fetchAnnouncements,
+  http,
+  listCourseConfigs,
   listUsers,
+  listCoursesByMajor,
+  updateCourseConfig,
   updateUser
 } from '../api/client'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
@@ -343,6 +347,252 @@ const handlePasswordSave = async () => {
   const ok = await passwordPanelRef.value.submitChange()
   if (ok) changePasswordVisible.value = false
 }
+
+// =========================
+// 课程权重与学分配置
+// =========================
+
+const courseConfigLoading = ref(false)
+const courseConfigError = ref('')
+const courseConfigMessage = ref('')
+
+const allCourses = ref([])
+const selectedCourse = ref('')
+const courseConfigsByName = ref({}) // { [courseName]: { courseName, weights, creditRules } }
+
+const weightForm = ref({
+  logicReasoning: 0.2,
+  numericCalculation: 0.2,
+  semanticUnderstanding: 0.2,
+  spatialImagination: 0.2,
+  memoryRetrieval: 0.2
+})
+
+/** 一条：同一学分 + 多选专业 code；majorCodes 为最终集合；selL1/2/3 仅用于多选框暂存 */
+const creditRulesForm = ref([])
+
+const majorFlat = ref([]) // { code, name, level, parentCode }
+
+function flattenMajorNodes(nodes, parentCode = null, level = 1, out = []) {
+  if (!Array.isArray(nodes)) return out
+  for (const n of nodes) {
+    const code = String(n.code ?? '').trim()
+    if (code) out.push({ code, name: n.name || '', level, parentCode })
+    if (Array.isArray(n.subfields) && n.subfields.length) {
+      flattenMajorNodes(n.subfields, code, level + 1, out)
+    }
+  }
+  return out
+}
+
+const loadMajorFlat = async () => {
+  if (majorFlat.value.length) return
+  try {
+    const { data } = await http.get('/majors/tree?level=1')
+    majorFlat.value = flattenMajorNodes(data || [])
+  } catch {
+    majorFlat.value = []
+  }
+}
+
+const majorsL1 = computed(() => majorFlat.value.filter((m) => m.level === 1))
+
+const l2OptionsForRow = (r) => {
+  const sel = r.selL1 || []
+  const all = majorFlat.value.filter((m) => m.level === 2)
+  if (!sel.length) return all
+  const set = new Set(sel.map(String))
+  return all.filter((m) => set.has(String(m.parentCode)))
+}
+
+const l3OptionsForRow = (r) => {
+  const sel = r.selL2 || []
+  const all = majorFlat.value.filter((m) => m.level === 3)
+  if (!sel.length) return all
+  const set = new Set(sel.map(String))
+  return all.filter((m) => set.has(String(m.parentCode)))
+}
+
+const mergeSelectionsIntoGroup = (r) => {
+  const add = [...(r.selL1 || []), ...(r.selL2 || []), ...(r.selL3 || [])].map(String)
+  const set = new Set([...(r.majorCodes || []).map(String), ...add])
+  r.majorCodes = [...set]
+  r.selL1 = []
+  r.selL2 = []
+  r.selL3 = []
+}
+
+const removeMajorCode = (r, code) => {
+  r.majorCodes = (r.majorCodes || []).filter((c) => String(c) !== String(code))
+}
+
+const stepRound = (v, step) => Math.round((Number(v) || 0) / step) * step
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
+const fmt2 = (v) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return '0.00'
+  return n.toFixed(2)
+}
+
+const setWeightFromInput = (key, raw) => {
+  const n = Number(raw)
+  weightForm.value[key] = Number.isFinite(n) ? n : 0
+}
+
+const normalizeSingleWeight = (key) => {
+  const min = 0.05
+  const step = 0.05
+  const raw = Number(weightForm.value[key] || 0)
+  weightForm.value[key] = clamp(stepRound(raw, step), min, 1)
+}
+
+const isStepMultiple = (v, step) => {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return false
+  const q = n / step
+  return Math.abs(q - Math.round(q)) < 1e-9
+}
+
+const validateWeightsForSave = () => {
+  const keys = ['logicReasoning', 'numericCalculation', 'semanticUnderstanding', 'spatialImagination', 'memoryRetrieval']
+  for (const k of keys) {
+    const v = Number(weightForm.value[k] || 0)
+    if (!Number.isFinite(v)) return { ok: false, message: '权重必须为数字。' }
+    if (v < 0.05 - 1e-12) return { ok: false, message: '每项权重不得低于 0.05。' }
+    if (!isStepMultiple(v, 0.05)) return { ok: false, message: '权重必须以 0.05 为单位调整。' }
+  }
+  const s = keys.reduce((sum, k) => sum + Number(weightForm.value[k] || 0), 0)
+  if (Math.abs(s - 1) > 1e-9) return { ok: false, message: '五维权重之和必须等于 1。' }
+  return { ok: true, message: '' }
+}
+
+const weightSumOk = computed(() => {
+  const s =
+    Number(weightForm.value.logicReasoning || 0) +
+    Number(weightForm.value.numericCalculation || 0) +
+    Number(weightForm.value.semanticUnderstanding || 0) +
+    Number(weightForm.value.spatialImagination || 0) +
+    Number(weightForm.value.memoryRetrieval || 0)
+  return Math.abs(s - 1) < 1e-9
+})
+
+const loadCourseConfigs = async () => {
+  courseConfigLoading.value = true
+  courseConfigError.value = ''
+  courseConfigMessage.value = ''
+  try {
+    const [courseResp, cfgResp] = await Promise.all([
+      listCoursesByMajor(undefined),
+      listCourseConfigs(props.currentUser.id)
+    ])
+    allCourses.value = Array.isArray(courseResp?.data) ? courseResp.data : []
+    const items = Array.isArray(cfgResp?.data?.items) ? cfgResp.data.items : []
+    const map = {}
+    for (const it of items) {
+      if (it?.courseName) map[it.courseName] = it
+    }
+    courseConfigsByName.value = map
+    if (!selectedCourse.value) selectedCourse.value = allCourses.value[0] || ''
+    applySelectedCourseConfig()
+  } catch (e) {
+    courseConfigError.value = e?.response?.data?.message || e?.message || '加载课程配置失败。'
+  } finally {
+    courseConfigLoading.value = false
+  }
+}
+
+const applySelectedCourseConfig = () => {
+  const c = selectedCourse.value
+  const cfg = c ? courseConfigsByName.value?.[c] : null
+  const w = cfg?.weights || {}
+  weightForm.value.logicReasoning = Number(w.logicReasoning ?? 0.2)
+  weightForm.value.numericCalculation = Number(w.numericCalculation ?? 0.2)
+  weightForm.value.semanticUnderstanding = Number(w.semanticUnderstanding ?? 0.2)
+  weightForm.value.spatialImagination = Number(w.spatialImagination ?? 0.2)
+  weightForm.value.memoryRetrieval = Number(w.memoryRetrieval ?? 0.2)
+    creditRulesForm.value = Array.isArray(cfg?.creditRules)
+      ? cfg.creditRules.map((r) => ({
+          credit: Number(r.credit ?? 0.5),
+          majorCodes: Array.isArray(r.majorCodes) ? [...r.majorCodes] : [],
+          selL1: [],
+          selL2: [],
+          selL3: []
+        }))
+      : []
+}
+
+watch(() => selectedCourse.value, () => applySelectedCourseConfig())
+
+watch(
+  () => currentPage.value,
+  (v) => {
+    if (v === 'course-configs') {
+      void loadCourseConfigs()
+      void loadMajorFlat()
+    }
+  }
+)
+
+const addCreditRule = () => {
+  creditRulesForm.value = [
+    ...(creditRulesForm.value || []),
+    { credit: 0.5, majorCodes: [], selL1: [], selL2: [], selL3: [] }
+  ]
+}
+
+const removeCreditRule = (idx) => {
+  creditRulesForm.value = (creditRulesForm.value || []).filter((_, i) => i !== idx)
+}
+
+const normalizeCreditRules = () => {
+  const step = 0.5
+  const min = 0.5
+  const max = 10
+  creditRulesForm.value = (creditRulesForm.value || []).map((r) => {
+    const credit = clamp(stepRound(Number(r.credit || 0), step), min, max)
+    const codes = [...new Set((r.majorCodes || []).map((c) => String(c || '').trim()).filter(Boolean))]
+    return {
+      ...r,
+      credit,
+      majorCodes: codes
+    }
+  })
+}
+
+const saveSelectedCourseConfig = async () => {
+  courseConfigMessage.value = ''
+  courseConfigError.value = ''
+  const c = selectedCourse.value
+  if (!c) {
+    courseConfigError.value = '请先选择课程。'
+    return
+  }
+  normalizeCreditRules()
+  const v = validateWeightsForSave()
+  if (!v.ok) {
+    courseConfigError.value = v.message || '保存失败。'
+    return
+  }
+  courseConfigLoading.value = true
+  try {
+    const payload = {
+      weights: { ...weightForm.value },
+      creditRules: (creditRulesForm.value || [])
+        .map((r) => ({
+          credit: Number(r.credit || 0.5),
+          majorCodes: [...new Set((r.majorCodes || []).map((c) => String(c || '').trim()).filter(Boolean))]
+        }))
+        .filter((r) => r.majorCodes.length > 0)
+    }
+    const resp = await updateCourseConfig(props.currentUser.id, c, payload)
+    courseConfigsByName.value = { ...(courseConfigsByName.value || {}), [c]: resp?.data || payload }
+    courseConfigMessage.value = '已保存。'
+  } catch (e) {
+    courseConfigError.value = e?.response?.data?.message || e?.message || '保存失败。'
+  } finally {
+    courseConfigLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -558,6 +808,173 @@ const handlePasswordSave = async () => {
       </article>
     </section>
 
+    <section v-else-if="currentPage === 'course-configs'" class="panel-stack admin-theme">
+      <article class="result-card">
+        <h3>课程权重与学分配置</h3>
+
+        <p v-if="courseConfigError" class="error-text">{{ courseConfigError }}</p>
+        <p v-if="courseConfigMessage" class="ok-text">{{ courseConfigMessage }}</p>
+
+        <div class="ui-actions-row">
+          <label style="min-width: 220px">
+            <span class="panel-subtitle">选择课程</span>
+            <select v-model="selectedCourse" class="match-height" :disabled="courseConfigLoading">
+              <option v-for="c in allCourses" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </label>
+          <button type="button" class="cancel-button" :disabled="courseConfigLoading" @click="loadCourseConfigs">
+            {{ courseConfigLoading ? '加载中…' : '刷新' }}
+          </button>
+        </div>
+
+        <div class="grid-form two-col ui-mt-12">
+          <label>
+            逻辑推理
+            <input
+              :value="fmt2(weightForm.logicReasoning)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              @input="setWeightFromInput('logicReasoning', $event.target.value)"
+              @change="normalizeSingleWeight('logicReasoning')"
+            />
+          </label>
+          <label>
+            数量计算
+            <input
+              :value="fmt2(weightForm.numericCalculation)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              @input="setWeightFromInput('numericCalculation', $event.target.value)"
+              @change="normalizeSingleWeight('numericCalculation')"
+            />
+          </label>
+          <label>
+            语义理解
+            <input
+              :value="fmt2(weightForm.semanticUnderstanding)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              @input="setWeightFromInput('semanticUnderstanding', $event.target.value)"
+              @change="normalizeSingleWeight('semanticUnderstanding')"
+            />
+          </label>
+          <label>
+            空间想象
+            <input
+              :value="fmt2(weightForm.spatialImagination)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              @input="setWeightFromInput('spatialImagination', $event.target.value)"
+              @change="normalizeSingleWeight('spatialImagination')"
+            />
+          </label>
+          <label>
+            记忆检索
+            <input
+              :value="fmt2(weightForm.memoryRetrieval)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              @input="setWeightFromInput('memoryRetrieval', $event.target.value)"
+              @change="normalizeSingleWeight('memoryRetrieval')"
+            />
+          </label>
+          <div>
+            <div class="panel-subtitle">权重校验</div>
+            <p class="panel-subtitle" style="margin: 6px 0 0">
+              合计：<strong>{{ (
+                weightForm.logicReasoning +
+                weightForm.numericCalculation +
+                weightForm.semanticUnderstanding +
+                weightForm.spatialImagination +
+                weightForm.memoryRetrieval
+              ).toFixed(2) }}</strong>
+              <span v-if="!weightSumOk" class="error-text" style="margin-left: 8px">必须等于 1</span>
+            </p>
+          </div>
+        </div>
+
+        <article class="result-card ui-mt-12">
+          <h3>学分规则（一组学分对应多个专业）</h3>
+          <p class="panel-subtitle">
+            每条为一组：填写学分后，在一/二/三级列表中多选专业，点「将所选加入本组」合并到本组；可重复添加多组。系统按学生专业路径从最深向浅匹配：命中某条规则中的 code 即用该组学分；全部未命中则为 0.5。
+          </p>
+
+          <div class="ui-actions-row">
+            <button type="button" class="cancel-button" :disabled="courseConfigLoading" @click="addCreditRule">添加学分组</button>
+          </div>
+
+          <div v-for="(r, idx) in creditRulesForm" :key="idx" class="credit-rule-block ui-mt-12">
+            <div class="ui-actions-row" style="align-items: flex-end; flex-wrap: wrap; gap: 12px">
+              <label style="min-width: 140px">
+                学分
+                <input
+                  v-model.number="r.credit"
+                  type="number"
+                  min="0.5"
+                  max="10"
+                  step="0.5"
+                  class="match-height"
+                />
+              </label>
+              <button type="button" class="cancel-button" @click="removeCreditRule(idx)">删除本组</button>
+            </div>
+            <div class="credit-major-chips ui-mt-8">
+              <span v-for="c in r.majorCodes" :key="c" class="credit-major-chip">
+                {{ c }}
+                <button type="button" class="credit-chip-remove" :aria-label="'移除 ' + c" @click="removeMajorCode(r, c)">×</button>
+              </span>
+              <span v-if="!r.majorCodes?.length" class="panel-subtitle">本组尚未加入任何专业 code（保存时本组会被忽略）</span>
+            </div>
+            <div class="grid-form three-col ui-mt-8">
+              <label>
+                一级（多选）
+                <select v-model="r.selL1" multiple class="match-height major-multi" size="6">
+                  <option v-for="m in majorsL1" :key="m.code" :value="m.code">{{ m.name }}（{{ m.code }}）</option>
+                </select>
+              </label>
+              <label>
+                二级（多选）
+                <select v-model="r.selL2" multiple class="match-height major-multi" size="6">
+                  <option v-for="m in l2OptionsForRow(r)" :key="m.code" :value="m.code">{{ m.name }}（{{ m.code }}）</option>
+                </select>
+              </label>
+              <label>
+                三级（多选）
+                <select v-model="r.selL3" multiple class="match-height major-multi" size="6">
+                  <option v-for="m in l3OptionsForRow(r)" :key="m.code" :value="m.code">{{ m.name }}（{{ m.code }}）</option>
+                </select>
+              </label>
+            </div>
+            <div class="ui-mt-8">
+              <button type="button" class="cancel-button" @click="mergeSelectionsIntoGroup(r)">将所选加入本组</button>
+            </div>
+          </div>
+          <p v-if="!creditRulesForm.length" class="panel-subtitle ui-mt-12">暂无规则（未配置的专业均按默认学分 0.5）。</p>
+        </article>
+
+        <div class="ui-actions-row">
+          <button type="button" class="match-button" :disabled="courseConfigLoading || !weightSumOk" @click="saveSelectedCourseConfig">
+            {{ courseConfigLoading ? '保存中…' : '保存配置' }}
+          </button>
+        </div>
+      </article>
+    </section>
+
     <section v-else-if="currentPage === 'announcements'" class="panel-stack admin-theme">
       <article class="result-card">
         <h3>发布公告</h3>
@@ -651,3 +1068,48 @@ const handlePasswordSave = async () => {
 </template>
 
 <style src="./student-portal.css"></style>
+<style scoped>
+.credit-rule-block {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.credit-major-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.credit-major-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 0.9rem;
+}
+.credit-chip-remove {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  font-size: 1.1rem;
+}
+.major-multi {
+  width: 100%;
+  min-height: 140px;
+}
+.grid-form.three-col {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 960px) {
+  .grid-form.three-col {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

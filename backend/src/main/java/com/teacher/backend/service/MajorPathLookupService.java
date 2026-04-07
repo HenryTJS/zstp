@@ -62,6 +62,18 @@ public class MajorPathLookupService {
         return path.orElse(List.of());
     }
 
+    /**
+     * @return 最多 3 个 code：一级、二级、三级；若只选到一级或二级则列表较短。
+     */
+    public List<String> resolvePathCodes(String code) {
+        if (!StringUtils.hasText(code) || tree.isEmpty()) {
+            return List.of();
+        }
+        String trimmed = code.trim();
+        Optional<List<String>> path = findCodePathRecursive(tree, trimmed, List.of());
+        return path.orElse(List.of());
+    }
+
     private Optional<List<String>> findPathRecursive(
         List<Map<String, Object>> nodes,
         String targetCode,
@@ -82,6 +94,35 @@ public class MajorPathLookupService {
             List<Map<String, Object>> sub = (List<Map<String, Object>>) node.get("subfields");
             if (sub != null && !sub.isEmpty()) {
                 Optional<List<String>> deeper = findPathRecursive(sub, targetCode, here);
+                if (deeper.isPresent()) {
+                    return deeper;
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private Optional<List<String>> findCodePathRecursive(
+        List<Map<String, Object>> nodes,
+        String targetCode,
+        List<String> ancestorCodes
+    ) {
+        if (nodes == null || nodes.isEmpty()) {
+            return Optional.empty();
+        }
+        for (Map<String, Object> node : nodes) {
+            String c = node.get("code") == null ? null : String.valueOf(node.get("code"));
+            List<String> here = new ArrayList<>(ancestorCodes);
+            if (StringUtils.hasText(c)) {
+                here.add(c.trim());
+            }
+            if (Objects.equals(trimmedCode(c), trimmedCode(targetCode))) {
+                return Optional.of(here);
+            }
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> sub = (List<Map<String, Object>>) node.get("subfields");
+            if (sub != null && !sub.isEmpty()) {
+                Optional<List<String>> deeper = findCodePathRecursive(sub, targetCode, here);
                 if (deeper.isPresent()) {
                     return deeper;
                 }

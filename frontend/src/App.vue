@@ -26,6 +26,7 @@ const teacherPageList = [
 const adminPageList = [
   { key: 'user-stats', label: '用户与导入' },
   { key: 'announcements', label: '公告管理' },
+  { key: 'course-configs', label: '课程权重与学分' },
   { key: 'profile', label: '个人中心' }
 ]
 

@@ -60,9 +60,6 @@
 }
 
 /* 夜间模式样式已移除，保留统一日间（light）变量 */
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  transition: background 0.2s, color 0.2s;
-}
 body[data-theme='dark'] .theme-toggle-btn {
   background: var(--paper);
   color: var(--ink);
@@ -588,7 +585,7 @@ button:disabled {
 
 .profile-grid {
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 350px minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -599,6 +596,11 @@ button:disabled {
   gap: 18px;
   padding: 18px;
   background: linear-gradient(140deg, #ffffff 0%, #f6f9ff 60%, #edf4ff 100%);
+}
+
+.profile-hero-card--no-actions {
+  /* 学生端：移除“统计课程”后，避免右侧预留空白列 */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .profile-hero-main {
