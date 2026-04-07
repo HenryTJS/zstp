@@ -66,6 +66,11 @@ const buildRadarOption = () => {
 
 const renderRadar = () => {
   if (!radarRef.value) return
+  // 若 DOM 被替换（例如条件渲染导致），需重建实例
+  if (radarChart && radarChart.getDom && radarChart.getDom() !== radarRef.value) {
+    radarChart.dispose()
+    radarChart = null
+  }
   if (!radarChart) {
     radarChart = echarts.init(radarRef.value)
   }
@@ -128,10 +133,16 @@ watch(
 
         <div class="ui-mt-12">
           <h3 style="margin-bottom:8px;">五维能力雷达图</h3>
-          <p v-if="dimensionScoresLoading" class="panel-subtitle">计算中…</p>
-          <p v-else-if="dimensionScoresError" class="error-text">{{ dimensionScoresError }}</p>
-          <p v-else-if="!dimensionScores?.usedCourses?.length" class="panel-subtitle">暂无足够练习记录，完成练习后将自动生成。</p>
-          <div v-else ref="radarRef" class="student-radar-box"></div>
+          <p v-show="dimensionScoresLoading" class="panel-subtitle">计算中…</p>
+          <p v-show="!dimensionScoresLoading && !!dimensionScoresError" class="error-text">{{ dimensionScoresError }}</p>
+          <p v-show="!dimensionScoresLoading && !dimensionScoresError && !dimensionScores?.usedCourses?.length" class="panel-subtitle">
+            暂无足够练习记录，完成练习后将自动生成。
+          </p>
+          <div
+            ref="radarRef"
+            class="student-radar-box"
+            v-show="!dimensionScoresLoading && !dimensionScoresError && !!dimensionScores?.usedCourses?.length"
+          ></div>
         </div>
       </article>
 

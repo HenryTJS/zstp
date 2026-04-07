@@ -19,7 +19,8 @@ const props = defineProps({
     default: 'home'
   }
 })
-const emit = defineEmits(['navigate', 'logout', 'update-user'])
+// App.vue 会把 loginSuccess 监听透传到 router-view 下的组件；这里声明以消除 Vue 警告
+const emit = defineEmits(['navigate', 'logout', 'update-user', 'loginSuccess'])
 
 const route = useRoute()
 const router = useRouter()
@@ -42,16 +43,37 @@ const answerImageFile = ref(null)
 const answerImageBase64 = ref('')
 const selectedChoiceAnswer = ref('')
 const practiceResult = ref(null)
-const currentPage = ref(props.activePage || 'home')
+const normalizeStudentPage = (p) => {
+  const raw = String(p || '').trim()
+  const allowed = new Set(['home', 'courses', 'graph', 'paper', 'exercise', 'review', 'announcements'])
+  return allowed.has(raw) ? raw : 'home'
+}
+const currentPage = ref(normalizeStudentPage(props.activePage || 'home'))
+const effectivePage = computed(() =>
+  normalizeStudentPage(route.params.page || props.activePage || currentPage.value || 'home')
+)
 
 // 监听外部 activePage prop，驱动内部 currentPage 切换
 watch(
   () => props.activePage,
   (val) => {
-    if (val && val !== currentPage.value) {
-      currentPage.value = val
+    const next = normalizeStudentPage(val)
+    if (next !== currentPage.value) {
+      currentPage.value = next
     }
   }
+)
+
+// 以路由为准兜底：避免 props 同步不到导致页面空白
+watch(
+  () => route.params.page,
+  (val) => {
+    const next = normalizeStudentPage(val || 'home')
+    if (next !== currentPage.value) {
+      currentPage.value = next
+    }
+  },
+  { immediate: true }
 )
 const learningRecords = ref([])
 const wrongBook = ref([])
@@ -924,16 +946,13 @@ const filteredWrongBook = computed(() => {
   return wrongBook.value || []
 })
 
-/** 「错题与记录」页：按当前「进入课程」筛选，与个人中心统计课程无关 */
 const filteredWrongBookForLearningPage = computed(() => {
-  const c = learningContextCourse.value
-  if (!c) return []
-  return wrongBook.value.filter((item) => item.course === c)
+  // 错题本（错题与记录页）：统一按所有课程汇总
+  return wrongBook.value || []
 })
 const filteredLearningRecordsForLearningPage = computed(() => {
-  const c = learningContextCourse.value
-  if (!c) return []
-  return learningRecords.value.filter((item) => item.course === c)
+  // 学习记录（错题与记录页）：统一按所有课程汇总
+  return learningRecords.value || []
 })
 
 /** 知识图谱掌握度：按当前「进入课程」的学习上下文统计，与个人中心统计课程无关 */
@@ -2128,7 +2147,7 @@ const confirmDeleteExam = async (id) => {
     <section class="student-lms-main">
       <div class="student-lms-content">
     <StudentHome
-      v-if="currentPage === 'home'"
+      v-if="effectivePage === 'home'"
       :user-initial="userInitial"
       :profile-form="profileForm"
       :current-user="currentUser"
@@ -2150,7 +2169,7 @@ const confirmDeleteExam = async (id) => {
     <!-- 修改密码已改为模态窗口 -->
 
     <StudentCourses
-      v-if="currentPage === 'courses'"
+      v-if="effectivePage === 'courses'"
       :joined-courses="joinedCourses"
       :joined-courses-search="joinedCoursesSearch"
       :joined-courses-page="joinedCoursesPage"
@@ -2167,7 +2186,7 @@ const confirmDeleteExam = async (id) => {
       @quit="quitCourse"
     />
 
-    <section v-if="currentPage === 'graph'" class="panel-stack">
+    <section v-if="effectivePage === 'graph'" class="panel-stack">
       <StudentGraph
         :can-show-graph-page="canShowGraphPage"
         :is-unjoined-preview-mode="isUnjoinedPreviewMode"
@@ -2305,7 +2324,7 @@ const confirmDeleteExam = async (id) => {
     </section>
 
     <StudentPaperComposer
-      v-if="currentPage === 'paper'"
+      v-if="effectivePage === 'paper'"
       :joined-courses="joinedCourses"
       :selected-major="selectedMajor"
       :render-latex-text="renderLatexText"
@@ -2314,7 +2333,7 @@ const confirmDeleteExam = async (id) => {
     />
 
     <StudentExercise
-      v-if="currentPage === 'exercise'"
+      v-if="effectivePage === 'exercise'"
       v-model:teacher-kp-test-answers="teacherKpTestAnswers"
       :can-study-current-course="canStudyCurrentCourse"
       :selected-knowledge-point="selectedKnowledgePoint"
@@ -2342,8 +2361,7 @@ const confirmDeleteExam = async (id) => {
     />
 
     <StudentReview
-      v-if="currentPage === 'review'"
-      :can-study-current-course="canStudyCurrentCourse"
+      v-if="effectivePage === 'review'"
       :filtered-wrong-book-for-learning-page="filteredWrongBookForLearningPage"
       :filtered-learning-records-for-learning-page="filteredLearningRecordsForLearningPage"
       :saved-exams="savedExams"
@@ -2362,12 +2380,22 @@ const confirmDeleteExam = async (id) => {
     />
 
     <StudentAnnouncements
-      v-if="currentPage === 'announcements'"
+      v-if="effectivePage === 'announcements'"
       :ann-loading="annLoading"
       :ann-error="annError"
       :announcements="announcements"
       :format-ann-time="formatAnnTime"
     />
+
+    <!-- 兜底：避免 unknown page 导致整页空白 -->
+    <article
+      v-if="!['home','courses','graph','paper','exercise','review','announcements'].includes(effectivePage)"
+      class="result-card"
+    >
+      <h3>页面不存在</h3>
+      <p class="panel-subtitle">未识别的页面：{{ String(route.params.page || props.activePage || '') }}</p>
+      <button type="button" class="nav-btn" @click="() => router.push('/student/home')">返回个人中心</button>
+    </article>
 
     <StudentEditProfileModal
       :visible="editProfileVisible"

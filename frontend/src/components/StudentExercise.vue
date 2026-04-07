@@ -138,7 +138,7 @@ const goCourses = () => {
         </p>
 
         <div v-else>
-          <div class="grid-form two-col ui-mt-12">
+          <div class="grid-form ui-mt-12">
             <label>
               难度
               <select v-model="questionForm.difficulty" class="match-height">
@@ -146,10 +146,6 @@ const goCourses = () => {
                 <option>中等</option>
                 <option>拔高</option>
               </select>
-            </label>
-            <label>
-              规则
-              <div class="panel-subtitle ui-mt-6">测试：固定 5 题（单选）</div>
             </label>
           </div>
 
