@@ -1,7 +1,4 @@
 <script setup>
-import { defineModel } from 'vue'
-
-const teacherKpTestAnswers = defineModel('teacherKpTestAnswers', { type: Array, default: () => [] })
 
 const props = defineProps({
   canStudyCurrentCourse: { type: Boolean, required: true },
@@ -16,17 +13,9 @@ const props = defineProps({
   testResult: { type: Object, default: null },
   testAnswers: { type: Array, required: true },
 
-  teacherKpTest: { type: Object, default: null },
-  teacherKpTestLoading: { type: Boolean, default: false },
-  teacherKpTestError: { type: String, default: '' },
-  teacherKpTestSubmitted: { type: Boolean, default: false },
-  teacherKpTestResult: { type: Object, default: null },
-  teacherKpTestSubmitting: { type: Boolean, default: false },
-
   // actions
   generateTest: { type: Function, required: true },
   submitTest: { type: Function, required: true },
-  submitTeacherKpTest: { type: Function, required: true },
   onGoCourses: { type: Function, default: null },
 
   // render helpers
@@ -56,77 +45,6 @@ const goCourses = () => {
     </article>
 
     <template v-else>
-      <article
-        v-if="teacherKpTest && teacherKpTest.questions?.length"
-        class="result-card"
-      >
-        <h3>教师发布测试 · {{ teacherKpTest.title }}</h3>
-        <p class="panel-subtitle" style="margin-top: 6px">
-          题型为单选题与填空题；成绩与下方「自主 AI 测试」一并计入学习记录与掌握度。
-        </p>
-        <p v-if="teacherKpTestLoading" class="panel-subtitle">加载中…</p>
-        <p v-else-if="teacherKpTestError" class="error-text">{{ teacherKpTestError }}</p>
-
-        <template v-else-if="!teacherKpTestSubmitted">
-          <div v-for="(q, idx) in teacherKpTest.questions" :key="'tk-' + idx" class="ui-mt-14">
-            <h4>第 {{ idx + 1 }} 题（{{ q.question_type }} · {{ q.fullScore ?? 5 }} 分）</h4>
-            <p v-if="q.focusPointName" class="panel-subtitle">考查知识点：{{ q.focusPointName }}</p>
-            <div class="latex-block" v-html="renderLatexText(q.question)"></div>
-
-            <div v-if="q.question_type === '选择题'" class="option-list">
-              <label v-for="opt in q.options || []" :key="opt" class="option-item">
-                <input
-                  type="radio"
-                  :name="'tk-q-' + idx"
-                  :value="parseOptionLetter(opt)"
-                  v-model="teacherKpTestAnswers[idx]"
-                />
-                <span v-html="renderLatexText(parseOptionText(opt))"></span>
-              </label>
-            </div>
-
-            <div v-else-if="q.question_type === '填空题'">
-              <label>
-                作答
-                <input class="match-height" v-model="teacherKpTestAnswers[idx]" placeholder="请输入答案" />
-              </label>
-            </div>
-          </div>
-
-          <div class="inline-form ui-mt-12">
-            <button type="button" class="match-button" :disabled="teacherKpTestSubmitting" @click="submitTeacherKpTest">
-              {{ teacherKpTestSubmitting ? '提交中…' : '提交教师测试' }}
-            </button>
-          </div>
-        </template>
-
-        <template v-else-if="teacherKpTestSubmitted && teacherKpTestResult">
-          <p>
-            <strong>总分：</strong>{{ teacherKpTestResult.totalScore }} / {{ teacherKpTestResult.fullScore }}
-          </p>
-          <div v-for="(q, idx) in teacherKpTest.questions" :key="'tkr-' + idx" class="ui-mt-14">
-            <h4>第 {{ idx + 1 }} 题</h4>
-            <p v-if="q.focusPointName" class="panel-subtitle">考查知识点：{{ q.focusPointName }}</p>
-            <p class="panel-subtitle">
-              得分：{{ teacherKpTestResult.perQuestion?.[idx]?.score ?? 0 }} /
-              {{ teacherKpTestResult.perQuestion?.[idx]?.full_score ?? q.fullScore ?? 5 }}
-            </p>
-            <div class="latex-block" v-html="renderLatexText(q.question)"></div>
-            <p>
-              <strong>你的答案：</strong>
-              <span v-html="renderLatexText(resolveAnswerText(q, teacherKpTestAnswers[idx]))"></span>
-            </p>
-            <div v-if="teacherKpTestResult.perQuestion?.[idx]?.explanation" style="margin-top: 8px">
-              <h4>解析</h4>
-              <div
-                class="latex-block"
-                v-html="renderLatexText(teacherKpTestResult.perQuestion[idx].explanation)"
-              ></div>
-            </div>
-          </div>
-        </template>
-      </article>
-
       <article class="result-card">
         <h3>出题与做题</h3>
         <p class="panel-subtitle ui-mt-6">

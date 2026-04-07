@@ -13,13 +13,11 @@ const studentPageList = [
   { key: 'courses', label: '课程广场' },
   { key: 'paper', label: '组卷' },
   { key: 'review', label: '错题与记录' },
-  { key: 'announcements', label: '公告' },
   { key: 'home', label: '个人中心' }
 ]
 
 const teacherPageList = [
   { key: 'courses', label: '课程广场' },
-  { key: 'announcements', label: '公告' },
   { key: 'profile', label: '个人中心' }
 ]
 

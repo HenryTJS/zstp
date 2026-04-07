@@ -12,6 +12,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -64,6 +65,29 @@ public class UserNotificationController {
         }
         int updated = notificationRepository.markRead(id, userId);
         if (updated == 0) {
+            return error(HttpStatus.NOT_FOUND, "通知不存在");
+        }
+        return ResponseEntity.ok(Map.of("message", "ok"));
+    }
+
+    @PostMapping("/read-all")
+    @Transactional
+    public ResponseEntity<?> markAllRead(@RequestParam Long userId) {
+        if (userId == null) {
+            return error(HttpStatus.BAD_REQUEST, "userId 必填");
+        }
+        int updated = notificationRepository.markAllRead(userId);
+        return ResponseEntity.ok(Map.of("message", "ok", "updated", updated));
+    }
+
+    @DeleteMapping("/{id}")
+    @Transactional
+    public ResponseEntity<?> delete(@PathVariable Long id, @RequestParam Long userId) {
+        if (userId == null) {
+            return error(HttpStatus.BAD_REQUEST, "userId 必填");
+        }
+        int deleted = notificationRepository.deleteByIdAndUserId(id, userId);
+        if (deleted == 0) {
             return error(HttpStatus.NOT_FOUND, "通知不存在");
         }
         return ResponseEntity.ok(Map.of("message", "ok"));

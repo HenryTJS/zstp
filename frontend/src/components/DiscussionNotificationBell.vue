@@ -1,7 +1,12 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { listUserNotifications, markUserNotificationRead } from '../api/client'
+import {
+  deleteUserNotification,
+  listUserNotifications,
+  markAllUserNotificationsRead,
+  markUserNotificationRead
+} from '../api/client'
 
 const props = defineProps({
   userId: { type: [Number, String], required: true }
@@ -14,6 +19,9 @@ const open = ref(false)
 const items = ref([])
 const unreadCount = ref(0)
 const loading = ref(false)
+const busy = ref(false)
+const annOpen = ref(false)
+const annItem = ref(null)
 let pollTimer = null
 
 const roleFromPath = computed(() => {
@@ -80,6 +88,19 @@ const navigateFor = async (n) => {
 
 const onItemClick = async (n) => {
   if (!n?.id || !props.userId) return
+  // Announcement: open modal instead of deep-link navigation.
+  if (String(n.type || '').toUpperCase() === 'ANNOUNCEMENT') {
+    annItem.value = n
+    annOpen.value = true
+    try {
+      await markUserNotificationRead(n.id, props.userId)
+    } catch {
+      /* ignore */
+    }
+    void fetchList()
+    return
+  }
+
   open.value = false
   try {
     await markUserNotificationRead(n.id, props.userId)
@@ -93,6 +114,28 @@ const onItemClick = async (n) => {
 const toggleOpen = () => {
   open.value = !open.value
   if (open.value) void fetchList()
+}
+
+const onMarkAllRead = async () => {
+  if (!props.userId || busy.value) return
+  busy.value = true
+  try {
+    await markAllUserNotificationsRead(props.userId)
+  } finally {
+    busy.value = false
+  }
+  void fetchList()
+}
+
+const onDeleteItem = async (n) => {
+  if (!n?.id || !props.userId || busy.value) return
+  busy.value = true
+  try {
+    await deleteUserNotification(n.id, props.userId)
+  } finally {
+    busy.value = false
+  }
+  void fetchList()
 }
 
 const formatTime = (iso) => {
@@ -119,19 +162,50 @@ const formatTime = (iso) => {
     <div v-if="open" class="dn-panel" role="dialog" aria-label="通知列表">
       <div class="dn-panel-head">
         <span>通知</span>
-        <button type="button" class="dn-close" aria-label="关闭" @click="open = false">×</button>
+        <div class="dn-head-actions">
+          <button
+            type="button"
+            class="dn-link"
+            :disabled="busy || unreadCount <= 0"
+            @click="onMarkAllRead"
+          >
+            一键已读
+          </button>
+          <button type="button" class="dn-close" aria-label="关闭" @click="open = false">×</button>
+        </div>
       </div>
       <p v-if="loading" class="dn-muted">加载中…</p>
       <ul v-else-if="!items.length" class="dn-list dn-muted">暂无通知</ul>
       <ul v-else class="dn-list">
         <li v-for="n in items" :key="n.id" class="dn-item" :class="{ unread: !n.read }">
-          <button type="button" class="dn-item-btn" @click="onItemClick(n)">
-            <span class="dn-item-title">{{ n.title }}</span>
-            <span v-if="n.body" class="dn-item-body">{{ n.body }}</span>
-            <span class="dn-item-meta">{{ formatTime(n.createdAt) }}</span>
-          </button>
+          <div class="dn-item-row">
+            <button type="button" class="dn-item-btn" @click="onItemClick(n)">
+              <span class="dn-item-title">
+                <span v-if="String(n.type || '').toUpperCase() === 'ANNOUNCEMENT'" class="dn-tag">公告</span>
+                {{ n.title }}
+              </span>
+              <span v-if="n.body" class="dn-item-body">{{ n.body }}</span>
+              <span class="dn-item-meta">{{ formatTime(n.createdAt) }}</span>
+            </button>
+            <button type="button" class="dn-del" aria-label="删除通知" :disabled="busy" @click="onDeleteItem(n)">
+              ×
+            </button>
+          </div>
         </li>
       </ul>
+    </div>
+
+    <div v-if="annOpen" class="dn-backdrop" @click="annOpen = false" />
+    <div v-if="annOpen" class="dn-modal" role="dialog" aria-label="公告详情">
+      <div class="dn-modal-head">
+        <span>公告</span>
+        <button type="button" class="dn-close" aria-label="关闭" @click="annOpen = false">×</button>
+      </div>
+      <div class="dn-modal-body">
+        <h3 class="dn-modal-title">{{ annItem?.title }}</h3>
+        <p class="dn-modal-meta">{{ formatTime(annItem?.createdAt) }}</p>
+        <div class="dn-modal-content">{{ annItem?.body }}</div>
+      </div>
     </div>
   </div>
 </template>
@@ -205,6 +279,24 @@ const formatTime = (iso) => {
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   font-weight: 600;
 }
+.dn-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.dn-link {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+}
+.dn-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .dn-close {
   border: none;
   background: transparent;
@@ -229,6 +321,10 @@ const formatTime = (iso) => {
 .dn-item.unread {
   background: rgba(37, 99, 235, 0.06);
 }
+.dn-item-row {
+  display: flex;
+  align-items: stretch;
+}
 .dn-item-btn {
   display: block;
   width: 100%;
@@ -238,6 +334,79 @@ const formatTime = (iso) => {
   background: transparent;
   cursor: pointer;
   font: inherit;
+}
+.dn-del {
+  flex: 0 0 auto;
+  width: 36px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 18px;
+  line-height: 1;
+}
+.dn-del:hover {
+  color: #ef4444;
+}
+.dn-del:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dn-tag {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.dn-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  margin: auto;
+  width: min(720px, 92vw);
+  max-height: min(70vh, 720px);
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.dn-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  font-weight: 700;
+}
+.dn-modal-body {
+  padding: 14px 16px 16px;
+  overflow: auto;
+}
+.dn-modal-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  line-height: 1.3;
+  color: #0f172a;
+}
+.dn-modal-meta {
+  margin: 0 0 12px;
+  color: #64748b;
+  font-size: 13px;
+}
+.dn-modal-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #334155;
+  line-height: 1.65;
 }
 .dn-item-btn:hover {
   background: rgba(15, 23, 42, 0.04);

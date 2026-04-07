@@ -44,6 +44,12 @@ export { http }
 
 export const fetchMaterialsByKnowledgePoint = (courseName, knowledgePoint, includeAncestors = true, teacherId) =>
   http.get('/materials/by-knowledge-point', { params: { courseName, knowledgePoint, includeAncestors, ...(teacherId ? { teacherId } : {}) } })
+export const fetchResourcesByKnowledgePoint = (params) =>
+  http.get('/resources/by-knowledge-point', { params })
+export const markResourceComplete = (payload) =>
+  http.post('/resources/complete', payload)
+export const fetchResourceProgress = (userId, courseName) =>
+  http.get('/resources/progress', { params: { userId, courseName } })
 export const fetchKnowledgeGraph = (payload) => http.post('/knowledge-graph', payload)
 export const fetchLearningSuggestions = (payload) => http.post('/learning-suggestions', payload)
 export const fetchMajorRelevance = (payload) => http.post('/major-relevance', payload)
@@ -84,6 +90,10 @@ export const listUserNotifications = (userId, params) =>
   http.get('/notifications', { params: { userId, ...params } })
 export const markUserNotificationRead = (id, userId) =>
   http.post(`/notifications/${id}/read`, null, { params: { userId } })
+export const markAllUserNotificationsRead = (userId) =>
+  http.post('/notifications/read-all', null, { params: { userId } })
+export const deleteUserNotification = (id, userId) =>
+  http.delete(`/notifications/${id}`, { params: { userId } })
 
 /** 教师发布知识点测试（单选+填空）、学生拉取与提交 */
 export const saveKnowledgePointPublishedTest = (payload) =>

@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -33,6 +35,18 @@ public class Material {
     @Column(name = "file_path", length = 255)
     private String filePath;
 
+    @Column(name = "course_name", length = 120)
+    private String courseName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", length = 30)
+    private MaterialCategory category;
+
+    @Column(name = "content_type", length = 120)
+    private String contentType;
+
+    @Column(name = "size_bytes")
+    private Long sizeBytes;
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "teacher_id", nullable = false)
@@ -112,5 +126,37 @@ public class Material {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getCourseName() {
+        return courseName;
+    }
+
+    public void setCourseName(String courseName) {
+        this.courseName = courseName;
+    }
+
+    public MaterialCategory getCategory() {
+        return category;
+    }
+
+    public void setCategory(MaterialCategory category) {
+        this.category = category;
+    }
+
+    public String getContentType() {
+        return contentType;
+    }
+
+    public void setContentType(String contentType) {
+        this.contentType = contentType;
+    }
+
+    public Long getSizeBytes() {
+        return sizeBytes;
+    }
+
+    public void setSizeBytes(Long sizeBytes) {
+        this.sizeBytes = sizeBytes;
     }
 }

@@ -9,7 +9,6 @@ import {
   uploadMaterial,
   updateUser,
   fetchMaterialsByKnowledgePoint,
-  fetchAnnouncements,
   listTeacherCoursePermissions,
   listCoursesByMajor,
   listTeacherCoursePermissionRequests,
@@ -28,6 +27,7 @@ import TeacherChangePasswordModal from './TeacherChangePasswordModal.vue'
 import TeacherMdImportInput from './TeacherMdImportInput.vue'
 import KnowledgePointDiscussion from './KnowledgePointDiscussion.vue'
 import TeacherPointTestModal from './TeacherPointTestModal.vue'
+import TeacherStudentAnalytics from './TeacherStudentAnalytics.vue'
 
 const props = defineProps({
   currentUser: {
@@ -62,6 +62,7 @@ const isCourseRootPoint = (item) => Boolean(item?.courseRoot)
 // 编号用于“渲染展示”和“父级选择提示”，不影响后端数据结构
 // =========================
 const selectedPointIds = ref([])
+const analyticsPointName = ref('')
 
 /** 与列表接口一致：同级按 sortOrder 再按 id，避免仅按 id 时「第10章」等顺序与编号错位 */
 const cmpNodeOrder = (a, b) => {
@@ -157,15 +158,26 @@ const buildSubtreeTopicOptions = (anchorPointId, allPoints, getPointNumberFn) =>
   const list = Array.isArray(allPoints) ? allPoints : []
   const anchor = anchorPointId == null ? null : Number(anchorPointId)
   if (anchor == null) return []
+  // 兼容旧数据：部分点只有 parentPoint 没有 parentId
+  // 这里沿用编号计算的“最近同名节点”回退策略，保证下属知识点能被正确挂载到锚点下
+  const nodes = list.slice().sort(cmpNodeOrder)
   const byParent = new Map()
-  for (const p of list) {
-    const par = p.parentId == null ? null : Number(p.parentId)
+  const lastByTrimPointName = new Map() // pointName(trim) -> 最近节点
+  for (const p of nodes) {
+    let par = p?.parentId == null ? null : Number(p.parentId)
+    if (par == null) {
+      const rawParent = p?.parentPoint == null ? null : String(p.parentPoint).trim()
+      par = rawParent ? (lastByTrimPointName.get(rawParent)?.id ?? null) : null
+    }
     if (!byParent.has(par)) byParent.set(par, [])
     byParent.get(par).push(p)
+
+    const selfName = String(p?.pointName || '').trim()
+    if (selfName) lastByTrimPointName.set(selfName, p)
   }
   const orderedNodes = []
   const walk = (id) => {
-    const node = list.find((p) => Number(p.id) === Number(id))
+    const node = nodes.find((p) => Number(p.id) === Number(id))
     if (!node) return
     orderedNodes.push(node)
     const rawKids = byParent.get(Number(id)) || []
@@ -193,7 +205,7 @@ const pointTestTopicOptions = computed(() => {
 })
 
 // 上传表单与状态
-const uploadForm = ref({ title: '', description: '', course: '', chapter: '', section: '', point: '', files: [] })
+const uploadForm = ref({ title: '', description: '', course: '', chapter: '', section: '', point: '', category: 'ATTACHMENT', files: [] })
 const loading = ref(false)
 const message = ref('')
 const error = ref('')
@@ -232,40 +244,7 @@ const courseOptions = computed(() => (Array.isArray(catalogCourses.value) ? cata
 const profileMessage = ref('')
 const selectedCollege = ref('')
 
-const announcements = ref([])
-const annLoading = ref(false)
-const annError = ref('')
-
-const loadTeacherAnnouncements = async () => {
-  annLoading.value = true
-  annError.value = ''
-  try {
-    const { data } = await fetchAnnouncements()
-    announcements.value = Array.isArray(data) ? data : []
-  } catch (e) {
-    annError.value = e?.response?.data?.message || '加载公告失败。'
-    announcements.value = []
-  } finally {
-    annLoading.value = false
-  }
-}
-
-const formatAnnTime = (iso) => {
-  if (!iso) return ''
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return String(iso)
-  }
-}
-
-watch(
-  currentPage,
-  (v) => {
-    if (v === 'announcements') void loadTeacherAnnouncements()
-  },
-  { immediate: true }
-)
+// 公告已并入「通知」弹窗；教师端不再单独提供公告页。
  
 // =========================
 // 教师端「课程广场」
@@ -673,10 +652,26 @@ const loadKnowledgePointData = async () => {
     const payload = res && res.data ? res.data : res
     const rawPoints = Array.isArray(payload) ? payload : (payload && payload.points) ? payload.points : []
     points.value = Array.isArray(rawPoints) ? rawPoints : []
+    if (!analyticsPointName.value) {
+      const arr = Array.isArray(points.value) ? points.value : []
+      const root = arr.find((p) => p?.courseRoot)
+      analyticsPointName.value = root?.pointName || arr[0]?.pointName || ''
+    }
     selectedPointIds.value = []
   } catch (err) {
     pointError.value = err?.response?.data?.message || '加载知识点失败。'
   }
+}
+
+const openAnalyticsForPoint = (p) => {
+  analyticsPointName.value = String(p?.pointName || '').trim()
+  // 尽量滚动到分析面板位置
+  try {
+    requestAnimationFrame(() => {
+      const el = document.getElementById('teacher-analytics-panel')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  } catch {}
 }
 
 const loadMaterialsByKnowledgePoint = async (kp) => {
@@ -710,6 +705,7 @@ const openUploadModal = (point) => {
   uploadForm.value.title = ''
   uploadForm.value.description = ''
   uploadForm.value.files = []
+  uploadForm.value.category = uploadForm.value.category || 'ATTACHMENT'
   uploadForm.value.point = point.pointName || point
   uploadForm.value.course = point.courseName || point.course || point.courseName
   uploadDialogVisible.value = true
@@ -754,7 +750,9 @@ const submitMaterial = async () => {
       // append text fields as UTF-8 blobs to avoid multipart charset issues
       fd.append('title', new Blob([uploadForm.value.title || ''], { type: 'text/plain;charset=UTF-8' }))
       fd.append('description', new Blob([uploadForm.value.description || ''], { type: 'text/plain;charset=UTF-8' }))
+      fd.append('courseName', new Blob([uploadForm.value.course || ''], { type: 'text/plain;charset=UTF-8' }))
       fd.append('knowledgePoint', new Blob([uploadForm.value.point || ''], { type: 'text/plain;charset=UTF-8' }))
+      fd.append('category', new Blob([String(uploadForm.value.category || 'ATTACHMENT')], { type: 'text/plain;charset=UTF-8' }))
       fd.append('file', file)
       await uploadMaterial(fd)
     }
@@ -1365,26 +1363,6 @@ watch(
       </div>
       </template>
 
-      <template v-else-if="currentPage === 'announcements'">
-        <article class="result-card">
-          <h3>平台公告</h3>
-          <p v-if="annLoading && !announcements.length" class="panel-subtitle">加载中…</p>
-          <p v-else-if="annError" class="error-text">{{ annError }}</p>
-          <p v-else-if="!announcements.length" class="panel-subtitle">暂无公告。</p>
-          <div v-else class="announcement-read-list">
-            <article v-for="a in announcements" :key="a.id" class="result-card announcement-read-card">
-              <h4 class="announcement-read-title">{{ a.title }}</h4>
-              <p class="panel-subtitle announcement-read-meta">
-                <span v-if="a.publisherName">{{ a.publisherName }}</span>
-                <span v-if="a.publisherName && a.createdAt"> · </span>
-                <span>{{ formatAnnTime(a.createdAt) }}</span>
-              </p>
-              <div class="announcement-read-body">{{ a.content }}</div>
-            </article>
-          </div>
-        </article>
-      </template>
-
       <template v-else-if="currentPage === 'courses'">
         <TeacherCourses
           :teacher-courses-search="teacherCoursesSearch"
@@ -1429,7 +1407,19 @@ watch(
           :on-open-discussion="openDiscussionPoint"
           :on-open-point-test="openPointTest"
           :can-publish-point-test="canPublishPointTest"
+          :on-open-analytics="openAnalyticsForPoint"
         />
+
+        <div id="teacher-analytics-panel" class="ui-mt-12">
+          <TeacherStudentAnalytics
+            :current-user="currentUser"
+            :course-options="courseOptions"
+            :selected-course="selectedCourse"
+            :points="points"
+            :point-name="analyticsPointName"
+            @update:point-name="(v) => (analyticsPointName = v)"
+          />
+        </div>
     </template>
     </section>
     <TeacherPermissionRequestModal

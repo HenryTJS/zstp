@@ -355,7 +355,8 @@
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
   gap:12px;
-  align-items:start;
+  /* 同一行卡片等高 */
+  align-items:stretch;
 }
 @media (max-width:1024px){
   .wrong-book-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
@@ -373,6 +374,8 @@
   flex-direction:column;
   gap:10px;
   min-width:0;
+  /* 让所有卡片（跨行）高度完全一致 */
+  height:220px;
 }
 .wrong-book-card-top{display:flex;flex-direction:column;gap:4px}
 .wrong-book-title{font-size:14px;color:#0f172a;line-height:1.35}
@@ -384,8 +387,14 @@
   color:#475569;
   line-height:1.45;
   min-height:2.6em;
+  /* 让“预览”吃掉多余空间，保证按钮区对齐到底部 */
+  flex:1;
+  overflow:hidden;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:4;
 }
-.wrong-book-card-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.wrong-book-card-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:auto}
 .wrong-book-toggle{flex:1;min-width:120px}
 .modal-wrapper.wrong-book-modal-wrap{max-width:min(920px,96vw);width:96%}
 .wrong-book-modal-box{max-height:85vh;display:flex;flex-direction:column;padding:20px 20px 16px}

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import {
   fetchQuestion,
   askAiAgent,
@@ -29,6 +29,19 @@ const loadError = ref('')
 const saveMessage = ref('')
 
 const anchorPn = () => String(props.pointName || '').trim()
+
+const mergedTopicPointOptions = () => {
+  const a = anchorPn()
+  const out = []
+  if (a) out.push({ value: a, label: a })
+  for (const o of props.topicPointOptions || []) {
+    if (!o?.value) continue
+    const v = String(o.value)
+    if (out.some((x) => x.value === v)) continue
+    out.push({ value: v, label: String(o.label || o.value) })
+  }
+  return out
+}
 
 const allowedFocusNames = () => {
   const a = anchorPn()
@@ -122,19 +135,29 @@ const topicForQuestion = (idx) => {
   const cn = (props.courseName || '').trim()
   const q = questions.value[idx]
   const focus = String(q?.focusPointName || props.pointName || '').trim()
-  return `${cn} ${focus}`.trim() + `（第${idx + 1}题）`
+  // 明确约束：只围绕所选知识点命题，避免 AI 跑到相邻/上级/下级点
+  const base = `${cn} 知识点：${focus}`.trim()
+  return `${base}（第${idx + 1}题；要求：仅考查该知识点，不要引入其它知识点或跨章节内容）`
 }
 
 const onAiQuestion = async (idx) => {
   const q = questions.value[idx]
   if (!q) return
+  // 关键：确保“下拉选择的知识点”已同步到响应式状态，再生成
+  // （避免用户刚选完就点按钮，仍用旧 focusPointName）
+  await nextTick()
   q.aiLoading = true
   try {
+    const cn = (props.courseName || '').trim()
+    const focus = String(q?.focusPointName || props.pointName || '').trim()
+    const topic =
+      `${cn} 知识点：${focus}`.trim() +
+      `（第${idx + 1}题；要求：仅考查该知识点，不要引入其它知识点或跨章节内容）`
     const { data } = await fetchQuestion({
-      topic: topicForQuestion(idx),
+      topic,
       difficulty: '中等',
       questionType: q.question_type,
-      major: '其它'
+      major: null
     })
     const d = data || {}
     q.question = String(d.question || '').trim() || q.question
@@ -253,11 +276,6 @@ const close = () => emit('close')
       <div class="modal-container" style="max-height: 88vh; overflow: auto">
         <button class="modal-close" type="button" aria-label="关闭" @click="close">×</button>
         <h3>发布知识点测试</h3>
-        <p class="panel-subtitle">
-          课程：{{ courseName }} · 锚点：<strong>{{ pointName }}</strong>
-          <template v-if="isCourseRootAnchor">（课程根 · 期末测试，可选全课下属任一知识点命题）</template>
-          <template v-else>（仅一级/二级知识点可发布；每题可选<strong>本锚点及其下属任意级</strong>知识点作为 AI 命题语境）</template>
-        </p>
 
         <label class="block-label">
           试卷标题
@@ -275,9 +293,9 @@ const close = () => emit('close')
         <div v-for="(q, idx) in questions" :key="idx" class="tpt-slot">
           <h4>第 {{ idx + 1 }} 题</h4>
           <label class="block-label">
-            本题考查知识点（锚点及其下属任选）
+            本题考查知识点
             <select v-model="q.focusPointName" class="match-height" style="width: 100%; box-sizing: border-box">
-              <option v-for="o in topicPointOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+              <option v-for="o in mergedTopicPointOptions()" :key="o.value" :value="o.value">{{ o.label }}</option>
             </select>
           </label>
           <div class="grid-form two-col">

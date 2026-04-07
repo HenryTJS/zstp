@@ -8,8 +8,10 @@ import java.util.Optional;
 import com.teacher.backend.dto.CreateAnnouncementRequest;
 import com.teacher.backend.entity.Announcement;
 import com.teacher.backend.entity.User;
+import com.teacher.backend.entity.UserNotification;
 import com.teacher.backend.repository.AnnouncementRepository;
 import com.teacher.backend.repository.UserRepository;
+import com.teacher.backend.repository.UserNotificationRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,13 +30,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class AnnouncementController {
 
     private static final String ROLE_ADMIN = "admin";
+    private static final String NOTIFY_TYPE_ANNOUNCEMENT = "ANNOUNCEMENT";
 
     private final AnnouncementRepository announcementRepository;
     private final UserRepository userRepository;
+    private final UserNotificationRepository notificationRepository;
 
-    public AnnouncementController(AnnouncementRepository announcementRepository, UserRepository userRepository) {
+    public AnnouncementController(
+        AnnouncementRepository announcementRepository,
+        UserRepository userRepository,
+        UserNotificationRepository notificationRepository
+    ) {
         this.announcementRepository = announcementRepository;
         this.userRepository = userRepository;
+        this.notificationRepository = notificationRepository;
     }
 
     @GetMapping
@@ -64,6 +73,26 @@ public class AnnouncementController {
         a.setContent(content);
         a.setPublisherId(userId);
         Announcement saved = announcementRepository.save(a);
+
+        // Push as user_notifications so students/teachers/admin can read/delete/mark-read in the same "通知" UI.
+        List<User> users = userRepository.findAll();
+        for (User u : users) {
+            if (u == null || u.getId() == null) {
+                continue;
+            }
+            UserNotification n = new UserNotification();
+            n.setUserId(u.getId());
+            n.setType(NOTIFY_TYPE_ANNOUNCEMENT);
+            n.setTitle(saved.getTitle());
+            n.setBody(saved.getContent());
+            n.setRead(false);
+            n.setCourseName("");
+            n.setPointName("");
+            // For announcement notifications, reuse postId to store announcement id (so delete can cascade).
+            n.setPostId(saved.getId());
+            notificationRepository.save(n);
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("message", "ok", "announcement", toMap(saved)));
     }
 
@@ -77,6 +106,7 @@ public class AnnouncementController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "公告不存在"));
         }
         announcementRepository.deleteById(id);
+        notificationRepository.deleteByTypeAndPostId(NOTIFY_TYPE_ANNOUNCEMENT, id);
         return ResponseEntity.ok(Map.of("message", "已删除"));
     }
 

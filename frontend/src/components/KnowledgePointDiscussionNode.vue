@@ -247,9 +247,25 @@ const isRoot = computed(() => props.depth === 0)
   color: #64748b;
   transition: background 0.15s ease, color 0.15s ease;
 }
+.student-lms-shell .kp-disc-icon-btn {
+  background: transparent !important;
+  border: none !important;
+  color: #64748b !important;
+  min-height: auto;
+  padding: 6px 8px;
+}
+.student-lms-shell .kp-disc-icon-btn:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.06) !important;
+  color: #0f172a !important;
+}
 .kp-disc-icon-btn:hover {
   background: rgba(15, 23, 42, 0.06);
   color: #0f172a;
+}
+.kp-disc-icon-btn:focus,
+.kp-disc-icon-btn:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 .kp-disc-icon {
   width: 20px;

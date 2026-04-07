@@ -9,6 +9,13 @@ defineProps({
 })
 
 const emit = defineEmits(['close', 'file-change', 'submit'])
+
+const acceptFor = (cat) => {
+  const c = String(cat || '').toUpperCase()
+  if (c === 'VIDEO') return '.mp4,video/mp4'
+  if (c === 'DOCUMENT') return '.pdf,application/pdf'
+  return ''
+}
 </script>
 
 <template>
@@ -19,6 +26,14 @@ const emit = defineEmits(['close', 'file-change', 'submit'])
         <h3>上传资料 - {{ uploadForm.point || (uploadTargetPoint && uploadTargetPoint.pointName) }}</h3>
         <div class="grid-form single-col ui-mt-12">
           <label>
+            分类
+            <select v-model="uploadForm.category" class="match-height">
+              <option value="VIDEO">视频（mp4）</option>
+              <option value="DOCUMENT">文档（pdf）</option>
+              <option value="ATTACHMENT">附件（不限格式）</option>
+            </select>
+          </label>
+          <label>
             资料标题
             <input v-model="uploadForm.title" class="match-height" placeholder="例如：讲义" />
           </label>
@@ -28,7 +43,7 @@ const emit = defineEmits(['close', 'file-change', 'submit'])
           </label>
           <label>
             文件（可多选）
-            <input type="file" multiple @change="emit('file-change', $event)" />
+            <input type="file" multiple :accept="acceptFor(uploadForm.category)" @change="emit('file-change', $event)" />
           </label>
         </div>
         <div class="ui-actions-row">

@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
 
 @RestController
 @RequestMapping("/api")
@@ -67,18 +70,22 @@ public class AiController {
     }
 
     @PostMapping("/generate-question")
-    public Map<String, Object> generateQuestion(@RequestBody(required = false) GenerateQuestionRequest request) {
+    public ResponseEntity<?> generateQuestion(@RequestBody(required = false) GenerateQuestionRequest request) {
         log.info("Hit /api/generate-question, topic={}, difficulty={}, type={}, major={}",
             request == null ? null : request.topic(),
             request == null ? null : request.difficulty(),
             request == null ? null : request.questionType(),
             request == null ? null : request.major());
-        return aiService.generateQuestion(
+        String topic = request == null ? null : request.topic();
+        if (!StringUtils.hasText(topic)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "topic 必填（请先选择课程与知识点）"));
+        }
+        return ResponseEntity.ok(aiService.generateQuestion(
             request == null ? null : request.topic(),
             request == null ? null : request.difficulty(),
             request == null ? null : request.questionType(),
             request == null ? null : request.major()
-        );
+        ));
     }
 
     /**

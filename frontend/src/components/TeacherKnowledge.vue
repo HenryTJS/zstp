@@ -25,7 +25,8 @@ const props = defineProps({
   onOpenViewMaterials: { type: Function, required: true },
   onOpenDiscussion: { type: Function, required: true },
   onOpenPointTest: { type: Function, required: true },
-  canPublishPointTest: { type: Function, required: true }
+  canPublishPointTest: { type: Function, required: true },
+  onOpenAnalytics: { type: Function, required: false, default: null }
 })
 
 const emit = defineEmits(['update:selectedPointIds'])
@@ -164,6 +165,13 @@ const onDeleteSelected = () => props.onDeleteSelectedPoints()
                 @click="onOpenPointTest(item)"
               >
                 {{ isCourseRootPoint(item) ? '发布期末测试' : '发布测试' }}
+              </button>
+              <button
+                type="button"
+                class="cancel-button"
+                @click="onOpenAnalytics ? onOpenAnalytics(item) : null"
+              >
+                学生分析
               </button>
             </td>
           </tr>

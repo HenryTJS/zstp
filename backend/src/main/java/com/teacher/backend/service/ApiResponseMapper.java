@@ -70,6 +70,10 @@ public class ApiResponseMapper {
         response.put("title", material.getTitle());
         response.put("description", material.getDescription());
         response.put("fileName", material.getFileName());
+        response.put("courseName", material.getCourseName());
+        response.put("category", material.getCategory() == null ? null : material.getCategory().name());
+        response.put("contentType", material.getContentType());
+        response.put("sizeBytes", material.getSizeBytes());
         response.put("teacherId", material.getTeacher() == null ? null : material.getTeacher().getId());
         response.put("teacherName", material.getTeacher() == null ? "" : material.getTeacher().getUsername());
         response.put("createdAt", material.getCreatedAt() == null ? null : material.getCreatedAt().toString());

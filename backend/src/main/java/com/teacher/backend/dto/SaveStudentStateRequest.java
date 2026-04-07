@@ -9,6 +9,7 @@ public record SaveStudentStateRequest(
     String courseName,
     List<Map<String, Object>> learningRecords,
     List<Map<String, Object>> wrongBook,
-    List<String> joinedCourses
+    List<String> joinedCourses,
+    List<String> completedResourceKeys
 ) {
 }

@@ -64,7 +64,8 @@ public class StudentStateController {
                 "courseName", courseCatalogService.defaultCourse(),
                 "learningRecords", List.of(),
                 "wrongBook", List.of(),
-                "joinedCourses", List.of()
+                "joinedCourses", List.of(),
+                "completedResourceKeys", List.of()
             ));
         }
 
@@ -77,7 +78,8 @@ public class StudentStateController {
             "courseName", courseCatalogService.normalizeCourseName(state.getCourseName()),
             "learningRecords", parseJsonArray(state.getLearningRecordsJson()),
             "wrongBook", parseJsonArray(state.getWrongBookJson()),
-            "joinedCourses", normalizeJoinedCourseNames(parseJsonStringList(state.getJoinedCoursesJson()))
+            "joinedCourses", normalizeJoinedCourseNames(parseJsonStringList(state.getJoinedCoursesJson())),
+            "completedResourceKeys", parseJsonStringList(state.getCompletedResourceKeysJson())
         ));
     }
 
@@ -109,6 +111,11 @@ public class StudentStateController {
             state.setJoinedCoursesJson(writeJsonStringList(normalizeJoinedCourseNames(request.joinedCourses())));
         } else if (state.getId() == null) {
             state.setJoinedCoursesJson("[]");
+        }
+        if (request != null && request.completedResourceKeys() != null) {
+            state.setCompletedResourceKeysJson(writeJsonStringList(request.completedResourceKeys()));
+        } else if (state.getId() == null) {
+            state.setCompletedResourceKeysJson("[]");
         }
         studentStateRepository.save(state);
 

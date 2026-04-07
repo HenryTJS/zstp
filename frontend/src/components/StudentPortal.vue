@@ -1,9 +1,9 @@
 <script setup>
 import StudentGraph from './StudentGraph.vue'
 import StudentExercise from './StudentExercise.vue'
+import StudentTeacherTest from './StudentTeacherTest.vue'
 import StudentPaperComposer from './StudentPaperComposer.vue'
 import StudentReview from './StudentReview.vue'
-import StudentAnnouncements from './StudentAnnouncements.vue'
 import StudentCourses from './StudentCourses.vue'
 import StudentHome from './StudentHome.vue'
 import StudentEditProfileModal from './StudentEditProfileModal.vue'
@@ -45,7 +45,7 @@ const selectedChoiceAnswer = ref('')
 const practiceResult = ref(null)
 const normalizeStudentPage = (p) => {
   const raw = String(p || '').trim()
-  const allowed = new Set(['home', 'courses', 'graph', 'paper', 'exercise', 'review', 'announcements'])
+  const allowed = new Set(['home', 'courses', 'graph', 'paper', 'exercise', 'teacher-test', 'review'])
   return allowed.has(raw) ? raw : 'home'
 }
 const currentPage = ref(normalizeStudentPage(props.activePage || 'home'))
@@ -107,7 +107,9 @@ import {
   fetchStudentDimensionScores,
   fetchStudentState,
   saveStudentState,
-  fetchMaterialsByKnowledgePoint,
+  fetchResourcesByKnowledgePoint,
+  fetchResourceProgress,
+  markResourceComplete,
   updateUser,
   listKnowledgePoints,
   fetchExams,
@@ -115,13 +117,16 @@ import {
   fetchLearningSuggestions,
   fetchMajorRelevance,
   saveExam,
-  fetchAnnouncements,
   listCoursesByMajor,
   listTeachersForCourses,
   getKnowledgePointPublishedTestForStudent,
   submitKnowledgePointPublishedTest
 } from '../api/client'
-const materials = ref([])
+const resources = ref({ materials: [], tests: [], totalCount: 0 })
+const resourcesLoading = ref(false)
+const resourcesError = ref('')
+const completedResourceKeys = ref([])
+const courseProgress = ref(null) // { total, completed, percent }
 const selectedKnowledgePoint = ref('')
 
 import { http } from '../api/client'
@@ -470,7 +475,7 @@ const clearCascadeAfterAdd = () => {
 }
 
 // 从知识图谱点击节点后：进入“固定规则”的测试
-const enterFixedTestFromGraph = () => {
+const enterFixedTestFromGraph = async () => {
   if (!selectedKnowledgePoint.value) return
   // 固定：5题、仅单选
   testCounts.value.singleChoiceCount = 5
@@ -482,6 +487,12 @@ const enterFixedTestFromGraph = () => {
   testForm.value.selectedPoints = [String(selectedKnowledgePoint.value).trim()]
 
   currentPage.value = 'exercise'
+  try {
+    // effectivePage 优先取路由 params.page；这里必须切路由，否则界面仍停留在 /student/graph
+    await router.push('/student/exercise')
+  } catch {
+    /* ignore */
+  }
 }
 
 // =========================
@@ -532,6 +543,11 @@ const teacherKpTestSubmitted = ref(false)
 const teacherKpTestResult = ref(null)
 const teacherKpTestSubmitting = ref(false)
 
+/** 图谱页展示用：教师发布测试概览（不与练习页的 teacherKpTest 状态互相覆盖） */
+const teacherKpTestMeta = ref(null) // { id, title, updatedAt, questionCount }
+const teacherKpTestMetaLoading = ref(false)
+const teacherKpTestMetaError = ref('')
+
 const loadTeacherKpTest = async () => {
   teacherKpTest.value = null
   teacherKpTestError.value = ''
@@ -563,10 +579,43 @@ const loadTeacherKpTest = async () => {
   }
 }
 
+const loadTeacherKpTestMeta = async () => {
+  teacherKpTestMeta.value = null
+  teacherKpTestMetaError.value = ''
+  if (!canStudyCurrentCourse.value || !learningContextCourse.value || !selectedKnowledgePoint.value || !props.currentUser?.id) {
+    return
+  }
+  teacherKpTestMetaLoading.value = true
+  try {
+    const { data } = await getKnowledgePointPublishedTestForStudent({
+      courseName: learningContextCourse.value,
+      pointName: selectedKnowledgePoint.value,
+      userId: props.currentUser.id
+    })
+    const t = data?.test
+    const qs = Array.isArray(t?.questions) ? t.questions : []
+    if (t?.id && qs.length) {
+      teacherKpTestMeta.value = {
+        id: t.id,
+        title: t.title || '',
+        updatedAt: t.updatedAt || null,
+        questionCount: qs.length
+      }
+    } else {
+      teacherKpTestMeta.value = null
+    }
+  } catch (e) {
+    teacherKpTestMetaError.value = e?.response?.data?.message || ''
+    teacherKpTestMeta.value = null
+  } finally {
+    teacherKpTestMetaLoading.value = false
+  }
+}
+
 watch(
   () => [currentPage.value, learningContextCourse.value, selectedKnowledgePoint.value, props.currentUser?.id],
   () => {
-    if (currentPage.value !== 'exercise') {
+    if (currentPage.value !== 'teacher-test') {
       teacherKpTest.value = null
       teacherKpTestSubmitted.value = false
       teacherKpTestResult.value = null
@@ -575,6 +624,20 @@ watch(
       return
     }
     void loadTeacherKpTest()
+  }
+)
+
+watch(
+  () => [effectivePage.value, learningContextCourse.value, selectedKnowledgePoint.value, props.currentUser?.id],
+  () => {
+    if (effectivePage.value !== 'graph') {
+      teacherKpTestMeta.value = null
+      teacherKpTestMetaError.value = ''
+      teacherKpTestMetaLoading.value = false
+      return
+    }
+    // 图谱节点切换时刷新“教师发布测试”概览
+    void loadTeacherKpTestMeta()
   }
 )
 
@@ -651,6 +714,16 @@ const submitTeacherKpTest = async () => {
     teacherKpTestError.value = e?.response?.data?.message || '提交失败'
   } finally {
     teacherKpTestSubmitting.value = false
+  }
+}
+
+const enterTeacherKpTestFromGraph = async () => {
+  if (!selectedKnowledgePoint.value) return
+  currentPage.value = 'teacher-test'
+  try {
+    await router.push('/student/teacher-test')
+  } catch {
+    /* ignore */
   }
 }
 
@@ -1585,16 +1658,64 @@ const loadMajorRelevanceFor = async (pointName) => {
   }
 }
 
-const loadMaterialsByKnowledgePoint = async (pointName) => {
-  if (!learningContextCourse.value || !pointName) {
-    materials.value = []
+const loadResourcesByKnowledgePoint = async (pointName) => {
+  const cn = learningContextCourse.value
+  const kp = pointName || selectedKnowledgePoint.value || ''
+  if (!cn || !kp || !props.currentUser?.id) {
+    resources.value = { materials: [], tests: [], totalCount: 0 }
+    resourcesError.value = ''
+    resourcesLoading.value = false
+    completedResourceKeys.value = []
+    courseProgress.value = null
     return
   }
+  resourcesLoading.value = true
+  resourcesError.value = ''
   try {
-    const resp = await fetchMaterialsByKnowledgePoint(learningContextCourse.value, pointName, false)
-    materials.value = resp.data
+    const { data } = await fetchResourcesByKnowledgePoint({
+      courseName: cn,
+      knowledgePoint: kp,
+      includeAncestors: true,
+      userId: props.currentUser.id
+    })
+    resources.value = data && typeof data === 'object'
+      ? {
+          materials: Array.isArray(data.materials) ? data.materials : [],
+          tests: Array.isArray(data.tests) ? data.tests : [],
+          totalCount: Number(data.totalCount || 0)
+        }
+      : { materials: [], tests: [], totalCount: 0 }
+  } catch (e) {
+    resources.value = { materials: [], tests: [], totalCount: 0 }
+    resourcesError.value = e?.response?.data?.message || '资源加载失败。'
+  } finally {
+    resourcesLoading.value = false
+  }
+
+  try {
+    const { data } = await fetchResourceProgress(props.currentUser.id, cn)
+    courseProgress.value = data || null
+    completedResourceKeys.value = Array.isArray(data?.completedKeys) ? data.completedKeys : []
   } catch {
-    materials.value = []
+    courseProgress.value = null
+    completedResourceKeys.value = []
+  }
+}
+
+const resourceKeyForMaterial = (m) => (m?.id != null ? `MATERIAL:${m.id}` : '')
+const isResourceCompleted = (key) => Boolean(key && (completedResourceKeys.value || []).includes(key))
+
+const markCompletedSafe = async (resourceKey) => {
+  const cn = learningContextCourse.value
+  if (!props.currentUser?.id || !cn || !resourceKey) return
+  try {
+    await markResourceComplete({ userId: props.currentUser.id, courseName: cn, resourceKey })
+    // 轻量刷新进度
+    const { data } = await fetchResourceProgress(props.currentUser.id, cn)
+    courseProgress.value = data || null
+    completedResourceKeys.value = Array.isArray(data?.completedKeys) ? data.completedKeys : completedResourceKeys.value
+  } catch {
+    // ignore
   }
 }
 
@@ -1680,7 +1801,7 @@ const loadGraph = async () => {
     graphData.value = { title: '知识图谱', nodes: [], edges: [], suggestions: [] }
     selectedNodeId.value = ''
     selectedKnowledgePoint.value = ''
-    materials.value = []
+      resources.value = { materials: [], tests: [], totalCount: 0 }
     learningSuggestions.value = []
     majorRelevance.value = {
       scoreLevel: null,
@@ -1717,11 +1838,11 @@ const loadGraph = async () => {
     const applyRootSelection = async (label) => {
       selectedKnowledgePoint.value = label
       if (currentPage.value === 'graph' && !isPreview) {
-        await loadMaterialsByKnowledgePoint(label)
+        await loadResourcesByKnowledgePoint(label)
         void loadLearningSuggestionsFor(label)
         void loadMajorRelevanceFor(label)
       } else if (isPreview) {
-        materials.value = []
+        resources.value = { materials: [], tests: [], totalCount: 0 }
         learningSuggestions.value = []
         majorRelevance.value = {
           scoreLevel: null,
@@ -1795,7 +1916,7 @@ const renderGraphChart = () => {
         const name = params.data.name
         selectedKnowledgePoint.value = name
         graphClickedNodeCategory.value = typeof params?.data?.category === 'number' ? params.data.category : null
-        void loadMaterialsByKnowledgePoint(name)
+        void loadResourcesByKnowledgePoint(name)
         void loadLearningSuggestionsFor(name)
         void loadMajorRelevanceFor(name)
       }
@@ -1881,32 +2002,7 @@ const closeWrongBookModal = () => {
   wrongBookModalItem.value = null
 }
 
-const announcements = ref([])
-const annLoading = ref(false)
-const annError = ref('')
-
-const loadStudentAnnouncements = async () => {
-  annLoading.value = true
-  annError.value = ''
-  try {
-    const { data } = await fetchAnnouncements()
-    announcements.value = Array.isArray(data) ? data : []
-  } catch (e) {
-    annError.value = e?.response?.data?.message || '加载公告失败。'
-    announcements.value = []
-  } finally {
-    annLoading.value = false
-  }
-}
-
-const formatAnnTime = (iso) => {
-  if (!iso) return ''
-  try {
-    return new Date(iso).toLocaleString()
-  } catch {
-    return String(iso)
-  }
-}
+// 公告已并入「通知」弹窗；学生端不再单独提供公告页。
 
 watch(currentPage, (v) => {
   if (v !== 'review') closeWrongBookModal()
@@ -2022,13 +2118,7 @@ watch([selectedMajor1, selectedMajor2, selectedMajor3], () => {
 
 // removed watcher for profileForm.bio (learning goal removed)
 
-watch(
-  currentPage,
-  (v) => {
-    if (v === 'announcements') void loadStudentAnnouncements()
-  },
-  { immediate: true }
-)
+// 公告页已移除：无需在切页时拉取公告
 
 watch(
   () => currentPage.value,
@@ -2048,7 +2138,7 @@ watch(
           graphData.value.nodes.find((n) => n.id === 'root')?.label ||
           ''
         if (kp && !previewUnjoinedCourse.value) {
-          await loadMaterialsByKnowledgePoint(kp)
+        await loadResourcesByKnowledgePoint(kp)
           void loadLearningSuggestionsFor(kp)
           void loadMajorRelevanceFor(kp)
         }
@@ -2284,32 +2374,77 @@ const confirmDeleteExam = async (id) => {
             </div>
           </div>
           <div class="ui-mt-12">
-            <h3>相关资料</h3>
-            <div v-if="!materials.length" class="panel-subtitle">当前知识点暂无资料。</div>
-            <table v-else class="data-table">
-              <thead>
-                <tr>
-                  <th>标题</th>
-                  <th>描述</th>
-                  <th>文件名</th>
-                  <th>上传者</th>
-                  <th>时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="m in materials" :key="m.id">
-                  <td>{{ m.title }}</td>
-                  <td>{{ m.description || '-' }}</td>
-                  <td>{{ m.fileName || '-' }}</td>
-                  <td>{{ m.teacherName || '-' }}</td>
-                  <td>{{ m.createdAt ? new Date(m.createdAt).toLocaleString() : '-' }}</td>
-                  <td>
-                    <a :href="`/api/materials/${m.id}/download`" target="_blank">下载</a>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <h3>学习资源</h3>
+            <p v-if="courseProgress" class="panel-subtitle ui-mt-6">
+              课程进度：<strong>{{ courseProgress.percent || 0 }}%</strong>
+              <span>（{{ courseProgress.completed || 0 }} / {{ courseProgress.total || 0 }}）</span>
+            </p>
+            <p v-if="resourcesLoading" class="panel-subtitle">正在加载资源...</p>
+            <p v-else-if="resourcesError" class="error-text">{{ resourcesError }}</p>
+            <template v-else>
+              <div v-if="!((resources.materials || []).length || (resources.tests || []).length)" class="panel-subtitle">
+                当前知识点暂无资源与测试。
+              </div>
+
+              <table v-else class="data-table">
+                <thead>
+                  <tr>
+                    <th>类型</th>
+                    <th>标题</th>
+                    <th>文件名/题量</th>
+                    <th>上传者/更新时间</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="m in (resources.materials || [])" :key="'m-' + m.id">
+                    <td>{{ m.category || 'ATTACHMENT' }}</td>
+                    <td>{{ m.title }}</td>
+                    <td>{{ m.fileName || '-' }}</td>
+                    <td>
+                      {{ m.teacherName || '-' }}
+                      <span v-if="m.createdAt"> · {{ new Date(m.createdAt).toLocaleString() }}</span>
+                    </td>
+                    <td>
+                      <span v-if="isResourceCompleted(resourceKeyForMaterial(m))">已完成</span>
+                      <span v-else>未完成</span>
+                    </td>
+                    <td>
+                      <a
+                        :href="`/api/materials/${m.id}/download`"
+                        target="_blank"
+                        @click="() => markCompletedSafe(resourceKeyForMaterial(m))"
+                      >下载</a>
+                    </td>
+                  </tr>
+
+                  <tr v-for="t in (resources.tests || [])" :key="'t-' + t.id">
+                    <td>TEST</td>
+                    <td>{{ t.title || '教师发布测试' }}</td>
+                    <td>{{ t.questionCount || 0 }} 题</td>
+                    <td>
+                      <span v-if="t.updatedAt">{{ new Date(t.updatedAt).toLocaleString() }}</span>
+                      <span v-else>-</span>
+                    </td>
+                    <td>
+                      <span v-if="isResourceCompleted(t.resourceKey)">已完成</span>
+                      <span v-else>未完成</span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        class="match-button"
+                        @click="enterTeacherKpTestFromGraph"
+                        :disabled="isResourceCompleted(t.resourceKey)"
+                      >
+                        {{ isResourceCompleted(t.resourceKey) ? '已完成' : '开始测试' }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </template>
           </div>
           <KnowledgePointDiscussion
             :course-name="learningContextCourse"
@@ -2334,7 +2469,6 @@ const confirmDeleteExam = async (id) => {
 
     <StudentExercise
       v-if="effectivePage === 'exercise'"
-      v-model:teacher-kp-test-answers="teacherKpTestAnswers"
       :can-study-current-course="canStudyCurrentCourse"
       :selected-knowledge-point="selectedKnowledgePoint"
       :question-form="questionForm"
@@ -2344,14 +2478,26 @@ const confirmDeleteExam = async (id) => {
       :test-submitted="testSubmitted"
       :test-result="testResult"
       :test-answers="testAnswers"
+      :generate-test="generateTest"
+      :submit-test="submitTest"
+      :render-latex-text="renderLatexText"
+      :parse-option-letter="parseOptionLetter"
+      :parse-option-text="parseOptionText"
+      :resolve-answer-text="resolveAnswerText"
+      @go-courses="currentPage = 'courses'"
+    />
+
+    <StudentTeacherTest
+      v-if="effectivePage === 'teacher-test'"
+      v-model:teacher-kp-test-answers="teacherKpTestAnswers"
+      :can-study-current-course="canStudyCurrentCourse"
+      :selected-knowledge-point="selectedKnowledgePoint"
       :teacher-kp-test="teacherKpTest"
       :teacher-kp-test-loading="teacherKpTestLoading"
       :teacher-kp-test-error="teacherKpTestError"
       :teacher-kp-test-submitted="teacherKpTestSubmitted"
       :teacher-kp-test-result="teacherKpTestResult"
       :teacher-kp-test-submitting="teacherKpTestSubmitting"
-      :generate-test="generateTest"
-      :submit-test="submitTest"
       :submit-teacher-kp-test="submitTeacherKpTest"
       :render-latex-text="renderLatexText"
       :parse-option-letter="parseOptionLetter"
@@ -2379,17 +2525,9 @@ const confirmDeleteExam = async (id) => {
       @go-courses="currentPage = 'courses'"
     />
 
-    <StudentAnnouncements
-      v-if="effectivePage === 'announcements'"
-      :ann-loading="annLoading"
-      :ann-error="annError"
-      :announcements="announcements"
-      :format-ann-time="formatAnnTime"
-    />
-
     <!-- 兜底：避免 unknown page 导致整页空白 -->
     <article
-      v-if="!['home','courses','graph','paper','exercise','review','announcements'].includes(effectivePage)"
+      v-if="!['home','courses','graph','paper','exercise','teacher-test','review'].includes(effectivePage)"
       class="result-card"
     >
       <h3>页面不存在</h3>

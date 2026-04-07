@@ -526,6 +526,8 @@ public class AiService {
         String resolvedMajor = normalizeMajor(major);
         String majorLevel = majorLevel(resolvedMajor);
         boolean withProfessionalContext = !"D".equals(majorLevel);
+        boolean usedFallback = false;
+        String fallbackReason = "";
 
         if (aiEnabled()) {
             String systemPrompt = "你是教学命题助手。仅支持题型: 选择题/多选题/判断题/填空题/解答题（其中选择题=单选题）。输出 JSON:{question:string, question_type:string, options:[string], answer:string, explanation:string, knowledge_points:[string]}。"
@@ -545,6 +547,7 @@ public class AiService {
                 aiResult.put("question_type", normalizeQuestionType((String) aiResult.get("question_type")));
                 aiResult.put("major", resolvedMajor);
                 aiResult.put("major_level", majorLevel);
+                aiResult.put("used_fallback", false);
                 // 保留需要选项的题型；填空题/解答题不需要 options
                 if (!java.util.List.of("选择题", "多选题", "判断题").contains(aiResult.get("question_type"))) {
                     aiResult.put("options", List.of());
@@ -552,47 +555,57 @@ public class AiService {
                 return aiResult;
             } catch (Exception exception) {
                 log.warn("AI call failed in generateQuestion, fallback to local template: {}", exception.getMessage());
+                usedFallback = true;
+                fallbackReason = "ai_failed";
             }
+        } else {
+            usedFallback = true;
+            fallbackReason = "ai_disabled";
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("question_type", resolvedQuestionType);
         response.put("major", resolvedMajor);
         response.put("major_level", majorLevel);
+        response.put("used_fallback", usedFallback);
+        response.put("fallback_reason", fallbackReason);
+        response.put("resolved_topic", resolvedTopic);
         String contextPrefix = withProfessionalContext
             ? "结合" + resolvedMajor + "（难度" + majorLevel + "）背景，"
             : "";
+        // 即便兜底模板，也把知识点（topic）写进题干，便于前端识别“是否用到了正确的知识点”
+        String topicHint = "【知识点：" + resolvedTopic + "】";
         if ("选择题".equals(resolvedQuestionType)) {
             // 本地兜底模板：用 topic 做轻量变体，避免同一轮测试多次生成完全相同题目
             int variant = Math.abs(resolvedTopic.hashCode()) % 3;
             if (variant == 0) {
-                response.put("question", contextPrefix + "已知函数$f(x)=x^2-2x+1$，其最小值为（ ）。");
+                response.put("question", topicHint + contextPrefix + "已知函数$f(x)=x^2-2x+1$，其最小值为（ ）。");
                 response.put("options", List.of("A. $-1$", "B. $0$", "C. $1$", "D. $2$"));
                 response.put("answer", "B");
                 response.put("explanation", "因为$f(x)=(x-1)^2\\ge0$，当$x=1$时取等号，所以最小值是$0$。"
                     + (withProfessionalContext ? "题目场景可对应专业课中的优化分析。" : ""));
             } else if (variant == 1) {
                 // f(x)=(x+1)^2-4, 最小值 -4（x=-1）
-                response.put("question", contextPrefix + "已知函数$f(x)=(x+1)^2-4$，其最小值为（ ）。");
+                response.put("question", topicHint + contextPrefix + "已知函数$f(x)=(x+1)^2-4$，其最小值为（ ）。");
                 response.put("options", List.of("A. $-1$", "B. $-4$", "C. $1$", "D. $2$"));
                 response.put("answer", "B");
                 response.put("explanation", "因为$f(x)=(x+1)^2-4\\ge -4$，当$x=-1$时取等号，所以最小值是$-4$。"
                     + (withProfessionalContext ? "题目场景可对应专业课中的参数约束分析。" : ""));
             } else {
                 // f(x)=(x-2)^2+1, 最小值 1（x=2）
-                response.put("question", contextPrefix + "已知函数$f(x)=(x-2)^2+1$，其最小值为（ ）。");
+                response.put("question", topicHint + contextPrefix + "已知函数$f(x)=(x-2)^2+1$，其最小值为（ ）。");
                 response.put("options", List.of("A. $-1$", "B. $0$", "C. $1$", "D. $2$"));
                 response.put("answer", "C");
                 response.put("explanation", "因为$f(x)=(x-2)^2+1\\ge 1$，当$x=2$时取等号，所以最小值是$1$。"
                     + (withProfessionalContext ? "题目场景可对应专业课中的最值求解建模。" : ""));
             }
         } else if ("填空题".equals(resolvedQuestionType)) {
-            response.put("question", contextPrefix + "函数$f(x)=\\sin x$在$x=0$处的一阶导数为____。请填写最终结果。");
+            response.put("question", topicHint + contextPrefix + "函数$f(x)=\\sin x$在$x=0$处的一阶导数为____。请填写最终结果。");
             response.put("options", List.of());
             response.put("answer", "1");
             response.put("explanation", "$f'(x)=\\cos x$，代入$x=0$，得到$f'(0)=\\cos 0=1$。");
         } else if ("多选题".equals(resolvedQuestionType)) {
-            response.put("question", contextPrefix + "关于函数$f(x)=x^2$的描述，正确的是（ ）。");
+            response.put("question", topicHint + contextPrefix + "关于函数$f(x)=x^2$的描述，正确的是（ ）。");
             response.put("options", List.of(
                 "A. 当$x<0$时，$f(x)$仍为正或为0",
                 "B. $f(x)$在全体实数上有最小值",
@@ -604,13 +617,13 @@ public class AiService {
             response.put("explanation", "因为$f(x)=x^2\\ge0$且仅在$x=0$时取到最小值0；同时$f(-x)=f(x)$说明它是偶函数而非奇函数；在$x\\ge0$上导数$2x\\ge0$，因此单调递增。"
                 + (withProfessionalContext ? "可结合专业中的二次关系与最优化特征理解。" : ""));
         } else if ("判断题".equals(resolvedQuestionType)) {
-            response.put("question", contextPrefix + "判断对错：函数$f(x)=x^2$在区间$[-1,1]$上是单调递减的。");
+            response.put("question", topicHint + contextPrefix + "判断对错：函数$f(x)=x^2$在区间$[-1,1]$上是单调递减的。");
             response.put("options", List.of("A. 对", "B. 错"));
             // 在[-1,0]递减、[0,1]递增，故“单调递减”错误
             response.put("answer", "B");
             response.put("explanation", "$f'(x)=2x$，当$x\\in[-1,0)$时$f'(x)<0$递减，当$x\\in(0,1]$时$f'(x)>0$递增；因此在$[-1,1]$上不单调递减，判为错。");
         } else {
-            response.put("question", contextPrefix + "求函数$f(x)=x^3-3x$的极值，并说明求解步骤。");
+            response.put("question", topicHint + contextPrefix + "求函数$f(x)=x^3-3x$的极值，并说明求解步骤。");
             response.put("options", List.of());
             response.put("answer", "先求导$f'(x)=3x^2-3=3(x-1)(x+1)$，临界点$x=\\pm1$。再由符号变化或二阶导判断，$x=-1$处极大值$f(-1)=2$，$x=1$处极小值$f(1)=-2$。");
             response.put("explanation", "解答题建议分为：求导-求驻点-判别-结论四步，步骤完整可得高分。");

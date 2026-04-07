@@ -8,6 +8,7 @@ import com.teacher.backend.repository.CourseKnowledgePointRepository;
 import com.teacher.backend.util.KnowledgePointUtils;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -17,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import com.teacher.backend.entity.Material;
+import com.teacher.backend.entity.MaterialCategory;
 import com.teacher.backend.entity.User;
 import com.teacher.backend.repository.MaterialRepository;
 import com.teacher.backend.repository.UserRepository;
@@ -24,7 +26,12 @@ import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 import com.teacher.backend.service.ApiResponseMapper;
 import com.teacher.backend.service.CourseCatalogService;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,6 +52,49 @@ public class MaterialController {
         }
         materialRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "已删除"));
+    }
+
+    @GetMapping("/{id}/download")
+    public ResponseEntity<?> download(@PathVariable long id) {
+        Material m = materialRepository.findById(id).orElse(null);
+        if (m == null) {
+            return error(HttpStatus.NOT_FOUND, "资料不存在");
+        }
+        if (!StringUtils.hasText(m.getFilePath())) {
+            return error(HttpStatus.NOT_FOUND, "该资料无可下载文件");
+        }
+
+        try {
+            Path p = Paths.get(m.getFilePath()).toAbsolutePath().normalize();
+            if (!p.startsWith(uploadRoot)) {
+                // 防止任意文件读取
+                return error(HttpStatus.BAD_REQUEST, "非法文件路径");
+            }
+            if (!Files.exists(p) || !Files.isRegularFile(p)) {
+                return error(HttpStatus.NOT_FOUND, "文件不存在");
+            }
+
+            Resource resource = new UrlResource(p.toUri());
+            if (!resource.exists()) {
+                return error(HttpStatus.NOT_FOUND, "文件不存在");
+            }
+
+            String filename = StringUtils.hasText(m.getFileName()) ? m.getFileName().trim() : p.getFileName().toString();
+            MediaType contentType;
+            try {
+                String probed = Files.probeContentType(p);
+                contentType = StringUtils.hasText(probed) ? MediaType.parseMediaType(probed) : MediaType.APPLICATION_OCTET_STREAM;
+            } catch (Exception ex) {
+                contentType = MediaType.APPLICATION_OCTET_STREAM;
+            }
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(contentType);
+            headers.setContentDisposition(ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build());
+            return new ResponseEntity<>(resource, headers, HttpStatus.OK);
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "下载失败", "error", ex.getMessage()));
+        }
     }
 
     private final UserRepository userRepository;
@@ -101,7 +151,7 @@ public class MaterialController {
         queryPoints.addAll(descendants);
         // 去重
         queryPoints = queryPoints.stream().distinct().toList();
-        return materialRepository.findByKnowledgePointIn(queryPoints).stream()
+        return materialRepository.findByCourseNameAndKnowledgePointIn(normalizedCourse, queryPoints).stream()
             .map(responseMapper::toMaterialMap)
             .toList();
     }
@@ -111,16 +161,39 @@ public class MaterialController {
         @RequestParam(required = false) String title,
         @RequestParam(required = false) String description,
         @RequestParam(required = false) String teacherId,
+        @RequestParam(required = false) String courseName,
         @RequestParam(required = false) String knowledgePoint,
+        @RequestParam(required = false) String category,
         @RequestParam(required = false) MultipartFile file
     ) {
         String resolvedTitle = title == null ? "" : title.trim();
         String resolvedDescription = description == null ? "" : description.trim();
+        String resolvedCourseName = courseCatalogService.normalizeCourseName(courseName);
+        String resolvedKnowledgePoint = knowledgePoint == null ? "" : knowledgePoint.trim();
         if (!StringUtils.hasText(resolvedTitle)) {
             return error(HttpStatus.BAD_REQUEST, "title is required");
         }
         if (!StringUtils.hasText(teacherId)) {
             return error(HttpStatus.BAD_REQUEST, "teacherId is required");
+        }
+        if (!StringUtils.hasText(resolvedCourseName)) {
+            return error(HttpStatus.BAD_REQUEST, "courseName is required");
+        }
+        if (!StringUtils.hasText(resolvedKnowledgePoint)) {
+            return error(HttpStatus.BAD_REQUEST, "knowledgePoint is required");
+        }
+        if (!StringUtils.hasText(category)) {
+            return error(HttpStatus.BAD_REQUEST, "category is required");
+        }
+
+        MaterialCategory cat;
+        try {
+            cat = MaterialCategory.valueOf(category.trim().toUpperCase());
+        } catch (Exception ex) {
+            return error(HttpStatus.BAD_REQUEST, "invalid category");
+        }
+        if (file == null || file.isEmpty()) {
+            return error(HttpStatus.BAD_REQUEST, "file is required");
         }
 
         Long teacherIdValue;
@@ -136,11 +209,26 @@ public class MaterialController {
             return error(HttpStatus.NOT_FOUND, "teacher not found");
         }
 
+        // 校验该教师对课程有权限
+        boolean allowed = teacherCoursePermissionRepository.existsByTeacherIdAndCourseName(teacher.getId(), resolvedCourseName);
+        if (!allowed) {
+            return error(HttpStatus.FORBIDDEN, "无该课程权限");
+        }
+
         String fileName = null;
         String filePath = null;
+        String contentType = null;
+        Long sizeBytes = null;
         if (file != null && !file.isEmpty()) {
             String originalFileName = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename(), ""));
             if (StringUtils.hasText(originalFileName)) {
+                String lower = originalFileName.toLowerCase();
+                if (cat == MaterialCategory.VIDEO && !lower.endsWith(".mp4")) {
+                    return error(HttpStatus.BAD_REQUEST, "VIDEO 仅支持 .mp4");
+                }
+                if (cat == MaterialCategory.DOCUMENT && !lower.endsWith(".pdf")) {
+                    return error(HttpStatus.BAD_REQUEST, "DOCUMENT 仅支持 .pdf");
+                }
                 String finalName = teacher.getId() + "_" + originalFileName.replace("..", "");
                 Path destination = uploadRoot.resolve(finalName).normalize();
                 if (!destination.startsWith(uploadRoot)) {
@@ -154,6 +242,12 @@ public class MaterialController {
                 }
                 fileName = originalFileName;
                 filePath = destination.toString();
+                contentType = file.getContentType();
+                try {
+                    sizeBytes = file.getSize();
+                } catch (Exception ignored) {
+                    sizeBytes = null;
+                }
             }
         }
 
@@ -163,8 +257,12 @@ public class MaterialController {
         material.setDescription(resolvedDescription);
         material.setFileName(fileName);
         material.setFilePath(filePath);
+        material.setCourseName(resolvedCourseName);
+        material.setKnowledgePoint(resolvedKnowledgePoint);
+        material.setCategory(cat);
+        material.setContentType(contentType);
+        material.setSizeBytes(sizeBytes);
         material.setTeacher(teacher);
-        material.setKnowledgePoint(knowledgePoint);
         material = materialRepository.save(material);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(

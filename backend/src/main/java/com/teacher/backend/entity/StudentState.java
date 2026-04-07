@@ -42,6 +42,9 @@ public class StudentState {
     @Column(name = "joined_courses_json", columnDefinition = "TEXT")
     private String joinedCoursesJson = "[]";
 
+    @Column(name = "completed_resource_keys_json", columnDefinition = "TEXT")
+    private String completedResourceKeysJson = "[]";
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -63,6 +66,9 @@ public class StudentState {
         }
         if (joinedCoursesJson == null) {
             joinedCoursesJson = "[]";
+        }
+        if (completedResourceKeysJson == null) {
+            completedResourceKeysJson = "[]";
         }
     }
 
@@ -125,6 +131,14 @@ public class StudentState {
 
     public void setJoinedCoursesJson(String joinedCoursesJson) {
         this.joinedCoursesJson = joinedCoursesJson;
+    }
+
+    public String getCompletedResourceKeysJson() {
+        return completedResourceKeysJson;
+    }
+
+    public void setCompletedResourceKeysJson(String completedResourceKeysJson) {
+        this.completedResourceKeysJson = completedResourceKeysJson;
     }
 
     public LocalDateTime getCreatedAt() {
