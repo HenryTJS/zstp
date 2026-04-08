@@ -1,6 +1,7 @@
 package com.teacher.backend.controller;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -335,6 +336,8 @@ public class KnowledgePointPublishedTestController {
             row.put("index", i + 1);
             row.put("question_type", qt);
             row.put("question", String.valueOf(q.getOrDefault("question", "")));
+            // 保留学生当次答案，便于只读回放（一次性提交）
+            row.put("studentAnswer", studentAns);
             row.put(
                     "focusPointName",
                     String.valueOf(q.getOrDefault("focusPointName", "")).trim());
@@ -500,6 +503,84 @@ public class KnowledgePointPublishedTestController {
         out.put("highScoreQuestions", high);
         out.put("lowScoreQuestions", low);
         return ResponseEntity.ok(out);
+    }
+
+    /** 学生查询已提交结果（用于进入页面即只读） */
+    @GetMapping("/my-submission")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> mySubmission(@RequestParam Long userId, @RequestParam Long testId) {
+        if (userId == null || testId == null) {
+            return error(HttpStatus.BAD_REQUEST, "userId、testId 必填");
+        }
+        User st = userRepository.findById(userId).orElse(null);
+        if (st == null || !"student".equals(st.getRole())) {
+            return error(HttpStatus.FORBIDDEN, "仅学生可查看");
+        }
+        var sub = submissionRepository.findByTestIdAndStudentUserId(testId, userId).orElse(null);
+        if (sub == null) {
+            return ResponseEntity.ok(Map.of("submitted", false));
+        }
+        KnowledgePointPublishedTest t = testRepository.findById(testId).orElse(null);
+        List<Map<String, Object>> per = List.of();
+        try {
+            per = objectMapper.readValue(sub.getPerQuestionJson() == null ? "[]" : sub.getPerQuestionJson(), new TypeReference<>() {});
+            if (per == null) per = List.of();
+        } catch (Exception ignored) {
+            per = List.of();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("submitted", true);
+        out.put("testId", sub.getTestId());
+        out.put("title", t == null ? null : t.getTitle());
+        out.put("courseName", sub.getCourseName());
+        out.put("pointName", sub.getPointName());
+        out.put("totalScore", sub.getTotalScore());
+        out.put("fullScore", sub.getFullScore());
+        out.put("perQuestion", per);
+        out.put("submittedAt", sub.getSubmittedAt() == null ? null : sub.getSubmittedAt().toString());
+        return ResponseEntity.ok(out);
+    }
+
+    /** 教师个人中心：统计其已授权课程内的已发布测试总数（不区分发布者） */
+    @GetMapping("/count-by-teacher-courses")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> countByTeacherCourses(@RequestParam Long teacherUserId) {
+        if (teacherUserId == null) {
+            return error(HttpStatus.BAD_REQUEST, "teacherUserId 必填");
+        }
+        User teacher = userRepository.findById(teacherUserId).orElse(null);
+        if (teacher == null || (!"teacher".equals(teacher.getRole()) && !"admin".equals(teacher.getRole()))) {
+            return error(HttpStatus.FORBIDDEN, "仅教师或管理员");
+        }
+
+        List<String> courses;
+        if ("admin".equals(teacher.getRole())) {
+            // 管理员口径：全课程（通过测试表反推）
+            courses = testRepository.findAll().stream()
+                    .map(KnowledgePointPublishedTest::getCourseName)
+                    .filter(StringUtils::hasText)
+                    .map(courseCatalogService::normalizeCourseName)
+                    .distinct()
+                    .toList();
+        } else {
+            courses = permissionRepository.findByTeacherIdOrderByIdAsc(teacherUserId).stream()
+                    .map(p -> courseCatalogService.normalizeCourseName(p.getCourseName()))
+                    .filter(StringUtils::hasText)
+                    .distinct()
+                    .toList();
+        }
+
+        HashSet<Long> testIds = new HashSet<>();
+        for (String c : courses) {
+            for (KnowledgePointPublishedTest t : testRepository.findByCourseName(c)) {
+                if (t != null && t.getId() != null) testIds.add(t.getId());
+            }
+        }
+        return ResponseEntity.ok(Map.of(
+                "teacherUserId", teacherUserId,
+                "courseCount", courses.size(),
+                "publishedTestCount", testIds.size()
+        ));
     }
 
     private boolean studentJoinedCourse(Long userId, String courseName) {

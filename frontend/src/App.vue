@@ -11,7 +11,6 @@ const currentUser = ref(JSON.parse(localStorage.getItem('currentUser') || 'null'
 
 const studentPageList = [
   { key: 'courses', label: '课程广场' },
-  { key: 'paper', label: '组卷' },
   { key: 'review', label: '错题与记录' },
   { key: 'home', label: '个人中心' }
 ]

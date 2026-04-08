@@ -120,7 +120,8 @@ import {
   listCoursesByMajor,
   listTeachersForCourses,
   getKnowledgePointPublishedTestForStudent,
-  submitKnowledgePointPublishedTest
+  submitKnowledgePointPublishedTest,
+  getMyKnowledgePointPublishedTestSubmission
 } from '../api/client'
 const resources = ref({ materials: [], tests: [], totalCount: 0 })
 const resourcesLoading = ref(false)
@@ -568,6 +569,25 @@ const loadTeacherKpTest = async () => {
     if (t && Array.isArray(t.questions) && t.questions.length) {
       teacherKpTest.value = t
       teacherKpTestAnswers.value = t.questions.map(() => '')
+
+      // 一次性提交：进入页面即拉取历史提交结果（若存在则直接只读展示）
+      try {
+        const { data: sub } = await getMyKnowledgePointPublishedTestSubmission({
+          userId: props.currentUser.id,
+          testId: t.id
+        })
+        if (sub?.submitted) {
+          teacherKpTestResult.value = sub
+          teacherKpTestSubmitted.value = true
+          const per = Array.isArray(sub?.perQuestion) ? sub.perQuestion : []
+          if (per.length) {
+            teacherKpTestAnswers.value = per.map((r) => String(r?.studentAnswer ?? '').trim())
+          }
+          await markCompletedSafe(`TEST:${t.id}`)
+        }
+      } catch {
+        // ignore
+      }
     } else {
       teacherKpTest.value = null
     }
@@ -710,8 +730,21 @@ const submitTeacherKpTest = async () => {
     learningRecords.value = [...newLR, ...(learningRecords.value || [])]
     wrongBook.value = [...newWB, ...(wrongBook.value || [])]
     schedulePersistStudentState()
+
+    // 教师测试提交成功：作为资源项标记完成（用于“学习资源”区显示已完成/进度更新）
+    await markCompletedSafe(`TEST:${teacherKpTest.value.id}`)
   } catch (e) {
-    teacherKpTestError.value = e?.response?.data?.message || '提交失败'
+    // 一次性提交：若后端返回 409 且带回历史结果，则前端直接进入只读展示，并同步完成状态
+    const status = e?.response?.status
+    const payload = e?.response?.data
+    if (status === 409 && payload && typeof payload === 'object' && payload.alreadySubmitted) {
+      teacherKpTestResult.value = payload
+      teacherKpTestSubmitted.value = true
+      await markCompletedSafe(`TEST:${teacherKpTest.value.id}`)
+      teacherKpTestError.value = ''
+    } else {
+      teacherKpTestError.value = e?.response?.data?.message || '提交失败'
+    }
   } finally {
     teacherKpTestSubmitting.value = false
   }
@@ -1294,6 +1327,19 @@ const enterCourseFromMarket = async (courseName) => {
   await persistStudentState(false)
   await nextTick()
   await loadGraph()
+}
+
+const enterPaperFromGraph = async () => {
+  const course = String(learningContextCourse.value || '').trim()
+  const kp = String(selectedKnowledgePoint.value || '').trim()
+  if (!course || !joinedCourses.value.includes(course)) return
+  // 组卷页需要学习上下文课程；知识点则通过 query 传递给组卷页做默认选择
+  previewUnjoinedCourse.value = ''
+  learningContextCourse.value = course
+  selectedCourse.value = course
+  currentPage.value = 'paper'
+  await router.push({ path: '/student/paper', query: { course, kp } })
+  await persistStudentState(false)
 }
 
 /** 未加入：仅浏览图谱，不可点击知识点查看资料与生成建议 */
@@ -2319,6 +2365,14 @@ const confirmDeleteExam = async (id) => {
             >
               进入测试
             </button>
+            <button
+              type="button"
+              class="nav-btn"
+              :disabled="!practiceTestAllowed"
+              @click="enterPaperFromGraph"
+            >
+              进入组卷
+            </button>
           </div>
           <div style="margin-bottom:14px">
             <h3>掌握程度</h3>
@@ -2461,6 +2515,7 @@ const confirmDeleteExam = async (id) => {
     <StudentPaperComposer
       v-if="effectivePage === 'paper'"
       :joined-courses="joinedCourses"
+      :current-course="learningContextCourse || selectedCourse"
       :selected-major="selectedMajor"
       :render-latex-text="renderLatexText"
       :refresh-saved-exams="loadSavedExams"

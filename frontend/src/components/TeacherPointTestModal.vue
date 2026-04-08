@@ -247,11 +247,16 @@ const publish = async () => {
       title: (title.value || '').trim() || defaultTitle,
       questions: questions.value.map((q) => {
         const fp = String(q.focusPointName || '').trim() || pn
+        const rawAns = String(q.answer || '').trim()
+        const normalizedAnswer =
+          q.question_type === '选择题'
+            ? (rawAns.toUpperCase().match(/[A-D]/)?.[0] || rawAns)
+            : rawAns
         return {
           question_type: q.question_type,
           question: q.question.trim(),
           options: q.question_type === '选择题' ? q.options : [],
-          answer: String(q.answer || '').trim(),
+          answer: normalizedAnswer,
           explanation: String(q.explanation || '').trim(),
           fullScore: Math.min(100, Math.max(1, Number(q.fullScore) || 5)),
           focusPointName: fp

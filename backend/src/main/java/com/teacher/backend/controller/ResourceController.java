@@ -169,19 +169,9 @@ public class ResourceController {
         StudentState state = studentStateRepository.findByUserId(userId).orElse(null);
         List<String> completed = state == null ? List.of() : parseJsonStringList(state.getCompletedResourceKeysJson());
 
-        // 课程资源总数：所有 materials + 所有已发布 tests
-        long matCount = materialRepository.countByCourseName(cn);
-        long testCount = testRepository.findByCourseName(cn).stream().filter(t -> questionCountOf(t) > 0).count();
-        int total = (int) Math.min(Integer.MAX_VALUE, matCount + testCount);
-
-        // 只统计属于该课程资源集合的已完成 key
-        Set<String> validKeys = new HashSet<>();
-        materialRepository.findAll().stream()
-                .filter(m -> cn.equals(courseCatalogService.normalizeCourseName(m.getCourseName())))
-                .forEach(m -> validKeys.add("MATERIAL:" + m.getId()));
-        testRepository.findByCourseName(cn).stream()
-                .filter(t -> questionCountOf(t) > 0)
-                .forEach(t -> validKeys.add("TEST:" + t.getId()));
+        // 与教师端总进度保持同一口径：统一使用课程资源键集合计数
+        Set<String> validKeys = buildCourseResourceKeys(cn);
+        int total = validKeys.size();
 
         int completedCount = 0;
         for (String k : completed) {
@@ -195,6 +185,59 @@ public class ResourceController {
                 "completed", completedCount,
                 "percent", percent,
                 "completedKeys", completed
+        ));
+    }
+
+    /**
+     * 教师端：课程总进度（按学生降序）
+     */
+    @GetMapping("/course-progress-overview")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> courseProgressOverview(@RequestParam Long teacherUserId, @RequestParam String courseName) {
+        if (teacherUserId == null) return error(HttpStatus.BAD_REQUEST, "teacherUserId 必填");
+        String cn = courseCatalogService.normalizeCourseName(courseName);
+        if (!StringUtils.hasText(cn)) return error(HttpStatus.BAD_REQUEST, "courseName 必填");
+
+        User teacher = userRepository.findById(teacherUserId).orElse(null);
+        if (teacher == null || (!"teacher".equals(teacher.getRole()) && !"admin".equals(teacher.getRole()))) {
+            return error(HttpStatus.FORBIDDEN, "仅教师或管理员可查看");
+        }
+        if (!"admin".equals(teacher.getRole())
+                && !teacherCoursePermissionRepository.existsByTeacherIdAndCourseName(teacherUserId, cn)) {
+            return error(HttpStatus.FORBIDDEN, "无该课程权限");
+        }
+
+        Set<String> validKeys = buildCourseResourceKeys(cn);
+        int total = validKeys.size();
+
+        List<Long> userIds = studentStateRepository.findUserIdsWithCourseInJoined(cn);
+        List<User> users = userRepository.findAllById(userIds).stream()
+                .filter(u -> "student".equals(u.getRole()))
+                .toList();
+
+        List<Map<String, Object>> students = users.stream().map(u -> {
+            StudentState state = studentStateRepository.findByUserId(u.getId()).orElse(null);
+            List<String> completed = state == null ? List.of() : parseJsonStringList(state.getCompletedResourceKeysJson());
+            int completedCount = 0;
+            for (String k : completed) {
+                if (validKeys.contains(k)) completedCount++;
+            }
+            int percent = total <= 0 ? 0 : (int) Math.round((completedCount * 100.0) / total);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("userId", u.getId());
+            row.put("workId", u.getWorkId());
+            row.put("username", u.getUsername());
+            row.put("completed", completedCount);
+            row.put("total", total);
+            row.put("percent", percent);
+            return row;
+        }).sorted((a, b) -> Integer.compare(toInt(b.get("percent")), toInt(a.get("percent")))).toList();
+
+        return ResponseEntity.ok(Map.of(
+                "courseName", cn,
+                "totalResourceCount", total,
+                "studentCount", students.size(),
+                "students", students
         ));
     }
 
@@ -222,6 +265,18 @@ public class ResourceController {
         // 用于前端统一“资源项”标识
         m.put("resourceKey", "TEST:" + t.getId());
         return List.of(m);
+    }
+
+    private Set<String> buildCourseResourceKeys(String courseName) {
+        String cn = courseCatalogService.normalizeCourseName(courseName);
+        Set<String> validKeys = new HashSet<>();
+        materialRepository.findAll().stream()
+                .filter(m -> cn.equals(courseCatalogService.normalizeCourseName(m.getCourseName())))
+                .forEach(m -> validKeys.add("MATERIAL:" + m.getId()));
+        testRepository.findByCourseName(cn).stream()
+                .filter(t -> questionCountOf(t) > 0)
+                .forEach(t -> validKeys.add("TEST:" + t.getId()));
+        return validKeys;
     }
 
     private int questionCountOf(KnowledgePointPublishedTest t) {
@@ -279,6 +334,15 @@ public class ResourceController {
             return Long.parseLong(String.valueOf(o).trim());
         } catch (Exception ignored) {
             return null;
+        }
+    }
+
+    private static int toInt(Object o) {
+        if (o instanceof Number n) return n.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(o));
+        } catch (Exception ignored) {
+            return 0;
         }
     }
 

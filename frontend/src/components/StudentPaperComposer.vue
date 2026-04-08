@@ -4,6 +4,7 @@ import { fetchQuestion, listKnowledgePoints, saveExam } from '../api/client'
 
 const props = defineProps({
   joinedCourses: { type: Array, required: true },
+  currentCourse: { type: String, default: '' },
   selectedMajor: { type: String, default: '' },
   renderLatexText: { type: Function, required: true },
   refreshSavedExams: { type: Function, required: true }
@@ -178,9 +179,14 @@ const makeRow = () => ({
 const rows = ref([makeRow()])
 
 watch(
-  () => props.joinedCourses,
-  (list) => {
+  () => [props.currentCourse, props.joinedCourses],
+  ([cur, list]) => {
+    const current = String(cur || '').trim()
     const arr = Array.isArray(list) ? list : []
+    if (current && arr.includes(current)) {
+      paperCourse.value = current
+      return
+    }
     if (!paperCourse.value && arr.length) {
       paperCourse.value = String(arr[0] || '').trim()
     }
@@ -369,9 +375,13 @@ const goCourses = () => emit('go-courses')
         <div class="grid-form two-col ui-mt-12">
           <label>
             课程
-            <select v-model="paperCourse" class="match-height">
-              <option v-for="c in joinedCourses" :key="c" :value="c">{{ c }}</option>
-            </select>
+            <input
+              :value="paperCourse || '未进入课程'"
+              class="match-height"
+              readonly
+              disabled
+              title="组卷课程与当前进入课程保持一致"
+            />
           </label>
           <label>
             难度

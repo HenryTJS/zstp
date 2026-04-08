@@ -917,8 +917,13 @@ public class AiService {
             if (value.isBlank()) {
                 return "";
             }
+            // 兼容 "A" / "A." / "答案：A" / "选A" 等输入（取首个 A-D）
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("[A-D]", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(value);
+            if (m.find()) {
+                return m.group().toUpperCase();
+            }
             String first = value.substring(0, 1).toUpperCase();
-            return List.of("A", "B", "C", "D").contains(first) ? first : value.toUpperCase();
+            return List.of("A", "B", "C", "D").contains(first) ? first : value.trim().toUpperCase();
         }
         if ("多选题".equals(questionType)) {
             if (value.isBlank()) {
@@ -945,11 +950,14 @@ public class AiService {
                 return "";
             }
             String upper = value.trim().toUpperCase();
-            if (upper.startsWith("A")) return "A";
-            if (upper.startsWith("B")) return "B";
+            // 兼容 "A/B"、"对/错"、"√/×"、"T/F"
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("[AB]", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(upper);
+            if (m.find()) {
+                return m.group().toUpperCase();
+            }
             // 兼容中文/英文真值
-            if (value.contains("对") || value.contains("TRUE") || value.contains("True")) return "A";
-            if (value.contains("错") || value.contains("FALSE") || value.contains("False")) return "B";
+            if (upper.contains("对") || upper.contains("TRUE") || upper.contains("T") || upper.contains("√")) return "A";
+            if (upper.contains("错") || upper.contains("FALSE") || upper.contains("F") || upper.contains("×") || upper.contains("✗")) return "B";
             return upper.length() >= 1 ? upper.substring(0, 1) : "";
         }
         return value.replaceAll("\\s+", "").toLowerCase();

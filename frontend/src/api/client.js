@@ -104,3 +104,7 @@ export const getKnowledgePointPublishedTestForStudent = (params) =>
   http.get('/knowledge-point-published-tests/for-student', { params })
 export const submitKnowledgePointPublishedTest = (payload) =>
   http.post('/knowledge-point-published-tests/submit', payload)
+export const getMyKnowledgePointPublishedTestSubmission = (params) =>
+  http.get('/knowledge-point-published-tests/my-submission', { params })
+export const countPublishedTestsByTeacherCourses = (teacherUserId) =>
+  http.get('/knowledge-point-published-tests/count-by-teacher-courses', { params: { teacherUserId } })

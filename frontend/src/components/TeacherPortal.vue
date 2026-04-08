@@ -12,7 +12,8 @@ import {
   listTeacherCoursePermissions,
   listCoursesByMajor,
   listTeacherCoursePermissionRequests,
-  createTeacherCoursePermissionRequest
+  createTeacherCoursePermissionRequest,
+  countPublishedTestsByTeacherCourses
 } from '../api/client'
 import { deleteKnowledgePoint, updateKnowledgePoint, deleteMaterial } from '../api/point-material-ops'
 import AiAssistantWidget from './AiAssistantWidget.vue'
@@ -243,6 +244,7 @@ const courseOptions = computed(() => (Array.isArray(catalogCourses.value) ? cata
 
 const profileMessage = ref('')
 const selectedCollege = ref('')
+const publishedTestCount = ref(0)
 
 // 公告已并入「通知」弹窗；教师端不再单独提供公告页。
  
@@ -534,8 +536,6 @@ const applyTeacherDiscussionDeepLink = async () => {
 
 const userInitial = computed(() => (props.currentUser && props.currentUser.username ? props.currentUser.username.charAt(0).toUpperCase() : '?'))
 const selectedCourse = ref(pointForm.value.courseName || '')
-// 个人中心「统计课程」下拉仅用于统计筛选展示，不影响教师端“进入/退出课程”。
-const statCourse = ref(selectedCourse.value || '')
 const courseInitDone = ref(false)
 const suppressCourseWatch = ref(false)
 // 当教师端从课程广场手动进入/退出课程后，会禁止刷新权限时的“自动选第一个课程”
@@ -549,7 +549,6 @@ watch(() => courseOptions.value, () => {
   if (!opts.length) {
     selectedCourse.value = ''
     pointForm.value.courseName = ''
-    statCourse.value = ''
     return
   }
   if (!opts.includes(selectedCourse.value)) {
@@ -559,7 +558,6 @@ watch(() => courseOptions.value, () => {
       selectedCourse.value = ''
     }
     pointForm.value.courseName = selectedCourse.value
-    statCourse.value = selectedCourse.value || opts[0] || ''
   }
 })
 
@@ -569,12 +567,9 @@ watch(selectedCourse, (val) => {
   if (!val) {
     pointForm.value.courseName = ''
     points.value = []
-    // 统计下拉回显到“当前进入课程”，但不会反向影响 selectedCourse
-    statCourse.value = ''
     return
   }
   pointForm.value.courseName = val
-  statCourse.value = val
   if (courseInitDone.value) switchCourse()
 })
 
@@ -609,11 +604,9 @@ const refreshTeacherCoursePermissionsIfNeeded = async (force = false) => {
         selectedCourse.value = ''
         pointForm.value.courseName = ''
       }
-      statCourse.value = selectedCourse.value || nextCourses[0] || ''
     } else {
       selectedCourse.value = ''
       pointForm.value.courseName = ''
-      statCourse.value = ''
     }
   } catch {
     // 失败则保持当前状态，但会导致后续请求为空；这里不强行清空，避免误伤
@@ -632,10 +625,25 @@ const loadBaseData = async () => {
     const res = await listMaterials()
     const payload = res && res.data ? res.data : res
     materials.value = Array.isArray(payload) ? payload : (payload && payload.items) ? payload.items : []
+    const testCountResp = await countPublishedTestsByTeacherCourses(props.currentUser.id)
+    publishedTestCount.value = Number(testCountResp?.data?.publishedTestCount || 0)
   } catch (err) {
     error.value = err?.response?.data?.message || '加载资料失败。'
+    publishedTestCount.value = 0
   }
 }
+
+const normCourse = (x) => String(x || '').trim()
+const authorizedCourseCount = computed(() => {
+  const set = new Set((Array.isArray(courseOptions.value) ? courseOptions.value : []).map(normCourse).filter(Boolean))
+  return set.size
+})
+const accessibleMaterialsCount = computed(() => {
+  const allowed = new Set((Array.isArray(courseOptions.value) ? courseOptions.value : []).map(normCourse).filter(Boolean))
+  if (!allowed.size) return 0
+  const list = Array.isArray(materials.value) ? materials.value : []
+  return list.filter((m) => allowed.has(normCourse(m?.courseName))).length
+})
 
 const loadKnowledgePointData = async () => {
   pointMessage.value = ''
@@ -744,15 +752,32 @@ const submitMaterial = async () => {
       loading.value = false
       return
     }
+    if (!uploadForm.value.course || !String(uploadForm.value.course).trim()) {
+      error.value = '课程信息缺失，请重新从知识点列表点击“上传资料”。'
+      loading.value = false
+      return
+    }
+    const category = String(uploadForm.value.category || 'ATTACHMENT').toUpperCase()
     for (const file of uploadForm.value.files) {
+      const lowerName = String(file?.name || '').toLowerCase()
+      if (category === 'DOCUMENT' && !lowerName.endsWith('.pdf')) {
+        error.value = `文件「${file.name}」不是 .pdf，文档类只支持 PDF。`
+        loading.value = false
+        return
+      }
+      if (category === 'VIDEO' && !lowerName.endsWith('.mp4')) {
+        error.value = `文件「${file.name}」不是 .mp4，视频类只支持 MP4。`
+        loading.value = false
+        return
+      }
       const fd = new FormData()
       fd.append('teacherId', String(props.currentUser.id))
-      // append text fields as UTF-8 blobs to avoid multipart charset issues
-      fd.append('title', new Blob([uploadForm.value.title || ''], { type: 'text/plain;charset=UTF-8' }))
-      fd.append('description', new Blob([uploadForm.value.description || ''], { type: 'text/plain;charset=UTF-8' }))
-      fd.append('courseName', new Blob([uploadForm.value.course || ''], { type: 'text/plain;charset=UTF-8' }))
-      fd.append('knowledgePoint', new Blob([uploadForm.value.point || ''], { type: 'text/plain;charset=UTF-8' }))
-      fd.append('category', new Blob([String(uploadForm.value.category || 'ATTACHMENT')], { type: 'text/plain;charset=UTF-8' }))
+      // 直接传字符串字段，避免部分环境下 Blob 文本字段被后端当作文件 part 丢失
+      fd.append('title', String(uploadForm.value.title || ''))
+      fd.append('description', String(uploadForm.value.description || ''))
+      fd.append('courseName', String(uploadForm.value.course || ''))
+      fd.append('knowledgePoint', String(uploadForm.value.point || ''))
+      fd.append('category', category)
       fd.append('file', file)
       await uploadMaterial(fd)
     }
@@ -1239,7 +1264,6 @@ onMounted(async () => {
         suppressCourseWatch.value = true
         selectedCourse.value = incomingCourse
         pointForm.value.courseName = incomingCourse
-        statCourse.value = incomingCourse
         suppressCourseWatch.value = false
       }
       // 清理深链参数，避免组件挂载后被 deepLink 覆盖
@@ -1298,19 +1322,6 @@ watch(
             <h3>{{ profileForm.username || currentUser.username }}</h3>
           </div>
         </div>
-        <div class="profile-hero-actions">
-          <div class="grid-form">
-              <label>
-                统计课程
-                <div v-if="!courseOptions.length" class="panel-subtitle" style="margin-top:6px">
-                  暂无可见课程，请联系管理员分配课程权限。
-                </div>
-                <select v-else v-model="statCourse">
-                  <option v-for="course in courseOptions" :key="course" :value="course">{{ course }}</option>
-                </select>
-              </label>
-          </div>
-        </div>
       </article>
 
       <div class="profile-grid">
@@ -1318,16 +1329,16 @@ watch(
           <h3>教学统计</h3>
           <div class="profile-stat-list">
             <div>
+              <span>已授权课程</span>
+              <strong>{{ authorizedCourseCount }}</strong>
+            </div>
+            <div>
               <span>已上传资料</span>
-              <strong>{{ materials.length }}</strong>
+              <strong>{{ accessibleMaterialsCount }}</strong>
             </div>
             <div>
-              <span>知识点总数</span>
-              <strong>{{ points.length }}</strong>
-            </div>
-            <div>
-              <span>当前课程</span>
-              <strong>{{ selectedCourse || pointForm.courseName }}</strong>
+              <span>已发布测试</span>
+              <strong>{{ publishedTestCount }}</strong>
             </div>
           </div>
         </article>
@@ -1413,10 +1424,10 @@ watch(
         <div id="teacher-analytics-panel" class="ui-mt-12">
           <TeacherStudentAnalytics
             :current-user="currentUser"
-            :course-options="courseOptions"
             :selected-course="selectedCourse"
             :points="points"
             :point-name="analyticsPointName"
+            :get-point-number="getPointNumber"
             @update:point-name="(v) => (analyticsPointName = v)"
           />
         </div>
