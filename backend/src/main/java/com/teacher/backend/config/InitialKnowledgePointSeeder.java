@@ -115,16 +115,16 @@ public class InitialKnowledgePointSeeder implements CommandLineRunner {
         }
 
         return List.of(
-            root("偏微分方程基本类型"),
-            child("一阶偏微分方程", "偏微分方程基本类型"),
-            child("二阶线性偏微分方程", "偏微分方程基本类型"),
-            child("定解条件", "二阶线性偏微分方程"),
-            child("分离变量法", "二阶线性偏微分方程"),
-            child("傅里叶级数与傅里叶变换", "分离变量法"),
-            child("热传导方程", "分离变量法"),
-            child("波动方程", "分离变量法"),
-            child("拉普拉斯方程", "分离变量法"),
-            child("达朗贝尔公式", "波动方程")
+            root("课程导论"),
+            child("核心概念", "课程导论"),
+            child("关键术语", "核心概念"),
+            child("基础方法", "课程导论"),
+            child("方法步骤", "基础方法"),
+            child("常见误区", "基础方法"),
+            root("应用实践"),
+            child("案例分析", "应用实践"),
+            child("综合练习", "应用实践"),
+            child("复盘与改进", "综合练习")
         );
     }
 

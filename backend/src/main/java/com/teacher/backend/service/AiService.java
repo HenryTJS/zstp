@@ -520,7 +520,7 @@ public class AiService {
     }
 
     public Map<String, Object> generateQuestion(String topic, String difficulty, String questionType, String major) {
-        String resolvedTopic = StringUtils.hasText(topic) ? topic.trim() : "一次函数";
+        String resolvedTopic = StringUtils.hasText(topic) ? topic.trim() : "通用知识点";
         String resolvedDifficulty = StringUtils.hasText(difficulty) ? difficulty.trim() : "中等";
         String resolvedQuestionType = normalizeQuestionType(questionType);
         boolean usedFallback = false;
@@ -528,15 +528,15 @@ public class AiService {
 
         if (aiEnabled()) {
             String systemPrompt = "你是教学命题助手。仅支持题型: 选择题/多选题/判断题/填空题/解答题（其中选择题=单选题）。输出 JSON:{question:string, question_type:string, options:[string], answer:string, explanation:string, knowledge_points:[string]}。"
-                + "必须可直接渲染 LaTeX，公式使用$...$或$$...$$。"
+                + "题干与解析可使用普通文本，必要时可使用 LaTeX。"
                 + "选择题（单选）必须给4个选项(仅 A/B/C/D)，并在answer中返回正确选项字母(A/B/C/D)。"
                 + "多选题必须给4个选项(仅 A/B/C/D)，并在answer中返回正确选项字母集合(如AC或BD，不加逗号/空格)。"
                 + "判断题必须给2个选项：A.对 与 B.错，并在answer中返回正确选项字母(A/B)。"
                 + "填空题answer给唯一标准答案（允许是数字/表达式/短句）。"
                 + "解答题answer给关键步骤与结论。"
-                + "不要引入任何专业背景，统一按通用数学题命题。";
+                + "不要限定为数学学科，按主题生成通用学科题目。";
             String userPrompt = "主题: " + resolvedTopic + "\n难度: " + resolvedDifficulty + "\n题型: " + resolvedQuestionType
-                + "\n按通用数学场景命题（不带专业背景）";
+                + "\n按主题生成，不要默认数学场景";
             try {
                 Map<String, Object> aiResult = chatJson(systemPrompt, userPrompt);
                 aiResult.put("question_type", normalizeQuestionType((String) aiResult.get("question_type")));
@@ -564,53 +564,40 @@ public class AiService {
         // 即便兜底模板，也把知识点（topic）写进题干，便于前端识别“是否用到了正确的知识点”
         String topicHint = "【知识点：" + resolvedTopic + "】";
         if ("选择题".equals(resolvedQuestionType)) {
-            // 本地兜底模板：用 topic 做轻量变体，避免同一轮测试多次生成完全相同题目
-            int variant = Math.abs(resolvedTopic.hashCode()) % 3;
-            if (variant == 0) {
-                response.put("question", topicHint + "已知函数$f(x)=x^2-2x+1$，其最小值为（ ）。");
-                response.put("options", List.of("A. $-1$", "B. $0$", "C. $1$", "D. $2$"));
-                response.put("answer", "B");
-                response.put("explanation", "因为$f(x)=(x-1)^2\\ge0$，当$x=1$时取等号，所以最小值是$0$。");
-            } else if (variant == 1) {
-                // f(x)=(x+1)^2-4, 最小值 -4（x=-1）
-                response.put("question", topicHint + "已知函数$f(x)=(x+1)^2-4$，其最小值为（ ）。");
-                response.put("options", List.of("A. $-1$", "B. $-4$", "C. $1$", "D. $2$"));
-                response.put("answer", "B");
-                response.put("explanation", "因为$f(x)=(x+1)^2-4\\ge -4$，当$x=-1$时取等号，所以最小值是$-4$。");
-            } else {
-                // f(x)=(x-2)^2+1, 最小值 1（x=2）
-                response.put("question", topicHint + "已知函数$f(x)=(x-2)^2+1$，其最小值为（ ）。");
-                response.put("options", List.of("A. $-1$", "B. $0$", "C. $1$", "D. $2$"));
-                response.put("answer", "C");
-                response.put("explanation", "因为$f(x)=(x-2)^2+1\\ge 1$，当$x=2$时取等号，所以最小值是$1$。");
-            }
-        } else if ("填空题".equals(resolvedQuestionType)) {
-            response.put("question", topicHint + "函数$f(x)=\\sin x$在$x=0$处的一阶导数为____。请填写最终结果。");
-            response.put("options", List.of());
-            response.put("answer", "1");
-            response.put("explanation", "$f'(x)=\\cos x$，代入$x=0$，得到$f'(0)=\\cos 0=1$。");
-        } else if ("多选题".equals(resolvedQuestionType)) {
-            response.put("question", topicHint + "关于函数$f(x)=x^2$的描述，正确的是（ ）。");
+            response.put("question", topicHint + "下列关于该知识点的说法，最符合课程内容的是（ ）。");
             response.put("options", List.of(
-                "A. 当$x<0$时，$f(x)$仍为正或为0",
-                "B. $f(x)$在全体实数上有最小值",
-                "C. $f(x)$是奇函数",
-                "D. $f(x)$在$x\\ge0$上单调递增"
+                "A. 仅需记忆定义，无需理解应用场景",
+                "B. 可结合真实任务场景进行分析与应用",
+                "C. 与课程目标完全无关，可忽略",
+                "D. 只适用于考试，不适用于实践"
             ));
-            // 正确项：A、B、D
-            response.put("answer", "ABD");
-            response.put("explanation", "因为$f(x)=x^2\\ge0$且仅在$x=0$时取到最小值0；同时$f(-x)=f(x)$说明它是偶函数而非奇函数；在$x\\ge0$上导数$2x\\ge0$，因此单调递增。");
-        } else if ("判断题".equals(resolvedQuestionType)) {
-            response.put("question", topicHint + "判断对错：函数$f(x)=x^2$在区间$[-1,1]$上是单调递减的。");
-            response.put("options", List.of("A. 对", "B. 错"));
-            // 在[-1,0]递减、[0,1]递增，故“单调递减”错误
             response.put("answer", "B");
-            response.put("explanation", "$f'(x)=2x$，当$x\\in[-1,0)$时$f'(x)<0$递减，当$x\\in(0,1]$时$f'(x)>0$递增；因此在$[-1,1]$上不单调递减，判为错。");
-        } else {
-            response.put("question", topicHint + "求函数$f(x)=x^3-3x$的极值，并说明求解步骤。");
+            response.put("explanation", "该知识点通常需要“概念理解 + 场景应用”结合，B 最符合教学目标。");
+        } else if ("填空题".equals(resolvedQuestionType)) {
+            response.put("question", topicHint + "请填写该知识点在本课程中的一个核心关键词：____。");
             response.put("options", List.of());
-            response.put("answer", "先求导$f'(x)=3x^2-3=3(x-1)(x+1)$，临界点$x=\\pm1$。再由符号变化或二阶导判断，$x=-1$处极大值$f(-1)=2$，$x=1$处极小值$f(1)=-2$。");
-            response.put("explanation", "解答题建议分为：求导-求驻点-判别-结论四步，步骤完整可得高分。");
+            response.put("answer", "关键概念");
+            response.put("explanation", "填空题应围绕该知识点的核心术语或关键步骤作答。");
+        } else if ("多选题".equals(resolvedQuestionType)) {
+            response.put("question", topicHint + "围绕该知识点开展学习时，以下哪些做法是合理的（ ）。");
+            response.put("options", List.of(
+                "A. 梳理概念与术语，形成知识框架",
+                "B. 结合课程案例进行迁移应用",
+                "C. 仅背诵结论，不做任何练习",
+                "D. 对错因进行复盘并修正理解"
+            ));
+            response.put("answer", "ABD");
+            response.put("explanation", "A/B/D 都是有效学习策略；C 仅记忆结论、缺少练习与反馈，效果较差。");
+        } else if ("判断题".equals(resolvedQuestionType)) {
+            response.put("question", topicHint + "判断对错：该知识点只需要死记硬背，不需要理解其应用场景。");
+            response.put("options", List.of("A. 对", "B. 错"));
+            response.put("answer", "B");
+            response.put("explanation", "课程学习通常要求“理解 + 应用 + 反馈”，仅靠记忆不足以完成迁移与实操。");
+        } else {
+            response.put("question", topicHint + "请结合课程内容，说明该知识点在实际任务中的应用思路与关键步骤。");
+            response.put("options", List.of());
+            response.put("answer", "可从“概念定义 -> 条件识别 -> 方法选择 -> 执行与验证 -> 结果复盘”五步展开。");
+            response.put("explanation", "解答题建议覆盖应用背景、关键步骤、结果说明与可改进点。");
         }
         response.put("knowledge_points", List.of(resolvedTopic + "定义", resolvedTopic + "应用", "结果验证"));
         return response;
@@ -975,11 +962,11 @@ public class AiService {
             requestBody.put("temperature", 0.0);
             requestBody.put("response_format", Map.of("type", "json_object"));
             requestBody.put("messages", List.of(
-                Map.of("role", "system", "content", "你是OCR助手。请从图片中提取学生的数学作答文本，输出JSON: {text: string}。"),
+                Map.of("role", "system", "content", "你是OCR助手。请从图片中提取学生作答文本，输出JSON: {text: string}。"),
                 Map.of(
                     "role", "user",
                     "content", List.of(
-                        Map.of("type", "text", "text", "请识别这张学生作答图片中的文字和数学表达式。文件名: " + safe(imageName)),
+                        Map.of("type", "text", "text", "请识别这张学生作答图片中的文字内容。文件名: " + safe(imageName)),
                         Map.of("type", "image_url", "image_url", Map.of("url", dataUri))
                     )
                 )

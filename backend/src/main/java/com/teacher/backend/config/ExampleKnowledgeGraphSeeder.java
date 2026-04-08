@@ -42,9 +42,9 @@ public class ExampleKnowledgeGraphSeeder implements CommandLineRunner {
         prereqRepo.deleteAll();
         pointRepo.deleteAll();
 
-        // Insert sample hierarchical data for two courses
-        seedCourse("高等数学");
-        seedCourse("线性代数与解析几何");
+        // Insert sample hierarchical data for two generic courses
+        seedCourse("示例课程A");
+        seedCourse("示例课程B");
 
         log.info("ExampleKnowledgeGraphSeeder finished seeding example knowledge graph data");
     }
@@ -56,42 +56,42 @@ public class ExampleKnowledgeGraphSeeder implements CommandLineRunner {
         Map<String, Long> nameToId = new HashMap<>();
 
         // Chapter 1
-        Long chap1 = savePoint(normalized, "第一章：基础概念", null, 0);
-        nameToId.put("第一章：基础概念", chap1);
+        Long chap1 = savePoint(normalized, "第一章：课程导论", null, 0);
+        nameToId.put("第一章：课程导论", chap1);
 
         // Sections under chapter 1
-        Long sec11 = savePoint(normalized, "1.1 函数与映射", "第一章：基础概念", 0);
-        nameToId.put("1.1 函数与映射", sec11);
-        Long sec12 = savePoint(normalized, "1.2 极限与连续", "第一章：基础概念", 1);
-        nameToId.put("1.2 极限与连续", sec12);
+        Long sec11 = savePoint(normalized, "1.1 核心概念", "第一章：课程导论", 0);
+        nameToId.put("1.1 核心概念", sec11);
+        Long sec12 = savePoint(normalized, "1.2 基础方法", "第一章：课程导论", 1);
+        nameToId.put("1.2 基础方法", sec12);
 
         // Concrete points under section 1.1
-        Long p111 = savePoint(normalized, "函数的定义", "1.1 函数与映射", 0);
-        Long p112 = savePoint(normalized, "函数的表示方法", "1.1 函数与映射", 1);
-        nameToId.put("函数的定义", p111);
-        nameToId.put("函数的表示方法", p112);
+        Long p111 = savePoint(normalized, "概念定义", "1.1 核心概念", 0);
+        Long p112 = savePoint(normalized, "术语辨析", "1.1 核心概念", 1);
+        nameToId.put("概念定义", p111);
+        nameToId.put("术语辨析", p112);
 
         // Concrete points under section 1.2
-        Long p121 = savePoint(normalized, "极限的定义", "1.2 极限与连续", 0);
-        Long p122 = savePoint(normalized, "极限的运算法则", "1.2 极限与连续", 1);
-        nameToId.put("极限的定义", p121);
-        nameToId.put("极限的运算法则", p122);
+        Long p121 = savePoint(normalized, "方法步骤", "1.2 基础方法", 0);
+        Long p122 = savePoint(normalized, "常见误区", "1.2 基础方法", 1);
+        nameToId.put("方法步骤", p121);
+        nameToId.put("常见误区", p122);
 
         // Add prereq between sibling points (same parent) - allowed
-        // e.g., 极限的定义 -> 极限的运算法则 (both under 1.2)
+        // e.g., 方法步骤 -> 常见误区 (both under 1.2)
         addPrereq(normalized, p122, p121);
 
         // Chapter 2
-        Long chap2 = savePoint(normalized, "第二章：导数与微分", null, 2);
-        nameToId.put("第二章：导数与微分", chap2);
+        Long chap2 = savePoint(normalized, "第二章：应用与实践", null, 2);
+        nameToId.put("第二章：应用与实践", chap2);
 
-        Long sec21 = savePoint(normalized, "2.1 导数的概念", "第二章：导数与微分", 0);
-        Long sec22 = savePoint(normalized, "2.2 微分应用", "第二章：导数与微分", 1);
-        nameToId.put("2.1 导数的概念", sec21);
-        nameToId.put("2.2 微分应用", sec22);
+        Long sec21 = savePoint(normalized, "2.1 案例分析", "第二章：应用与实践", 0);
+        Long sec22 = savePoint(normalized, "2.2 综合实践", "第二章：应用与实践", 1);
+        nameToId.put("2.1 案例分析", sec21);
+        nameToId.put("2.2 综合实践", sec22);
 
-        Long p211 = savePoint(normalized, "导数定义", "2.1 导数的概念", 0);
-        Long p212 = savePoint(normalized, "求导法则", "2.1 导数的概念", 1);
+        Long p211 = savePoint(normalized, "案例拆解", "2.1 案例分析", 0);
+        Long p212 = savePoint(normalized, "方案评估", "2.1 案例分析", 1);
         addPrereq(normalized, p212, p211);
     }
 
