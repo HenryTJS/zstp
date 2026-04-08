@@ -11,6 +11,7 @@ public interface TeacherCoursePermissionRepository extends JpaRepository<Teacher
     List<TeacherCoursePermission> findByTeacherIdOrderByIdAsc(Long teacherId);
 
     boolean existsByTeacherIdAndCourseName(Long teacherId, String courseName);
+    boolean existsByTeacherIdAndCourseNameIgnoreCase(Long teacherId, String courseName);
 
     void deleteByTeacherId(Long teacherId);
 

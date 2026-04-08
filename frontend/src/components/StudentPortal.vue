@@ -5,6 +5,7 @@ import StudentTeacherTest from './StudentTeacherTest.vue'
 import StudentPaperComposer from './StudentPaperComposer.vue'
 import StudentReview from './StudentReview.vue'
 import StudentCourses from './StudentCourses.vue'
+import CourseDetailPanel from './CourseDetailPanel.vue'
 import StudentHome from './StudentHome.vue'
 import StudentEditProfileModal from './StudentEditProfileModal.vue'
 import StudentChangePasswordModal from './StudentChangePasswordModal.vue'
@@ -45,7 +46,7 @@ const selectedChoiceAnswer = ref('')
 const practiceResult = ref(null)
 const normalizeStudentPage = (p) => {
   const raw = String(p || '').trim()
-  const allowed = new Set(['home', 'courses', 'graph', 'paper', 'exercise', 'teacher-test', 'review'])
+  const allowed = new Set(['home', 'courses', 'course-detail', 'graph', 'paper', 'exercise', 'teacher-test', 'review'])
   return allowed.has(raw) ? raw : 'home'
 }
 const currentPage = ref(normalizeStudentPage(props.activePage || 'home'))
@@ -119,6 +120,8 @@ import {
   saveExam,
   listCoursesByMajor,
   listTeachersForCourses,
+  listCourseCatalog,
+  getCourseDetail,
   getKnowledgePointPublishedTestForStudent,
   submitKnowledgePointPublishedTest,
   getMyKnowledgePointPublishedTestSubmission
@@ -132,6 +135,10 @@ const selectedKnowledgePoint = ref('')
 
 import { http } from '../api/client'
 const joinedCourses = ref([])
+const myCourseCatalog = ref([])
+const courseDetail = ref(null)
+const courseDetailLoading = ref(false)
+const courseDetailError = ref('')
 const joinedCoursesSearch = ref('')
 const joinedCoursesPage = ref(1)
 const coursePageSize = 8
@@ -275,6 +282,35 @@ const formatTeachersForCourse = (courseName) => {
   const list = teachersByCourse.value[courseName]
   if (!Array.isArray(list) || !list.length) return ''
   return list.map((t) => t?.username || '').filter(Boolean).join('、')
+}
+
+const loadMyCourseCatalog = async () => {
+  if (!props.currentUser?.id) return
+  try {
+    const { data } = await listCourseCatalog(props.currentUser.id)
+    myCourseCatalog.value = Array.isArray(data?.items) ? data.items : []
+  } catch {
+    myCourseCatalog.value = []
+  }
+}
+
+const loadCourseDetail = async (courseName) => {
+  const cn = String(courseName || '').trim()
+  if (!cn) {
+    courseDetail.value = null
+    return
+  }
+  courseDetailLoading.value = true
+  courseDetailError.value = ''
+  try {
+    const { data } = await getCourseDetail(cn, props.currentUser?.id)
+    courseDetail.value = data || null
+  } catch (e) {
+    courseDetailError.value = e?.response?.data?.message || '加载课程详情失败'
+    courseDetail.value = null
+  } finally {
+    courseDetailLoading.value = false
+  }
 }
 watch([selectedMajor1, selectedMajor2, selectedMajor3], async () => {
   const appliedReqId = await fetchAvailableCoursesForCurrentMajor()
@@ -2211,14 +2247,25 @@ watch(
   () => route.query.course,
   () => {
     if (!stateHydrated.value) return
+    if (effectivePage.value === 'course-detail') {
+      const c = Array.isArray(route.query.course) ? route.query.course[0] : route.query.course
+      void loadCourseDetail(c)
+      return
+    }
     void applyCourseQueryFromRoute()
   }
 )
 
 onMounted(async () => {
   await loadStudentState()
+  await loadMyCourseCatalog()
   const hadCourseQuery = Boolean(route.query.course)
-  const appliedCourseQuery = hadCourseQuery ? await applyCourseQueryFromRoute() : false
+  const isDetailPage = effectivePage.value === 'course-detail'
+  if (isDetailPage && hadCourseQuery) {
+    const c = Array.isArray(route.query.course) ? route.query.course[0] : route.query.course
+    await loadCourseDetail(c)
+  }
+  const appliedCourseQuery = (!isDetailPage && hadCourseQuery) ? await applyCourseQueryFromRoute() : false
   const shouldApplyDiscussionDeepLink = !appliedCourseQuery && Boolean(route.query.dc && route.query.dp)
   if (shouldApplyDiscussionDeepLink) {
     await applyDiscussionDeepLinkFromRoute()
@@ -2306,19 +2353,27 @@ const confirmDeleteExam = async (id) => {
     <StudentCourses
       v-if="effectivePage === 'courses'"
       :joined-courses="joinedCourses"
-      :joined-courses-search="joinedCoursesSearch"
-      :joined-courses-page="joinedCoursesPage"
-      :market-total-pages="marketTotalPages"
-      :paged-market-courses="pagedMarketCourses"
-      :teachers-by-course-loading="teachersByCourseLoading"
-      :format-teachers-for-course="formatTeachersForCourse"
+      :my-course-catalog="myCourseCatalog"
       :state-hydrated="stateHydrated"
-      @update:joined-courses-search="(v) => (joinedCoursesSearch = v)"
-      @update:joined-courses-page="(p) => (joinedCoursesPage = p)"
-      @join="joinCourse"
-      @view="viewCourseWithoutJoin"
       @enter="enterCourseFromMarket"
-      @quit="quitCourse"
+      @quit="async (c) => { await quitCourse(c); await loadMyCourseCatalog() }"
+    />
+
+    <CourseDetailPanel
+      v-if="effectivePage === 'course-detail'"
+      role="student"
+      :detail="courseDetail || { courseName: '', coverUrl: '', summary: '', syllabus: '' }"
+      :loading="courseDetailLoading"
+      :error="courseDetailError"
+      :can-access="Boolean(courseDetail?.hasAccess)"
+      :can-edit-meta="false"
+      :is-submitting="false"
+      :edit-form="{ coverUrl: '', summary: '', syllabus: '' }"
+      @join="async () => { if (courseDetail?.courseName) { await joinCourse(courseDetail.courseName); await loadMyCourseCatalog(); await enterCourseFromMarket(courseDetail.courseName) } }"
+      @enter="async () => { if (courseDetail?.courseName) await enterCourseFromMarket(courseDetail.courseName) }"
+      @apply="() => null"
+      @save-meta="() => null"
+      @update:edit-form="() => null"
     />
 
     <section v-if="effectivePage === 'graph'" class="panel-stack">
@@ -2580,7 +2635,7 @@ const confirmDeleteExam = async (id) => {
 
     <!-- 兜底：避免 unknown page 导致整页空白 -->
     <article
-      v-if="!['home','courses','graph','paper','exercise','teacher-test','review'].includes(effectivePage)"
+      v-if="!['home','courses','course-detail','graph','paper','exercise','teacher-test','review'].includes(effectivePage)"
       class="result-card"
     >
       <h3>页面不存在</h3>

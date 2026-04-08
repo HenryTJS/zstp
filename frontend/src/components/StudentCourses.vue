@@ -3,117 +3,59 @@ import { computed } from 'vue'
 
 const props = defineProps({
   joinedCourses: { type: Array, required: true },
-  joinedCoursesSearch: { type: String, required: true },
-  joinedCoursesPage: { type: Number, required: true },
-  marketTotalPages: { type: Number, required: true },
-  pagedMarketCourses: { type: Array, required: true },
-  teachersByCourseLoading: { type: Boolean, required: true },
-  formatTeachersForCourse: { type: Function, required: true },
+  myCourseCatalog: { type: Array, required: true },
   stateHydrated: { type: Boolean, required: true }
 })
 
 const emit = defineEmits([
-  'update:joinedCoursesSearch',
-  'update:joinedCoursesPage',
-  'join',
-  'view',
   'enter',
   'quit'
 ])
-
-const searchModel = computed({
-  get: () => props.joinedCoursesSearch,
-  set: (v) => emit('update:joinedCoursesSearch', v)
-})
-
-const setPage = (p) => {
-  emit('update:joinedCoursesPage', p)
-}
-
-const onJoin = (course) => emit('join', course)
-const onView = (course) => emit('view', course)
 const onEnter = (course) => emit('enter', course)
 const onQuit = (course) => emit('quit', course)
+
+const myCourses = computed(() => {
+  const joined = new Set((Array.isArray(props.joinedCourses) ? props.joinedCourses : []).map((x) => String(x || '').trim()))
+  const all = Array.isArray(props.myCourseCatalog) ? props.myCourseCatalog : []
+  return all.filter((c) => joined.has(String(c?.courseName || '').trim()))
+})
 </script>
 
 <template>
   <section class="panel-stack">
     <article class="result-card">
       <div class="course-market-head">
-        <h3>课程广场</h3>
-        <input
-          v-model="searchModel"
-          class="match-height"
-          placeholder="搜索课程名称"
-          style="max-width:280px"
-        />
+        <h3>我的课程</h3>
       </div>
 
-      <div v-if="pagedMarketCourses.length" class="course-market-grid">
-        <article v-for="course in pagedMarketCourses" :key="course" class="course-market-card">
+      <div v-if="myCourses.length" class="course-market-grid">
+        <article v-for="course in myCourses" :key="course.courseName" class="course-market-card">
           <div class="course-market-card-body">
-            <h4>{{ course }}</h4>
-            <p class="panel-subtitle course-card-teachers">
-              <template v-if="teachersByCourseLoading">正在加载教师信息…</template>
-              <template v-else-if="formatTeachersForCourse(course)">{{ formatTeachersForCourse(course) }}</template>
-              <template v-else>暂无拥有该课程权限的教师</template>
-            </p>
+            <img :src="course.coverUrl" alt="" style="width: 100%; height: 140px; object-fit: cover; border-radius: 8px" />
+            <h4 class="ui-mt-8">{{ course.courseName }}</h4>
+            <p class="panel-subtitle">{{ course.summary }}</p>
           </div>
           <div class="course-market-card-actions course-market-card-actions--split">
-            <template v-if="!joinedCourses.includes(course)">
-              <button
-                type="button"
-                class="match-button"
-                :disabled="!stateHydrated"
-                @click="onJoin(course)"
-              >
-                {{ stateHydrated ? '加入课程' : '加载中…' }}
-              </button>
-              <button
-                type="button"
-                class="nav-btn"
-                :disabled="!stateHydrated"
-                @click="onView(course)"
-              >
-                查看课程
-              </button>
-            </template>
-            <template v-else>
-              <button
-                type="button"
-                class="match-button"
-                :disabled="!stateHydrated"
-                @click="onEnter(course)"
-              >
-                进入课程
-              </button>
-              <button
-                type="button"
-                class="cancel-button"
-                :disabled="!stateHydrated"
-                @click="onQuit(course)"
-              >
-                退出课程
-              </button>
-            </template>
+            <button
+              type="button"
+              class="match-button"
+              :disabled="!stateHydrated"
+              @click="onEnter(course.courseName)"
+            >
+              进入课程
+            </button>
+            <button
+              type="button"
+              class="cancel-button"
+              :disabled="!stateHydrated"
+              @click="onQuit(course.courseName)"
+            >
+              退出课程
+            </button>
           </div>
         </article>
       </div>
-      <p v-else class="panel-subtitle ui-mt-12">未找到匹配课程。</p>
-
-      <nav v-if="marketTotalPages > 1" class="course-market-pagination" aria-label="课程列表分页">
-        <button
-          v-for="page in marketTotalPages"
-          :key="page"
-          type="button"
-          class="course-page-num"
-          :class="{ 'is-active': joinedCoursesPage === page }"
-          :aria-current="joinedCoursesPage === page ? 'page' : undefined"
-          @click="setPage(page)"
-        >
-          {{ page }}
-        </button>
-      </nav>
+      <p v-else class="panel-subtitle ui-mt-12">当前没有已加入课程，请在导航栏搜索课程并进入详情页加入。</p>
     </article>
   </section>
 </template>

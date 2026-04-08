@@ -11,6 +11,9 @@ import {
   fetchMaterialsByKnowledgePoint,
   listTeacherCoursePermissions,
   listCoursesByMajor,
+  listCourseCatalog,
+  getCourseDetail,
+  updateCourseMeta,
   listTeacherCoursePermissionRequests,
   createTeacherCoursePermissionRequest,
   countPublishedTestsByTeacherCourses
@@ -18,6 +21,7 @@ import {
 import { deleteKnowledgePoint, updateKnowledgePoint, deleteMaterial } from '../api/point-material-ops'
 import AiAssistantWidget from './AiAssistantWidget.vue'
 import TeacherCourses from './TeacherCourses.vue'
+import CourseDetailPanel from './CourseDetailPanel.vue'
 import TeacherPermissionRequestModal from './TeacherPermissionRequestModal.vue'
 import TeacherKnowledge from './TeacherKnowledge.vue'
 import TeacherEditPointModal from './TeacherEditPointModal.vue'
@@ -258,6 +262,12 @@ const teacherCoursesPage = ref(1)
 const allMarketCourses = ref([])
 const marketCoursesLoading = ref(false)
 const marketCoursesError = ref('')
+const myCourseCatalog = ref([])
+const courseDetail = ref(null)
+const courseDetailLoading = ref(false)
+const courseDetailError = ref('')
+const courseMetaSaving = ref(false)
+const courseMetaForm = ref({ coverUrl: '', summary: '', syllabus: '' })
 
 // 后端存储的申请记录（教师端仅能查看自己的）
 const teacherCoursePermissionRequests = ref([])
@@ -341,10 +351,73 @@ const loadTeacherCourseMarket = async () => {
   }
 }
 
+const loadMyCourseCatalog = async () => {
+  if (!props.currentUser?.id) return
+  try {
+    const { data } = await listCourseCatalog(props.currentUser.id)
+    const items = Array.isArray(data?.items) ? data.items : []
+    myCourseCatalog.value = items.filter((x) => x?.hasAccess)
+  } catch {
+    myCourseCatalog.value = []
+  }
+}
+
+const loadCourseDetail = async (courseName) => {
+  const cn = String(courseName || '').trim()
+  if (!cn) {
+    courseDetail.value = null
+    return
+  }
+  courseDetailLoading.value = true
+  courseDetailError.value = ''
+  try {
+    const { data } = await getCourseDetail(cn, props.currentUser?.id)
+    courseDetail.value = data || null
+    courseMetaForm.value = {
+      coverUrl: data?.coverUrl || '',
+      summary: data?.summary || '',
+      syllabus: data?.syllabus || ''
+    }
+  } catch (e) {
+    courseDetailError.value = e?.response?.data?.message || '加载课程详情失败'
+    courseDetail.value = null
+  } finally {
+    courseDetailLoading.value = false
+  }
+}
+
+const saveCourseMeta = async () => {
+  if (!courseDetail.value?.courseName) return
+  courseMetaSaving.value = true
+  courseDetailError.value = ''
+  try {
+    const { data } = await updateCourseMeta({
+      userId: props.currentUser.id,
+      courseName: courseDetail.value.courseName,
+      coverUrl: courseMetaForm.value.coverUrl,
+      summary: courseMetaForm.value.summary,
+      syllabus: courseMetaForm.value.syllabus
+    })
+    courseDetail.value = data || courseDetail.value
+    await loadMyCourseCatalog()
+  } catch (e) {
+    courseDetailError.value = e?.response?.data?.message || '保存失败'
+  } finally {
+    courseMetaSaving.value = false
+  }
+}
+
 watch(
   currentPage,
   (v) => {
-    if (v === 'courses') void loadTeacherCourseMarket()
+    if (v === 'courses') {
+      void loadTeacherCourseMarket()
+      void loadMyCourseCatalog()
+    }
+    if (v === 'course-detail') {
+      const c = Array.isArray(route.query.course) ? route.query.course[0] : route.query.course
+      void loadCourseDetail(c)
+    }
   },
   { immediate: false }
 )
@@ -1251,6 +1324,7 @@ onMounted(async () => {
     }
 
     await loadBaseData()
+    await loadMyCourseCatalog()
     // 初始化：拉取管理员分配给当前教师的可见课程
     await refreshTeacherCoursePermissionsIfNeeded(true)
 
@@ -1301,6 +1375,15 @@ watch(
   async (dc) => {
     if (!courseInitDone.value || !dc) return
     await applyTeacherDiscussionDeepLink()
+  }
+)
+
+watch(
+  () => route.query.course,
+  (c) => {
+    if (currentPage.value !== 'course-detail') return
+    const cn = Array.isArray(c) ? c[0] : c
+    void loadCourseDetail(cn)
   }
 )
 </script>
@@ -1376,24 +1459,29 @@ watch(
 
       <template v-else-if="currentPage === 'courses'">
         <TeacherCourses
-          :teacher-courses-search="teacherCoursesSearch"
-          :paged-market-courses="pagedMarketCourses"
-          :all-market-courses="allMarketCourses"
-          :market-courses-loading="marketCoursesLoading"
-          :market-courses-error="marketCoursesError"
-          :catalog-courses="catalogCourses"
-          :permission-request-by-course="permissionRequestByCourse"
+          :my-course-catalog="myCourseCatalog"
           :pending-permission-requests="pendingTeacherCoursePermissionRequestsList"
-          :teacher-permission-requests-loading="teacherPermissionRequestsLoading"
           :course-init-done="courseInitDone"
-          :teacher-courses-page="teacherCoursesPage"
-          :market-total-pages="marketTotalPages"
-          @update:teacher-courses-search="(v) => (teacherCoursesSearch = v)"
-          @update:teacher-courses-page="(p) => (teacherCoursesPage = p)"
           @enter-course="enterCourseFromMarket"
           @quit-course="quitCourseFromMarket"
-          @open-permission-request="openPermissionRequest"
-          @open-new-course-permission-request="openNewCoursePermissionRequest"
+        />
+      </template>
+
+      <template v-else-if="currentPage === 'course-detail'">
+        <CourseDetailPanel
+          role="teacher"
+          :detail="courseDetail || { courseName: '', coverUrl: '', summary: '', syllabus: '' }"
+          :loading="courseDetailLoading"
+          :error="courseDetailError"
+          :can-access="Boolean(courseDetail?.hasAccess)"
+          :can-edit-meta="Boolean(courseDetail?.canEditMeta)"
+          :is-submitting="courseMetaSaving"
+          :edit-form="courseMetaForm"
+          @update:edit-form="(v) => (courseMetaForm = v)"
+          @enter="() => { if (courseDetail?.courseName) enterCourseFromMarket(courseDetail.courseName) }"
+          @apply="() => openPermissionRequest(courseDetail?.courseName)"
+          @join="() => null"
+          @save-meta="saveCourseMeta"
         />
       </template>
 

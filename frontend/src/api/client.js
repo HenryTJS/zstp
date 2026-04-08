@@ -1,5 +1,9 @@
 // 根据专业code获取课程列表
 export const listCoursesByMajor = (majorCode) => http.get('/courses', { params: { majorCode } })
+export const listCourseCatalog = (userId) => http.get('/courses/catalog', { params: { userId } })
+export const getCourseDetail = (courseName, userId) =>
+  http.get('/courses/detail', { params: { courseName, ...(userId ? { userId } : {}) } })
+export const updateCourseMeta = (payload) => http.put('/courses/meta', payload)
 
 // 教师可见课程权限（由管理员分配后教师端才能查看）
 export const listTeacherCoursePermissions = (teacherId) =>

@@ -1,8 +1,9 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import DiscussionNotificationBell from './components/DiscussionNotificationBell.vue'
 import AdminPermissionRequestBell from './components/AdminPermissionRequestBell.vue'
+import { listCourseCatalog, listTeachersForCourses } from './api/client'
 
 const router = useRouter()
 const route = useRoute()
@@ -76,6 +77,109 @@ const handleUpdateUser = (patch) => {
   } catch (e) {}
 }
 
+const navCourseSearch = ref('')
+const navCourseCatalog = ref([])
+const navTeachersByCourse = ref({})
+const navSearchLoading = ref(false)
+const navSearchError = ref('')
+const isSearchOpen = computed(() =>
+  ((isStudentUser.value && isOnStudentRoute.value) || (isTeacherUser.value && isOnTeacherRoute.value)) &&
+  String(navCourseSearch.value || '').trim().length > 0
+)
+const showSearchResultsOnly = computed(() => isSearchOpen.value)
+
+const normalize = (s) => String(s || '').trim().toLowerCase()
+const scoreCourse = (query, c) => {
+  const q = normalize(query)
+  const name = normalize(c?.courseName)
+  if (!q || !name) return 0
+  if (name === q) return 1000
+  if (name.startsWith(q)) return 800
+  const idx = name.indexOf(q)
+  if (idx >= 0) return 600 - Math.min(idx, 50)
+  let hit = 0
+  for (const ch of q) if (name.includes(ch)) hit += 1
+  return hit > 0 ? 200 + hit : 0
+}
+
+const rankedSearchCourses = computed(() => {
+  const q = String(navCourseSearch.value || '').trim()
+  if (!q) return []
+  return (Array.isArray(navCourseCatalog.value) ? navCourseCatalog.value : [])
+    .map((c) => ({ ...c, _score: scoreCourse(q, c) }))
+    .sort((a, b) => (b._score - a._score) || String(a.courseName || '').localeCompare(String(b.courseName || ''), 'zh-CN'))
+})
+
+const refreshNavCourseCatalog = async () => {
+  if (!currentUser.value?.id) {
+    navCourseCatalog.value = []
+    return
+  }
+  navSearchLoading.value = true
+  navSearchError.value = ''
+  try {
+    const { data } = await listCourseCatalog(currentUser.value.id)
+    const items = Array.isArray(data?.items) ? data.items : []
+    navCourseCatalog.value = items
+    try {
+      const names = items.map((x) => String(x?.courseName || '').trim()).filter(Boolean)
+      if (names.length) {
+        const { data: tData } = await listTeachersForCourses(names)
+        navTeachersByCourse.value = tData && typeof tData === 'object' ? tData : {}
+      } else {
+        navTeachersByCourse.value = {}
+      }
+    } catch {
+      navTeachersByCourse.value = {}
+    }
+  } catch (e) {
+    navCourseCatalog.value = []
+    navTeachersByCourse.value = {}
+    navSearchError.value = e?.response?.data?.message || '课程搜索加载失败'
+  } finally {
+    navSearchLoading.value = false
+  }
+}
+
+watch(
+  () => [currentUser.value?.id, route.path],
+  () => {
+    const onPortal = (isStudentUser.value && isOnStudentRoute.value) || (isTeacherUser.value && isOnTeacherRoute.value)
+    if (!onPortal) return
+    void refreshNavCourseCatalog()
+  },
+  { immediate: true }
+)
+
+const openCourseFromSearch = async (course) => {
+  const cn = String(course?.courseName || '').trim()
+  if (!cn) return
+  const role = currentUser.value?.role
+  const hasAccess = Boolean(course?.hasAccess)
+  navCourseSearch.value = ''
+  if (role === 'student') {
+    if (hasAccess) {
+      await router.push({ path: '/student/graph', query: { course: cn } })
+    } else {
+      await router.push({ path: '/student/course-detail', query: { course: cn } })
+    }
+    return
+  }
+  if (role === 'teacher') {
+    if (hasAccess) {
+      await router.push({ path: '/teacher/manage', query: { course: cn } })
+    } else {
+      await router.push({ path: '/teacher/course-detail', query: { course: cn } })
+    }
+  }
+}
+
+const teachersTextForCourse = (courseName) => {
+  const list = navTeachersByCourse.value[String(courseName || '').trim()]
+  if (!Array.isArray(list) || !list.length) return '暂无授课教师信息'
+  return list.map((t) => String(t?.username || '').trim()).filter(Boolean).join('、') || '暂无授课教师信息'
+}
+
 </script>
 
 <template>
@@ -116,6 +220,15 @@ const handleUpdateUser = (patch) => {
               {{ page.label }}
             </button>
           </nav>
+
+          <div v-if="(isStudentUser && isOnStudentRoute) || (isTeacherUser && isOnTeacherRoute)" class="nav-course-search">
+            <input
+              v-model="navCourseSearch"
+              class="match-height"
+              placeholder="搜索全部课程"
+              style="width: 260px"
+            />
+          </div>
 
           <nav v-else-if="isAdminUser && isOnAdminRoute" class="section-nav section-nav-inline" aria-label="管理员页面导航">
             <button
@@ -165,7 +278,35 @@ const handleUpdateUser = (patch) => {
 
     <div class="app-shell">
       <main class="panel-wrap">
-        <router-view v-slot="{ Component }">
+        <section
+          v-if="showSearchResultsOnly"
+          class="result-card nav-search-page-block"
+        >
+          <h3>课程搜索结果</h3>
+          <p v-if="navSearchLoading" class="panel-subtitle">加载课程中...</p>
+          <p v-else-if="navSearchError" class="error-text">{{ navSearchError }}</p>
+          <template v-else>
+            <p class="panel-subtitle">共 {{ rankedSearchCourses.length }} 门课程，按匹配度从高到低</p>
+            <div v-if="rankedSearchCourses.length" class="nav-search-list">
+              <button
+                v-for="c in rankedSearchCourses"
+                :key="c.courseName"
+                type="button"
+                class="nav-search-row"
+                @click="openCourseFromSearch(c)"
+              >
+                <img :src="c.coverUrl" alt="" class="nav-search-cover" />
+                <span class="nav-search-main">
+                  <span class="nav-search-name">{{ c.courseName }}</span>
+                  <span class="nav-search-teachers">授课教师：{{ teachersTextForCourse(c.courseName) }}</span>
+                  <span class="nav-search-summary">{{ c.summary || '暂无课程简介' }}</span>
+                </span>
+                <span class="nav-search-action">{{ c.hasAccess ? '直接进入' : '查看介绍' }}</span>
+              </button>
+            </div>
+          </template>
+        </section>
+        <router-view v-if="!showSearchResultsOnly" v-slot="{ Component }">
           <component
             :is="Component"
             @login-success="handleLoginSuccess"
@@ -177,3 +318,32 @@ const handleUpdateUser = (patch) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.nav-course-search { position: relative; }
+.nav-search-page-block { margin-bottom: 12px; }
+.nav-search-list { display: grid; gap: 8px; }
+.nav-search-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  padding: 8px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.nav-search-cover { width: 84px; height: 48px; object-fit: cover; border-radius: 6px; }
+.nav-search-main { display: grid; gap: 2px; min-width: 0; }
+.nav-search-name { font-weight: 600; }
+.nav-search-teachers { font-size: 12px; color: #4b5563; }
+.nav-search-summary {
+  font-size: 12px;
+  color: #374151;
+  white-space: normal;
+  word-break: break-word;
+}
+.nav-search-action { color: #3563ff; font-size: 12px; }
+</style>

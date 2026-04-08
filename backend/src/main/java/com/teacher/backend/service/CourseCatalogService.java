@@ -4,6 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.time.LocalDateTime;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -61,6 +63,17 @@ public class CourseCatalogService {
         return courseCatalogEntryRepository.findAllByOrderBySortOrderAscIdAsc().stream()
             .map(CourseCatalogEntry::getCourseName)
             .toList();
+    }
+
+    public List<CourseCatalogEntry> allCourseEntries() {
+        ensureDefaultsSeeded();
+        return courseCatalogEntryRepository.findAllByOrderBySortOrderAscIdAsc();
+    }
+
+    public Optional<CourseCatalogEntry> findEntryByCourseName(String rawCourseName) {
+        if (!StringUtils.hasText(rawCourseName)) return Optional.empty();
+        String normalized = normalizeCourseName(rawCourseName);
+        return courseCatalogEntryRepository.findByCourseNameIgnoreCase(normalized);
     }
 
     /** 课程目录中是否已有该名称（经 {@link #normalizeCourseName} 归一化后比较，忽略大小写）。 */
@@ -131,6 +144,9 @@ public class CourseCatalogService {
             CourseCatalogEntry e = new CourseCatalogEntry();
             e.setCourseName(normalized);
             e.setSortOrder(maxSort + 1);
+            e.setCoverUrl(defaultCoverUrl(normalized));
+            e.setSummary(defaultSummary(normalized));
+            e.setSyllabus(defaultSyllabus(normalized));
             courseCatalogEntryRepository.save(e);
         }
 
@@ -157,7 +173,43 @@ public class CourseCatalogService {
         CourseCatalogEntry e = new CourseCatalogEntry();
         e.setCourseName(name);
         e.setSortOrder(maxSort + 1);
+        e.setCoverUrl(defaultCoverUrl(name));
+        e.setSummary(defaultSummary(name));
+        e.setSyllabus(defaultSyllabus(name));
         courseCatalogEntryRepository.save(e);
+    }
+
+    public CourseCatalogEntry updateCourseMeta(String rawCourseName, String coverUrl, String summary, String syllabus, Long updatedBy) {
+        String normalized = normalizeCourseName(rawCourseName);
+        CourseCatalogEntry entry = courseCatalogEntryRepository.findByCourseNameIgnoreCase(normalized)
+            .orElseThrow(() -> new IllegalArgumentException("课程不存在: " + normalized));
+        entry.setCoverUrl(safeTrim(coverUrl));
+        entry.setSummary(safeTrim(summary));
+        entry.setSyllabus(safeTrim(syllabus));
+        entry.setUpdatedBy(updatedBy);
+        entry.setUpdatedAt(LocalDateTime.now());
+        return courseCatalogEntryRepository.save(entry);
+    }
+
+    public String defaultCoverUrl(String courseName) {
+        String text = StringUtils.hasText(courseName) ? courseName.trim() : "课程";
+        return "https://dummyimage.com/640x360/edf2ff/2b4eff&text=" + java.net.URLEncoder.encode(text, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public String defaultSummary(String courseName) {
+        String name = StringUtils.hasText(courseName) ? courseName.trim() : "本课程";
+        return name + "简介：围绕课程核心知识点，强调概念理解、案例分析与实践应用。";
+    }
+
+    public String defaultSyllabus(String courseName) {
+        String name = StringUtils.hasText(courseName) ? courseName.trim() : "本课程";
+        return "1. 课程导论\n2. 核心概念与术语\n3. 方法与流程\n4. 案例分析\n5. 综合实践与复盘\n\n（" + name + " 可按教学需要调整）";
+    }
+
+    private String safeTrim(String v) {
+        if (!StringUtils.hasText(v)) return null;
+        String t = v.trim();
+        return t.isEmpty() ? null : t;
     }
 
     public List<String> deleteCourse(String rawCourseName) {
