@@ -855,7 +855,6 @@ const generateTest = async () => {
     for (let i = 0; i < Number(testCounts.value.fillCount || 0); i++) typeList.push('填空题')
 
     const diff = questionForm.value.difficulty
-    const major = selectedMajor.value
 
     // 多知识点轮换生成：第 i 题使用 topics[i % topics.length]
     // 并发策略（多线程/并发请求）：
@@ -871,7 +870,7 @@ const generateTest = async () => {
         topicLabel = `${kp}：${sub}`
       }
       const topic = composeTopic(topicLabel) + `（题${idx + 1}）`
-      return { topic, difficulty: diff, questionType: qt, major }
+      return { topic, difficulty: diff, questionType: qt }
     })
 
     const chunk2 = (arr) => {
@@ -1296,7 +1295,7 @@ const learningStats = computed(() => {
 })
 
 const composeTopic = (knowledgePoint) => {
-  return `${selectedMajor.value} ${learningContextCourse.value} ${knowledgePoint}`.trim()
+  return `${learningContextCourse.value} ${knowledgePoint}`.trim()
 }
 
 const ensureCourseSelection = () => {
@@ -2516,7 +2515,6 @@ const confirmDeleteExam = async (id) => {
       v-if="effectivePage === 'paper'"
       :joined-courses="joinedCourses"
       :current-course="learningContextCourse || selectedCourse"
-      :selected-major="selectedMajor"
       :render-latex-text="renderLatexText"
       :refresh-saved-exams="loadSavedExams"
       @go-courses="currentPage = 'courses'"

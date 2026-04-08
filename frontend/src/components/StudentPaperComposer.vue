@@ -5,7 +5,6 @@ import { fetchQuestion, listKnowledgePoints, saveExam } from '../api/client'
 const props = defineProps({
   joinedCourses: { type: Array, required: true },
   currentCourse: { type: String, default: '' },
-  selectedMajor: { type: String, default: '' },
   renderLatexText: { type: Function, required: true },
   refreshSavedExams: { type: Function, required: true }
 })
@@ -293,12 +292,11 @@ const generateRow = async (row) => {
   row.loading = true
   try {
     const idx = rows.value.indexOf(row) + 1
-    const topic = `${props.selectedMajor} ${cn} ${kp}`.trim() + `（卷${idx}）`
+    const topic = `${cn} ${kp}`.trim() + `（卷${idx}）`
     const { data } = await fetchQuestion({
       topic,
       difficulty: paperDifficulty.value || '中等',
-      questionType: normalizeExamQuestionType(row.typeKey),
-      major: props.selectedMajor || null
+      questionType: normalizeExamQuestionType(row.typeKey)
     })
     row.question = normalizeQuestionPayload(data)
   } catch (err) {
