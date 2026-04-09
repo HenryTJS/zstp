@@ -312,6 +312,14 @@ const loadCourseDetail = async (courseName) => {
     courseDetailLoading.value = false
   }
 }
+
+const openCourseDetailFromMyCourses = async (courseName) => {
+  const cn = String(courseName || '').trim()
+  if (!cn) return
+  currentPage.value = 'course-detail'
+  await router.push({ path: '/student/course-detail', query: { course: cn } })
+  await loadCourseDetail(cn)
+}
 watch([selectedMajor1, selectedMajor2, selectedMajor3], async () => {
   const appliedReqId = await fetchAvailableCoursesForCurrentMajor()
   if (appliedReqId !== majorCoursesReqId) return
@@ -2355,7 +2363,7 @@ const confirmDeleteExam = async (id) => {
       :joined-courses="joinedCourses"
       :my-course-catalog="myCourseCatalog"
       :state-hydrated="stateHydrated"
-      @enter="enterCourseFromMarket"
+      @enter="openCourseDetailFromMyCourses"
       @quit="async (c) => { await quitCourse(c); await loadMyCourseCatalog() }"
     />
 

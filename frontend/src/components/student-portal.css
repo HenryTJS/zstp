@@ -431,19 +431,26 @@
 .course-market-grid{
   margin-top:12px;
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:12px;
 }
 
 .course-market-card{
-  border:1px solid #e2e8f0;
-  border-radius:10px;
+  border:1px solid var(--ui-accent-200);
+  border-radius:14px;
   padding:14px 14px 12px;
-  background:#fff;
-  min-height:200px;
+  background:linear-gradient(180deg,#ffffff 0%,var(--ui-accent-50) 100%);
+  min-height:240px;
   display:flex;
   flex-direction:column;
   min-width:0;
+  box-shadow:0 8px 20px rgba(15,23,42,.04);
+  transition:all .18s ease;
+}
+.course-market-card:hover{
+  transform:translateY(-2px);
+  box-shadow:0 14px 28px rgba(31,111,191,.12);
+  border-color:var(--ui-accent-300);
 }
 
 .course-market-card-body{
@@ -476,6 +483,13 @@
   flex-wrap:wrap;
   gap:8px;
   align-items:center;
+}
+
+.course-market-card-actions--split .match-button,
+.course-market-card-actions--split .nav-btn,
+.course-market-card-actions--split .cancel-button{
+  padding-left:0;
+  padding-right:0;
 }
 
 .course-market-pagination{

@@ -4,6 +4,7 @@ export const listCourseCatalog = (userId) => http.get('/courses/catalog', { para
 export const getCourseDetail = (courseName, userId) =>
   http.get('/courses/detail', { params: { courseName, ...(userId ? { userId } : {}) } })
 export const updateCourseMeta = (payload) => http.put('/courses/meta', payload)
+export const uploadCourseCover = (formData) => http.post('/courses/cover/upload', formData)
 
 // 教师可见课程权限（由管理员分配后教师端才能查看）
 export const listTeacherCoursePermissions = (teacherId) =>

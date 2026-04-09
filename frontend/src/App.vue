@@ -282,11 +282,14 @@ const teachersTextForCourse = (courseName) => {
           v-if="showSearchResultsOnly"
           class="result-card nav-search-page-block"
         >
-          <h3>课程搜索结果</h3>
+          <div class="nav-search-header">
+            <h3>课程搜索结果</h3>
+            <p class="panel-subtitle">关键词：{{ navCourseSearch }}</p>
+          </div>
           <p v-if="navSearchLoading" class="panel-subtitle">加载课程中...</p>
           <p v-else-if="navSearchError" class="error-text">{{ navSearchError }}</p>
           <template v-else>
-            <p class="panel-subtitle">共 {{ rankedSearchCourses.length }} 门课程，按匹配度从高到低</p>
+            <p class="panel-subtitle nav-search-count">共 {{ rankedSearchCourses.length }} 门课程，按匹配度从高到低</p>
             <div v-if="rankedSearchCourses.length" class="nav-search-list">
               <button
                 v-for="c in rankedSearchCourses"
@@ -301,7 +304,7 @@ const teachersTextForCourse = (courseName) => {
                   <span class="nav-search-teachers">授课教师：{{ teachersTextForCourse(c.courseName) }}</span>
                   <span class="nav-search-summary">{{ c.summary || '暂无课程简介' }}</span>
                 </span>
-                <span class="nav-search-action">{{ c.hasAccess ? '直接进入' : '查看介绍' }}</span>
+                <span class="nav-search-action" :class="{ 'is-access': c.hasAccess }">{{ c.hasAccess ? '直接进入' : '查看介绍' }}</span>
               </button>
             </div>
           </template>
@@ -321,29 +324,76 @@ const teachersTextForCourse = (courseName) => {
 
 <style scoped>
 .nav-course-search { position: relative; }
-.nav-search-page-block { margin-bottom: 12px; }
-.nav-search-list { display: grid; gap: 8px; }
+.nav-search-page-block {
+  margin-bottom: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--ui-accent-200);
+  background: linear-gradient(180deg, #ffffff 0%, var(--ui-accent-50) 100%);
+}
+.nav-search-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.nav-search-count { margin-bottom: 10px; }
+.nav-search-list { display: grid; gap: 10px; }
 .nav-search-row {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
-  border: 1px solid #edf0f5;
-  border-radius: 8px;
-  padding: 8px;
+  gap: 12px;
+  border: 1px solid var(--ui-card-border);
+  border-radius: 12px;
+  padding: 10px;
   background: #fff;
   text-align: left;
   cursor: pointer;
+  transition: all .18s ease;
 }
-.nav-search-cover { width: 84px; height: 48px; object-fit: cover; border-radius: 6px; }
-.nav-search-main { display: grid; gap: 2px; min-width: 0; }
-.nav-search-name { font-weight: 600; }
+.nav-search-row:hover {
+  transform: translateY(-1px);
+  border-color: var(--ui-accent-300);
+  box-shadow: 0 8px 20px rgba(31, 111, 191, 0.12);
+}
+.nav-search-cover {
+  width: 96px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--ui-accent-100);
+}
+.nav-search-main { display: grid; gap: 4px; min-width: 0; }
+.nav-search-name { font-weight: 700; color: #111827; }
 .nav-search-teachers { font-size: 12px; color: #4b5563; }
 .nav-search-summary {
-  font-size: 12px;
+  font-size: 13px;
   color: #374151;
   white-space: normal;
   word-break: break-word;
+  line-height: 1.45;
 }
-.nav-search-action { color: #3563ff; font-size: 12px; }
+.nav-search-action {
+  color: var(--ui-accent-700);
+  font-size: 12px;
+  border: 1px solid var(--ui-accent-200);
+  background: var(--ui-accent-50);
+  border-radius: 999px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+.nav-search-action.is-access {
+  background: #ecfdf3;
+  color: #0f766e;
+  border-color: #bbf7d0;
+}
+@media (max-width: 900px) {
+  .nav-search-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .nav-search-cover { width: 100%; height: 140px; }
+  .nav-search-action { justify-self: start; }
+}
 </style>

@@ -14,6 +14,7 @@ import {
   listCourseCatalog,
   getCourseDetail,
   updateCourseMeta,
+  uploadCourseCover,
   listTeacherCoursePermissionRequests,
   createTeacherCoursePermissionRequest,
   countPublishedTestsByTeacherCourses
@@ -407,6 +408,31 @@ const saveCourseMeta = async () => {
   }
 }
 
+const onCourseCoverFileChange = async (e) => {
+  const file = e?.target?.files?.[0]
+  if (!file || !courseDetail.value?.courseName) return
+  courseMetaSaving.value = true
+  courseDetailError.value = ''
+  try {
+    const fd = new FormData()
+    fd.append('userId', String(props.currentUser.id))
+    fd.append('courseName', String(courseDetail.value.courseName))
+    fd.append('file', file)
+    const { data } = await uploadCourseCover(fd)
+    const url = String(data?.coverUrl || '').trim()
+    if (url) {
+      courseMetaForm.value = { ...courseMetaForm.value, coverUrl: url }
+      await saveCourseMeta()
+      await loadCourseDetail(courseDetail.value.courseName)
+    }
+  } catch (e2) {
+    courseDetailError.value = e2?.response?.data?.message || '封面上传失败'
+  } finally {
+    courseMetaSaving.value = false
+    if (e?.target) e.target.value = ''
+  }
+}
+
 watch(
   currentPage,
   (v) => {
@@ -491,6 +517,12 @@ const enterCourseFromMarket = (courseName) => {
   // 携带显式 course 参数，并清空可能残留的讨论深链参数（dc/dp/dpost）
   // 避免知识点页被 deepLink 覆盖课程（造成“点A跳B”的偶发情况）
   router.push({ path: '/teacher/manage', query: { course: cn } })
+}
+
+const openCourseDetailFromMarket = async (courseName) => {
+  const cn = String(courseName || '').trim()
+  if (!cn) return
+  await router.push({ path: '/teacher/course-detail', query: { course: cn } })
 }
 
 const quitCourseFromMarket = (courseName) => {
@@ -1462,7 +1494,7 @@ watch(
           :my-course-catalog="myCourseCatalog"
           :pending-permission-requests="pendingTeacherCoursePermissionRequestsList"
           :course-init-done="courseInitDone"
-          @enter-course="enterCourseFromMarket"
+          @enter-course="openCourseDetailFromMarket"
           @quit-course="quitCourseFromMarket"
         />
       </template>
@@ -1482,6 +1514,7 @@ watch(
           @apply="() => openPermissionRequest(courseDetail?.courseName)"
           @join="() => null"
           @save-meta="saveCourseMeta"
+          @upload-cover="onCourseCoverFileChange"
         />
       </template>
 

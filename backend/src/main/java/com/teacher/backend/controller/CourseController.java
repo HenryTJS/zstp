@@ -5,6 +5,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.awt.Graphics2D;
 
 import com.teacher.backend.service.CourseCatalogService;
 import com.teacher.backend.entity.CourseCatalogEntry;
@@ -15,6 +22,7 @@ import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 import com.teacher.backend.repository.UserRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,11 +31,17 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
+import javax.imageio.ImageIO;
 
 @RestController
 @RequestMapping("/api")
@@ -40,14 +54,17 @@ public class CourseController {
     private final StudentStateRepository studentStateRepository;
     private final TeacherCoursePermissionRepository teacherCoursePermissionRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final Path uploadRoot;
 
     public CourseController(CourseCatalogService courseCatalogService, UserRepository userRepository,
                             StudentStateRepository studentStateRepository,
-                            TeacherCoursePermissionRepository teacherCoursePermissionRepository) {
+                            TeacherCoursePermissionRepository teacherCoursePermissionRepository,
+                            @Value("${app.upload-dir:uploads}") String uploadDir) {
         this.courseCatalogService = courseCatalogService;
         this.userRepository = userRepository;
         this.studentStateRepository = studentStateRepository;
         this.teacherCoursePermissionRepository = teacherCoursePermissionRepository;
+        this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
     }
 
     @GetMapping("/courses")
@@ -123,9 +140,7 @@ public class CourseController {
         if (!StringUtils.hasText(courseName)) return error(HttpStatus.BAD_REQUEST, "courseName is required");
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) return error(HttpStatus.NOT_FOUND, "user not found");
-        String role = safe(user.getRole());
-        boolean allow = "admin".equalsIgnoreCase(role) ||
-            ("teacher".equalsIgnoreCase(role) && teacherCoursePermissionRepository.existsByTeacherIdAndCourseNameIgnoreCase(userId, courseName));
+        boolean allow = hasCourseMetaEditPermission(user, courseName);
         if (!allow) return error(HttpStatus.FORBIDDEN, "无权限编辑课程介绍");
         CourseCatalogEntry saved;
         try {
@@ -134,6 +149,64 @@ public class CourseController {
             return error(HttpStatus.NOT_FOUND, ex.getMessage());
         }
         return ResponseEntity.ok(toCatalogMap(saved));
+    }
+
+    @PostMapping("/courses/cover/upload")
+    @Transactional
+    public ResponseEntity<?> uploadCourseCover(
+        @RequestParam(required = false) Long userId,
+        @RequestParam(required = false) String courseName,
+        @RequestParam(required = false) MultipartFile file
+    ) {
+        if (userId == null) return error(HttpStatus.BAD_REQUEST, "userId is required");
+        if (!StringUtils.hasText(courseName)) return error(HttpStatus.BAD_REQUEST, "courseName is required");
+        if (file == null || file.isEmpty()) return error(HttpStatus.BAD_REQUEST, "file is required");
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) return error(HttpStatus.NOT_FOUND, "user not found");
+        if (!hasCourseMetaEditPermission(user, courseName)) return error(HttpStatus.FORBIDDEN, "无权限上传课程封面");
+
+        String original = StringUtils.cleanPath(Objects.requireNonNullElse(file.getOriginalFilename(), ""));
+        String lower = original.toLowerCase();
+        String format = null;
+        if (lower.endsWith(".png")) format = "png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) format = "jpg";
+        if (format == null) return error(HttpStatus.BAD_REQUEST, "仅支持 png/jpg/jpeg");
+
+        try {
+            BufferedImage src = ImageIO.read(file.getInputStream());
+            if (src == null) return error(HttpStatus.BAD_REQUEST, "无法解析图片");
+            BufferedImage cropped = centerCropToRatio(src, 16, 9);
+            BufferedImage out = resizeTo(cropped, 1280, 720);
+
+            Path dir = uploadRoot.resolve("course-covers").normalize();
+            Files.createDirectories(dir);
+            String slug = safe(courseName).replaceAll("[^\\p{IsAlphabetic}\\p{IsDigit}_-]+", "_");
+            if (!StringUtils.hasText(slug)) slug = "course";
+            String storedName = slug + "_" + Instant.now().toEpochMilli() + "." + format;
+            Path target = dir.resolve(storedName).normalize();
+            if (!target.startsWith(dir)) return error(HttpStatus.BAD_REQUEST, "invalid filename");
+            ImageIO.write(out, format, target.toFile());
+            String url = "/api/courses/cover/" + storedName;
+            return ResponseEntity.ok(Map.of("coverUrl", url));
+        } catch (Exception ex) {
+            return error(HttpStatus.INTERNAL_SERVER_ERROR, "封面上传失败: " + ex.getMessage());
+        }
+    }
+
+    @GetMapping("/courses/cover/{filename:.+}")
+    public ResponseEntity<?> getCourseCover(@PathVariable String filename) {
+        try {
+            Path dir = uploadRoot.resolve("course-covers").normalize();
+            Path p = dir.resolve(filename).normalize();
+            if (!p.startsWith(dir)) return error(HttpStatus.BAD_REQUEST, "非法路径");
+            if (!Files.exists(p) || !Files.isRegularFile(p)) return error(HttpStatus.NOT_FOUND, "封面不存在");
+            Resource res = new UrlResource(p.toUri());
+            String lower = p.getFileName().toString().toLowerCase();
+            MediaType type = lower.endsWith(".png") ? MediaType.IMAGE_PNG : MediaType.IMAGE_JPEG;
+            return ResponseEntity.ok().contentType(type).body(res);
+        } catch (Exception ex) {
+            return error(HttpStatus.INTERNAL_SERVER_ERROR, "读取封面失败");
+        }
     }
 
     // =========================
@@ -216,5 +289,44 @@ public class CourseController {
 
     private String safe(String v) {
         return v == null ? "" : v.trim();
+    }
+
+    private boolean hasCourseMetaEditPermission(User user, String courseName) {
+        if (user == null) return false;
+        String role = safe(user.getRole());
+        if ("admin".equalsIgnoreCase(role)) return true;
+        return "teacher".equalsIgnoreCase(role)
+            && teacherCoursePermissionRepository.existsByTeacherIdAndCourseNameIgnoreCase(user.getId(), courseName);
+    }
+
+    private BufferedImage centerCropToRatio(BufferedImage src, int rw, int rh) {
+        int w = src.getWidth();
+        int h = src.getHeight();
+        if (w <= 0 || h <= 0) return src;
+        double target = rw / (double) rh;
+        double actual = w / (double) h;
+        int cropW = w;
+        int cropH = h;
+        if (actual > target) {
+            cropW = (int) Math.round(h * target);
+        } else if (actual < target) {
+            cropH = (int) Math.round(w / target);
+        }
+        cropW = Math.max(1, Math.min(cropW, w));
+        cropH = Math.max(1, Math.min(cropH, h));
+        int x = (w - cropW) / 2;
+        int y = (h - cropH) / 2;
+        return src.getSubimage(x, y, cropW, cropH);
+    }
+
+    private BufferedImage resizeTo(BufferedImage src, int tw, int th) {
+        BufferedImage out = new BufferedImage(tw, th, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g = out.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.drawImage(src, 0, 0, tw, th, null);
+        g.dispose();
+        return out;
     }
 }

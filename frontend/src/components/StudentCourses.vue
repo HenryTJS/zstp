@@ -31,9 +31,8 @@ const myCourses = computed(() => {
       <div v-if="myCourses.length" class="course-market-grid">
         <article v-for="course in myCourses" :key="course.courseName" class="course-market-card">
           <div class="course-market-card-body">
-            <img :src="course.coverUrl" alt="" style="width: 100%; height: 140px; object-fit: cover; border-radius: 8px" />
-            <h4 class="ui-mt-8">{{ course.courseName }}</h4>
-            <p class="panel-subtitle">{{ course.summary }}</p>
+            <img :src="course.coverUrl" alt="" class="my-course-cover" />
+            <h4 class="my-course-title ui-mt-8">{{ course.courseName }}</h4>
           </div>
           <div class="course-market-card-actions course-market-card-actions--split">
             <button
@@ -61,4 +60,29 @@ const myCourses = computed(() => {
 </template>
 
 <style src="./student-portal.css"></style>
+<style scoped>
+.my-course-cover{
+  width:100%;
+  height:168px;
+  object-fit:cover;
+  border-radius:10px;
+  border:1px solid var(--ui-card-border);
+}
+.my-course-title{
+  margin-bottom:6px;
+  font-size:17px;
+  font-weight:700;
+  color:#0f172a;
+}
+.my-course-summary{
+  margin:0;
+  color:#475569;
+  line-height:1.6;
+  display:-webkit-box;
+  -webkit-line-clamp:3;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+  min-height:4.8em;
+}
+</style>
 

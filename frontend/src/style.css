@@ -29,6 +29,12 @@
   --ui-primary: #1f6fbf;
   --ui-primary-hover: #1a64ad;
   --ui-primary-border: #1a64ad;
+  --ui-accent-50: #f5f9ff;
+  --ui-accent-100: #eaf2ff;
+  --ui-accent-200: #d6e6ff;
+  --ui-accent-300: #b8d3ff;
+  --ui-accent-600: #1f6fbf;
+  --ui-accent-700: #1a64ad;
   --ui-secondary-bg: #f8fafc;
   --ui-secondary-border: #ccd8e6;
   --ui-secondary-text: #2e4b68;
