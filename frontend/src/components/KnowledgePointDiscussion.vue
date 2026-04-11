@@ -3,7 +3,8 @@ import { nextTick, ref, watch } from 'vue'
 import {
   listKnowledgePointDiscussions,
   createKnowledgePointDiscussionPost,
-  toggleKnowledgePointDiscussionLike
+  toggleKnowledgePointDiscussionLike,
+  deleteKnowledgePointDiscussionPost
 } from '../api/client'
 import KnowledgePointDiscussionNode from './KnowledgePointDiscussionNode.vue'
 import './student-portal.css'
@@ -154,6 +155,21 @@ const onToggleLike = async (postId) => {
     error.value = e?.response?.data?.message || '点赞失败'
   }
 }
+
+const onDeletePost = async (postId) => {
+  if (!props.currentUserId || props.disabled || postId == null) return
+  if (!confirm('确定删除这条发言吗？若其下还有回复，将一并删除。')) return
+  submitting.value = true
+  error.value = ''
+  try {
+    await deleteKnowledgePointDiscussionPost(postId, props.currentUserId)
+    await load()
+  } catch (e) {
+    error.value = e?.response?.data?.message || '删除失败'
+  } finally {
+    submitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -207,8 +223,10 @@ const onToggleLike = async (postId) => {
         :depth="0"
         :current-user-id="currentUserId"
         :submitting="submitting"
+        :disabled="disabled"
         @toggle-like="onToggleLike"
         @submit-reply="onReply"
+        @delete-post="onDeletePost"
       />
     </div>
   </div>

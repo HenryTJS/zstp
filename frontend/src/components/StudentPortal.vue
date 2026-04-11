@@ -9,7 +9,23 @@ import CourseDetailPanel from './CourseDetailPanel.vue'
 import StudentHome from './StudentHome.vue'
 import StudentEditProfileModal from './StudentEditProfileModal.vue'
 import StudentChangePasswordModal from './StudentChangePasswordModal.vue'
-import KnowledgePointDiscussion from './KnowledgePointDiscussion.vue'
+import StudentGraphLearningPanel from './StudentGraphLearningPanel.vue'
+import { useStudentGeneratedTest } from '../composables/useStudentGeneratedTest'
+import { useStudentTeacherKpTest } from '../composables/useStudentTeacherKpTest'
+import { useStudentPersistState } from '../composables/useStudentPersistState'
+import { useStudentWrongDrill } from '../composables/useStudentWrongDrill'
+import { buildGraphNetworkData } from '../utils/studentGraphNetwork'
+import { collectDescendantLabelsFromGraph } from '../utils/studentGraphTraversal'
+import { renderLatexText } from '../utils/renderLatexHtml'
+import { wrongBookQuestionPreview } from '../utils/studentWrongBookUi'
+import {
+  parseOptionLetter,
+  parseOptionText,
+  resolveAnswerText,
+  unescapeNewlinesSafe,
+  wrongBookChoiceLetters
+} from '../utils/studentTestAnswerUtils'
+
 const props = defineProps({
   currentUser: {
     type: Object,
@@ -39,7 +55,6 @@ const practiceError = ref('')
 const practiceLoading = ref(false)
 const profileMessage = ref('')
 const stateHydrated = ref(false)
-let stateSaveTimer = null
 const answerImageFile = ref(null)
 const answerImageBase64 = ref('')
 const selectedChoiceAnswer = ref('')
@@ -78,6 +93,8 @@ watch(
 )
 const learningRecords = ref([])
 const wrongBook = ref([])
+/** 从服务器恢复学生状态期间：不因 availableCourses 尚未就绪而裁剪 joinedCourses */
+const hydrateJoiningCourses = ref(false)
 const dimensionScores = ref(null)
 const dimensionScoresLoading = ref(false)
 const dimensionScoresError = ref('')
@@ -96,17 +113,11 @@ const relevanceLabel = computed(() => {
   return ''
 })
 import * as echarts from 'echarts'
-import katex from 'katex'
-import { Teleport, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AiAssistantWidget from './AiAssistantWidget.vue'
 import {
-  fetchGrading,
   fetchKnowledgeGraph,
-  fetchQuestion,
-  fetchQuestions,
-  fetchStudentDimensionScores,
-  fetchStudentState,
   saveStudentState,
   fetchResourcesByKnowledgePoint,
   fetchResourceProgress,
@@ -121,10 +132,7 @@ import {
   listCoursesByMajor,
   listTeachersForCourses,
   listCourseCatalog,
-  getCourseDetail,
-  getKnowledgePointPublishedTestForStudent,
-  submitKnowledgePointPublishedTest,
-  getMyKnowledgePointPublishedTestSubmission
+  getCourseDetail
 } from '../api/client'
 const resources = ref({ materials: [], tests: [], totalCount: 0 })
 const resourcesLoading = ref(false)
@@ -241,9 +249,6 @@ onMounted(() => {
 const availableCourses = ref([])
 
 let majorCoursesReqId = 0
-/** 从服务器恢复学生状态期间：不因 availableCourses 尚未就绪而裁剪 joinedCourses */
-let hydrateJoiningCourses = false
-
 const fetchAvailableCoursesForCurrentMajor = async () => {
   const code = selectedMajor3.value || selectedMajor2.value || selectedMajor1.value
   const reqId = ++majorCoursesReqId
@@ -262,14 +267,32 @@ const fetchAvailableCoursesForCurrentMajor = async () => {
   return reqId
 }
 
+const courseNamesForTeacherLookup = () => {
+  const s = new Set()
+  for (const c of availableCourses.value || []) {
+    const t = String(c || '').trim()
+    if (t) s.add(t)
+  }
+  for (const c of joinedCourses.value || []) {
+    const t = String(c || '').trim()
+    if (t) s.add(t)
+  }
+  for (const it of myCourseCatalog.value || []) {
+    const t = String(it?.courseName || '').trim()
+    if (t) s.add(t)
+  }
+  return [...s]
+}
+
 const loadTeachersForMarketCourses = async () => {
-  if (!availableCourses.value.length) {
+  const names = courseNamesForTeacherLookup()
+  if (!names.length) {
     teachersByCourse.value = {}
     return
   }
   teachersByCourseLoading.value = true
   try {
-    const { data } = await listTeachersForCourses(availableCourses.value)
+    const { data } = await listTeachersForCourses(names)
     teachersByCourse.value = data && typeof data === 'object' ? data : {}
   } catch {
     teachersByCourse.value = {}
@@ -279,9 +302,11 @@ const loadTeachersForMarketCourses = async () => {
 }
 
 const formatTeachersForCourse = (courseName) => {
-  const list = teachersByCourse.value[courseName]
-  if (!Array.isArray(list) || !list.length) return ''
-  return list.map((t) => t?.username || '').filter(Boolean).join('、')
+  const cn = String(courseName || '').trim()
+  if (!cn) return ''
+  const list = teachersByCourse.value[cn]
+  if (!Array.isArray(list) || !list.length) return '暂无授课教师信息'
+  return list.map((t) => t?.username || '').filter(Boolean).join('、') || '暂无授课教师信息'
 }
 
 const loadMyCourseCatalog = async () => {
@@ -305,6 +330,14 @@ const loadCourseDetail = async (courseName) => {
   try {
     const { data } = await getCourseDetail(cn, props.currentUser?.id)
     courseDetail.value = data || null
+    try {
+      const { data: tea } = await listTeachersForCourses([cn])
+      if (tea && typeof tea === 'object') {
+        teachersByCourse.value = { ...teachersByCourse.value, ...tea }
+      }
+    } catch {
+      /* ignore */
+    }
   } catch (e) {
     courseDetailError.value = e?.response?.data?.message || '加载课程详情失败'
     courseDetail.value = null
@@ -320,21 +353,6 @@ const openCourseDetailFromMyCourses = async (courseName) => {
   await router.push({ path: '/student/course-detail', query: { course: cn } })
   await loadCourseDetail(cn)
 }
-watch([selectedMajor1, selectedMajor2, selectedMajor3], async () => {
-  const appliedReqId = await fetchAvailableCoursesForCurrentMajor()
-  if (appliedReqId !== majorCoursesReqId) return
-  if (hydrateJoiningCourses) return
-  // 课程列表尚未加载出结果时不裁剪 joinedCourses，避免误清空服务端已持久化的加入列表
-  if (!availableCourses.value.length) {
-    ensureCourseSelection()
-    return
-  }
-  // 专业切换后仅保留当前专业课程广场里仍存在的已加入课程
-  joinedCourses.value = joinedCourses.value.filter((c) => availableCourses.value.includes(c))
-  ensureCourseSelection()
-  schedulePersistStudentState()
-}, { immediate: true })
-
 const selectedMajor = computed({
   get() {
     return selectedMajor3.value || selectedMajor2.value || selectedMajor1.value || ''
@@ -366,6 +384,78 @@ const selectedCourse = ref('')
 const learningContextCourse = ref('')
 /** 未加入时「查看课程」仅浏览图谱，不可进行资料/建议等交互 */
 const previewUnjoinedCourse = ref('')
+
+const ensureCourseSelection = () => {
+  if (!joinedCourses.value.includes(selectedCourse.value)) {
+    selectedCourse.value = joinedCourses.value[0] || ''
+  }
+}
+
+const {
+  loadStudentState,
+  persistStudentState,
+  schedulePersistStudentState,
+  scheduleRefreshDimensionScores,
+  loadDimensionScores
+} = useStudentPersistState({
+  getUserId: () => props.currentUser?.id,
+  stateHydrated,
+  profileMessage,
+  learningRecords,
+  wrongBook,
+  joinedCourses,
+  selectedCourse,
+  learningContextCourse,
+  selectedMajor1,
+  selectedMajor2,
+  selectedMajor3,
+  majorLevel1,
+  selectedMajor,
+  loadMajorLevel1,
+  loadMajorLevel2,
+  loadMajorLevel3,
+  fetchAvailableCoursesForCurrentMajor,
+  readLegacyJoinedCoursesFromLocalStorage,
+  ensureCourseSelection,
+  dimensionScores,
+  dimensionScoresLoading,
+  dimensionScoresError,
+  hydrateJoiningCourses
+})
+
+watch([selectedMajor1, selectedMajor2, selectedMajor3], async () => {
+  const appliedReqId = await fetchAvailableCoursesForCurrentMajor()
+  if (appliedReqId !== majorCoursesReqId) return
+  if (hydrateJoiningCourses.value) return
+  if (!availableCourses.value.length) {
+    ensureCourseSelection()
+    return
+  }
+  joinedCourses.value = joinedCourses.value.filter((c) => availableCourses.value.includes(c))
+  ensureCourseSelection()
+  schedulePersistStudentState()
+}, { immediate: true })
+
+const {
+  wrongDrillCourse,
+  wrongDrillSession,
+  wrongDrillError,
+  wrongDrillSubmitting,
+  wrongDrillCourseOptions,
+  inferWrongBookQuestionType,
+  setWrongDrillCourse,
+  startWrongDrill,
+  cancelWrongDrill,
+  submitWrongDrill
+} = useStudentWrongDrill({
+  wrongBook,
+  learningRecords,
+  joinedCourses,
+  selectedMajorDisplay,
+  selectedMajor,
+  effectivePage,
+  schedulePersistStudentState
+})
 
 const isUnjoinedPreviewMode = computed(() => Boolean(previewUnjoinedCourse.value))
 /** 出题/做题/错题学习页：须已从广场进入且已加入该课 */
@@ -579,512 +669,6 @@ const testError = ref('')
 const testSubmitted = ref(false)
 const testResult = ref(null) // { totalScore, fullScore, perQuestionScores: [...] }
 
-/** 教师发布知识点测试（练习页） */
-const teacherKpTest = ref(null)
-const teacherKpTestLoading = ref(false)
-const teacherKpTestError = ref('')
-const teacherKpTestAnswers = ref([])
-const teacherKpTestSubmitted = ref(false)
-const teacherKpTestResult = ref(null)
-const teacherKpTestSubmitting = ref(false)
-
-/** 图谱页展示用：教师发布测试概览（不与练习页的 teacherKpTest 状态互相覆盖） */
-const teacherKpTestMeta = ref(null) // { id, title, updatedAt, questionCount }
-const teacherKpTestMetaLoading = ref(false)
-const teacherKpTestMetaError = ref('')
-
-const loadTeacherKpTest = async () => {
-  teacherKpTest.value = null
-  teacherKpTestError.value = ''
-  teacherKpTestSubmitted.value = false
-  teacherKpTestResult.value = null
-  teacherKpTestAnswers.value = []
-  if (!canStudyCurrentCourse.value || !learningContextCourse.value || !selectedKnowledgePoint.value || !props.currentUser?.id) {
-    return
-  }
-  teacherKpTestLoading.value = true
-  try {
-    const { data } = await getKnowledgePointPublishedTestForStudent({
-      courseName: learningContextCourse.value,
-      pointName: selectedKnowledgePoint.value,
-      userId: props.currentUser.id
-    })
-    const t = data?.test
-    if (t && Array.isArray(t.questions) && t.questions.length) {
-      teacherKpTest.value = t
-      teacherKpTestAnswers.value = t.questions.map(() => '')
-
-      // 一次性提交：进入页面即拉取历史提交结果（若存在则直接只读展示）
-      try {
-        const { data: sub } = await getMyKnowledgePointPublishedTestSubmission({
-          userId: props.currentUser.id,
-          testId: t.id
-        })
-        if (sub?.submitted) {
-          teacherKpTestResult.value = sub
-          teacherKpTestSubmitted.value = true
-          const per = Array.isArray(sub?.perQuestion) ? sub.perQuestion : []
-          if (per.length) {
-            teacherKpTestAnswers.value = per.map((r) => String(r?.studentAnswer ?? '').trim())
-          }
-          await markCompletedSafe(`TEST:${t.id}`)
-        }
-      } catch {
-        // ignore
-      }
-    } else {
-      teacherKpTest.value = null
-    }
-  } catch (e) {
-    teacherKpTestError.value = e?.response?.data?.message || ''
-    teacherKpTest.value = null
-  } finally {
-    teacherKpTestLoading.value = false
-  }
-}
-
-const loadTeacherKpTestMeta = async () => {
-  teacherKpTestMeta.value = null
-  teacherKpTestMetaError.value = ''
-  if (!canStudyCurrentCourse.value || !learningContextCourse.value || !selectedKnowledgePoint.value || !props.currentUser?.id) {
-    return
-  }
-  teacherKpTestMetaLoading.value = true
-  try {
-    const { data } = await getKnowledgePointPublishedTestForStudent({
-      courseName: learningContextCourse.value,
-      pointName: selectedKnowledgePoint.value,
-      userId: props.currentUser.id
-    })
-    const t = data?.test
-    const qs = Array.isArray(t?.questions) ? t.questions : []
-    if (t?.id && qs.length) {
-      teacherKpTestMeta.value = {
-        id: t.id,
-        title: t.title || '',
-        updatedAt: t.updatedAt || null,
-        questionCount: qs.length
-      }
-    } else {
-      teacherKpTestMeta.value = null
-    }
-  } catch (e) {
-    teacherKpTestMetaError.value = e?.response?.data?.message || ''
-    teacherKpTestMeta.value = null
-  } finally {
-    teacherKpTestMetaLoading.value = false
-  }
-}
-
-watch(
-  () => [currentPage.value, learningContextCourse.value, selectedKnowledgePoint.value, props.currentUser?.id],
-  () => {
-    if (currentPage.value !== 'teacher-test') {
-      teacherKpTest.value = null
-      teacherKpTestSubmitted.value = false
-      teacherKpTestResult.value = null
-      teacherKpTestAnswers.value = []
-      teacherKpTestError.value = ''
-      return
-    }
-    void loadTeacherKpTest()
-  }
-)
-
-watch(
-  () => [effectivePage.value, learningContextCourse.value, selectedKnowledgePoint.value, props.currentUser?.id],
-  () => {
-    if (effectivePage.value !== 'graph') {
-      teacherKpTestMeta.value = null
-      teacherKpTestMetaError.value = ''
-      teacherKpTestMetaLoading.value = false
-      return
-    }
-    // 图谱节点切换时刷新“教师发布测试”概览
-    void loadTeacherKpTestMeta()
-  }
-)
-
-const submitTeacherKpTest = async () => {
-  teacherKpTestError.value = ''
-  if (!teacherKpTest.value?.id || !props.currentUser?.id) return
-  const qs = teacherKpTest.value.questions || []
-  if (!Array.isArray(teacherKpTestAnswers.value) || teacherKpTestAnswers.value.length !== qs.length) {
-    teacherKpTestError.value = '作答数据异常。'
-    return
-  }
-  for (let i = 0; i < qs.length; i++) {
-    if (!String(teacherKpTestAnswers.value[i] ?? '').trim()) {
-      teacherKpTestError.value = `请完成第 ${i + 1} 题。`
-      return
-    }
-  }
-  teacherKpTestSubmitting.value = true
-  try {
-    const { data } = await submitKnowledgePointPublishedTest({
-      userId: props.currentUser.id,
-      testId: teacherKpTest.value.id,
-      answers: teacherKpTestAnswers.value.map((a) => String(a ?? '').trim())
-    })
-    teacherKpTestResult.value = data
-    teacherKpTestSubmitted.value = true
-
-    const now = new Date()
-    const nowDisplay = now.toLocaleString()
-    const nowIso = now.toISOString()
-    const per = Array.isArray(data?.perQuestion) ? data.perQuestion : []
-    const kpAnchor = String(selectedKnowledgePoint.value || '').trim()
-    const newLR = []
-    const newWB = []
-    for (let i = 0; i < per.length; i++) {
-      const row = per[i]
-      const score = Number(row.score ?? 0)
-      const full = Number(row.full_score ?? 0)
-      const kpRow =
-        String(qs[i]?.focusPointName || '').trim() ||
-        String(row.focusPointName || '').trim() ||
-        kpAnchor ||
-        '未标注'
-      newLR.push({
-        id: `lr-tt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-        time: nowDisplay,
-        major: selectedMajorDisplay.value || selectedMajor.value || '',
-        course: learningContextCourse.value || '',
-        knowledgePoint: kpRow,
-        score,
-        fullScore: full
-      })
-      if (score < full) {
-        newWB.push({
-          id: `wb-tt-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-          major: selectedMajorDisplay.value || selectedMajor.value || '',
-          course: learningContextCourse.value || '',
-          knowledgePoint: kpRow,
-          question: row.question || '',
-          explanation: row.explanation || '',
-          myAnswer: String(teacherKpTestAnswers.value[i] ?? ''),
-          answer: '',
-          score,
-          fullScore: full,
-          collectedAt: nowDisplay,
-          collectedAtIso: nowIso
-        })
-      }
-    }
-    learningRecords.value = [...newLR, ...(learningRecords.value || [])]
-    wrongBook.value = [...newWB, ...(wrongBook.value || [])]
-    schedulePersistStudentState()
-
-    // 教师测试提交成功：作为资源项标记完成（用于“学习资源”区显示已完成/进度更新）
-    await markCompletedSafe(`TEST:${teacherKpTest.value.id}`)
-  } catch (e) {
-    // 一次性提交：若后端返回 409 且带回历史结果，则前端直接进入只读展示，并同步完成状态
-    const status = e?.response?.status
-    const payload = e?.response?.data
-    if (status === 409 && payload && typeof payload === 'object' && payload.alreadySubmitted) {
-      teacherKpTestResult.value = payload
-      teacherKpTestSubmitted.value = true
-      await markCompletedSafe(`TEST:${teacherKpTest.value.id}`)
-      teacherKpTestError.value = ''
-    } else {
-      teacherKpTestError.value = e?.response?.data?.message || '提交失败'
-    }
-  } finally {
-    teacherKpTestSubmitting.value = false
-  }
-}
-
-const enterTeacherKpTestFromGraph = async () => {
-  if (!selectedKnowledgePoint.value) return
-  currentPage.value = 'teacher-test'
-  try {
-    await router.push('/student/teacher-test')
-  } catch {
-    /* ignore */
-  }
-}
-
-const testTotalCount = computed(() =>
-  Number(testCounts.value.singleChoiceCount || 0) +
-  Number(testCounts.value.multiChoiceCount || 0) +
-  Number(testCounts.value.judgeCount || 0) +
-  Number(testCounts.value.fillCount || 0)
-)
-
-const resetTestState = () => {
-  testQuestions.value = []
-  testAnswers.value = []
-  testSubmitted.value = false
-  testResult.value = null
-  testError.value = ''
-}
-
-const parseOptionLetter = (opt) => {
-  const s = String(opt || '').trim()
-  const m = s.match(/^[A-D]\b/i)
-  if (m) return m[0].toUpperCase()
-  // 支持 "A." "A、" 等
-  const m2 = s.match(/^[A-D][\.\、\)]/)
-  if (m2) return s.charAt(0).toUpperCase()
-  return ''
-}
-
-const parseOptionText = (opt) => {
-  const s = String(opt || '').trim()
-  // 去掉开头的 A./B./... 形式
-  return s.replace(/^[A-D][\.\、\)]\s*/i, '')
-}
-
-const resolveAnswerText = (q, answer) => {
-  const qt = q?.question_type
-  if (!qt) return String(answer || '').trim()
-  if (qt === '选择题' || qt === '判断题') {
-    const letter = Array.isArray(answer) ? String(answer[0] || '').trim() : String(answer || '').trim()
-    const L = letter ? letter.toUpperCase().charAt(0) : ''
-    const opt = (q.options || []).find(o => parseOptionLetter(o) === L)
-    return opt ? parseOptionText(opt) : L
-  }
-  if (qt === '多选题') {
-    const list = Array.isArray(answer) ? answer : String(answer || '').split('')
-    const letters = list.map(x => String(x).toUpperCase().trim()).filter(x => ['A', 'B', 'C', 'D'].includes(x))
-    const ordered = ['A', 'B', 'C', 'D'].filter(l => letters.includes(l))
-    const texts = (q.options || []).filter(o => ordered.includes(parseOptionLetter(o))).map(parseOptionText)
-    return texts.join('、') || ''
-  }
-  // 填空题
-  return String(answer || '').trim()
-}
-
-const gradeStudentAnswer = (q, a) => {
-  const qt = q?.question_type
-  if (!qt) return ''
-  if (qt === '多选题') {
-    if (!Array.isArray(a)) return ''
-    return a.map(x => String(x).toUpperCase()).filter(x => ['A', 'B', 'C', 'D'].includes(x)).sort().join('')
-  }
-  return String(a || '').trim()
-}
-
-const unescapeNewlinesSafe = (t) => {
-  // 保留原始转义字符（如 \n、\t），避免影响 Markdown 内容语义
-  if (t === null || t === undefined) return t
-  return String(t)
-}
-
-const generateTest = async () => {
-  resetTestState()
-  testError.value = ''
-  testLoading.value = true
-  try {
-    const topics = Array.isArray(testForm.value.selectedPoints) ? testForm.value.selectedPoints : []
-    if (!topics.length) {
-      testError.value = '请选择一个或多个知识点。'
-      return
-    }
-    const total = testTotalCount.value
-    if (total < 1) {
-      testError.value = '请至少选择一种题型数量。'
-      return
-    }
-    if (total > 10) {
-      testError.value = '一次最多 10 题，请减少题目数量。'
-      return
-    }
-
-    // 生成顺序：单选 -> 多选 -> 判断 -> 填空（便于用户阅读）
-    const typeList = []
-    for (let i = 0; i < Number(testCounts.value.singleChoiceCount || 0); i++) typeList.push('选择题')
-    for (let i = 0; i < Number(testCounts.value.multiChoiceCount || 0); i++) typeList.push('多选题')
-    for (let i = 0; i < Number(testCounts.value.judgeCount || 0); i++) typeList.push('判断题')
-    for (let i = 0; i < Number(testCounts.value.fillCount || 0); i++) typeList.push('填空题')
-
-    const diff = questionForm.value.difficulty
-
-    // 多知识点轮换生成：第 i 题使用 topics[i % topics.length]
-    // 并发策略（多线程/并发请求）：
-    // - 总题数最多 10（UI 已校验）
-    // - API 最多发起 5 次请求
-    // - 每次请求返回 1 或 2 题（后端 /api/generate-questions）
-    const specs = typeList.map((qt, idx) => {
-      const kp = topics[idx % topics.length]
-      let topicLabel = kp
-      // 若该知识点在图谱中有下属知识点，则随机选一个一起作为提示，增加多样性
-      const sub = pickRandomSubpointLabelForKnowledgePoint(kp)
-      if (sub) {
-        topicLabel = `${kp}：${sub}`
-      }
-      const topic = composeTopic(topicLabel) + `（题${idx + 1}）`
-      return { topic, difficulty: diff, questionType: qt }
-    })
-
-    const chunk2 = (arr) => {
-      const out = []
-      for (let i = 0; i < arr.length; i += 2) out.push(arr.slice(i, i + 2))
-      return out
-    }
-
-    const batches = chunk2(specs).slice(0, 5)
-    if (batches.length > 5) {
-      testError.value = '生成请求次数超限（最多 5 次），请减少题目数量。'
-      return
-    }
-
-    const responses = await Promise.all(
-      batches.map((items) => fetchQuestions({ items }))
-    )
-
-    const results = []
-    for (const resp of responses) {
-      const data = resp && resp.data ? resp.data : resp
-      const qs = Array.isArray(data?.questions) ? data.questions : []
-      for (const q of qs) results.push(q)
-    }
-
-    // 兜底：确保不超过 10 题（即便后端异常返回更多）
-    const trimmed = results.slice(0, 10)
-
-    testQuestions.value = (trimmed || [])
-      .map((q, i) => {
-        if (!q) return q
-        const anchorKp = topics[i % topics.length]
-        return {
-          ...q,
-          // 记录出题时轮换到的用户知识点，避免 AI 在 knowledge_points 里编造名称误导错题本
-          userKnowledgePoint: anchorKp,
-          question: unescapeNewlinesSafe(q.question),
-          explanation: unescapeNewlinesSafe(q.explanation),
-          answer: unescapeNewlinesSafe(q.answer),
-          options: Array.isArray(q.options) ? q.options.map(unescapeNewlinesSafe) : [],
-          knowledge_points: Array.isArray(q.knowledge_points) ? q.knowledge_points.map(unescapeNewlinesSafe) : []
-        }
-      })
-
-    testAnswers.value = testQuestions.value.map((q) => {
-      if (q.question_type === '多选题') return []
-      return ''
-    })
-  } catch (e) {
-    const msg = e?.response?.data?.message || e?.message || (typeof e === 'string' ? e : '测试生成失败，请稍后重试。')
-    // 保留更完整的错误信息，便于你直接定位后端原因
-    testError.value = msg
-    console.error('[generateTest] failed:', e)
-  } finally {
-    testLoading.value = false
-  }
-}
-
-const submitTest = async () => {
-  testError.value = ''
-  if (!testQuestions.value.length) {
-    testError.value = '请先生成测试。'
-    return
-  }
-  if (!Array.isArray(testAnswers.value) || testAnswers.value.length !== testQuestions.value.length) {
-    testError.value = '作答数据异常，请刷新后重试。'
-    return
-  }
-
-  // 校验作答完整性
-  for (let i = 0; i < testQuestions.value.length; i++) {
-    const q = testQuestions.value[i]
-    const a = testAnswers.value[i]
-    const qt = q?.question_type
-    if (qt === '多选题') {
-      if (!Array.isArray(a) || a.length === 0) {
-        testError.value = `第 ${i + 1} 题：请至少选择一个选项。`
-        return
-      }
-    } else {
-      if (!String(a || '').trim()) {
-        testError.value = `第 ${i + 1} 题：请填写/选择答案。`
-        return
-      }
-    }
-  }
-
-  testLoading.value = true
-  try {
-    const now = new Date()
-    const nowIso = now.toISOString()
-    const nowDisplay = now.toLocaleString()
-    const graders = testQuestions.value.map((q, idx) => {
-      const studentAnswer = gradeStudentAnswer(q, testAnswers.value[idx])
-      return fetchGrading({
-        question: q.question,
-        referenceAnswer: q.answer,
-        studentAnswer,
-        questionType: q.question_type,
-        studentAnswerImageBase64: '',
-        studentAnswerImageName: '',
-        fullScore: 10
-      })
-    })
-
-    const results = await Promise.all(graders)
-    const perQuestionScores = results.map((r) => (r && r.data ? r.data : r)).map((d) => d || {})
-    const totalScore = perQuestionScores.reduce((sum, r) => sum + Number(r.score || 0), 0)
-    const fullScore = perQuestionScores.length * 10
-
-    testResult.value = { totalScore, fullScore, perQuestionScores }
-    testSubmitted.value = true
-
-    // 将本次作答写入学习记录与错题本，供“错题与记录”页面展示
-    const newLearningRecords = []
-    const newWrongItems = []
-    for (let i = 0; i < testQuestions.value.length; i++) {
-      const q = testQuestions.value[i] || {}
-      const result = perQuestionScores[i] || {}
-      const score = Number(result.score || 0)
-      const full = 10
-      const kpUserAnchored = String(q.userKnowledgePoint || '').trim()
-      const kpFromForm =
-        Array.isArray(testForm.value.selectedPoints) && testForm.value.selectedPoints.length
-          ? String(testForm.value.selectedPoints[i % testForm.value.selectedPoints.length] || '').trim()
-          : ''
-      const kpFromAi =
-        Array.isArray(q.knowledge_points) && q.knowledge_points.length
-          ? String(q.knowledge_points[0] || '').trim()
-          : ''
-      const kp = kpUserAnchored || kpFromForm || kpFromAi || ''
-
-      newLearningRecords.push({
-        id: `lr-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-        time: nowDisplay,
-        major: selectedMajorDisplay.value || selectedMajor.value || '',
-        course: learningContextCourse.value || '',
-        knowledgePoint: kp || '未标注',
-        score,
-        fullScore: full
-      })
-
-      if (score < full) {
-        newWrongItems.push({
-          id: `wb-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-          major: selectedMajorDisplay.value || selectedMajor.value || '',
-          course: learningContextCourse.value || '',
-          knowledgePoint: kp || '未标注',
-          question: q.question || '',
-          explanation: unescapeNewlinesSafe(q.explanation) || '',
-          myAnswer: resolveAnswerText(q, testAnswers.value[i]),
-          answer: resolveAnswerText(q, q.answer),
-          score,
-          fullScore: full,
-          collectedAt: nowDisplay,
-          collectedAtIso: nowIso
-        })
-      }
-    }
-
-    learningRecords.value = [...newLearningRecords, ...(learningRecords.value || [])]
-    wrongBook.value = [...newWrongItems, ...(wrongBook.value || [])]
-    schedulePersistStudentState()
-  } catch (e) {
-    testError.value = e?.response?.data?.message || '提交失败，请稍后重试。'
-  } finally {
-    testLoading.value = false
-  }
-}
-
 const filteredLearningRecords = computed(() => {
   // 学习画像统计：直接使用所有课程数据（不再受“统计课程”筛选影响）
   return learningRecords.value || []
@@ -1111,73 +695,6 @@ const learningRecordsForGraph = computed(() => {
   return learningRecords.value.filter((item) => item.course === c)
 })
 
-/**
- * 按知识图谱「包含」边（不含前置）从某节点向下遍历，得到该节点及所有下级节点对应的 label 集合，
- * 用于把练习记录汇总到祖先知识点。
- */
-const collectDescendantLabelsFromGraph = (startId) => {
-  const nodes = graphData.value.nodes || []
-  const rawEdges = graphData.value.edges || []
-  const byId = new Map(nodes.map((n) => [n.id, n]))
-  const childMap = new Map()
-  for (const edge of rawEdges) {
-    if ((edge.label || '').toString().includes('前置')) continue
-    if (!childMap.has(edge.source)) childMap.set(edge.source, [])
-    childMap.get(edge.source).push(edge.target)
-  }
-  const visited = new Set()
-  const stack = [startId]
-  while (stack.length) {
-    const id = stack.pop()
-    if (!id || visited.has(id)) continue
-    visited.add(id)
-    for (const t of childMap.get(id) || []) {
-      if (!visited.has(t)) stack.push(t)
-    }
-  }
-  const labels = new Set()
-  for (const id of visited) {
-    const n = byId.get(id)
-    const lab = n?.label && String(n.label).trim()
-    if (lab) labels.add(lab)
-  }
-  return labels
-}
-
-// 为当前知识点选择一个随机下属知识点 label，用于丰富出题提示词（若无下属则返回 null）
-const pickRandomSubpointLabelForKnowledgePoint = (label) => {
-  const nodes = graphData.value.nodes || []
-  const edges = graphData.value.edges || []
-  if (!nodes.length) return null
-  const trimmed = String(label || '').trim()
-  if (!trimmed) return null
-  const byId = new Map(nodes.map((n) => [n.id, n]))
-  const byLabel = new Map()
-  for (const n of nodes) {
-    const lab = n?.label && String(n.label).trim()
-    if (lab && !byLabel.has(lab)) {
-      byLabel.set(lab, n.id)
-    }
-  }
-  const startId = byLabel.get(trimmed)
-  if (!startId) return null
-
-  const childMap = new Map()
-  for (const edge of edges) {
-    if ((edge.label || '').toString().includes('前置')) continue
-    if (!childMap.has(edge.source)) childMap.set(edge.source, [])
-    childMap.get(edge.source).push(edge.target)
-  }
-  const children = childMap.get(startId) || []
-  if (!children.length) return null
-  const childNodes = children
-    .map((id) => byId.get(id))
-    .filter((n) => n && n.label && String(n.label).trim() && String(n.label).trim() !== trimmed)
-  if (!childNodes.length) return null
-  const rand = childNodes[Math.floor(Math.random() * childNodes.length)]
-  return String(rand.label || '').trim() || null
-}
-
 /** 当前选中图谱节点：本节点 + 所有下级在练习记录中的得分合计 */
 const graphNodeMastery = computed(() => {
   const startId = selectedNodeId.value
@@ -1190,13 +707,17 @@ const graphNodeMastery = computed(() => {
       attemptCount: 0
     }
   }
-  const labels = collectDescendantLabelsFromGraph(startId)
+  const labels = collectDescendantLabelsFromGraph(
+    graphData.value.nodes,
+    graphData.value.edges,
+    startId
+  )
   let score = 0
   let full = 0
   let attemptCount = 0
   for (const item of learningRecordsForGraph.value) {
-    const kp = String(item.knowledgePoint || '').trim()
-    if (kp && labels.has(kp)) {
+    const anchor = String(item.practiceAnchorLabel || item.knowledgePoint || '').trim()
+    if (anchor && labels.has(anchor)) {
       score += Number(item.score || 0)
       full += Number(item.fullScore || 0)
       attemptCount += 1
@@ -1214,108 +735,7 @@ const graphNodeMastery = computed(() => {
   }
 })
 
-const graphNetworkData = computed(() => {
-  const nodes = graphData.value.nodes || []
-  const rawEdges = graphData.value.edges || []
-  // 前置知识点关系不再展示：过滤掉 label 含“前置”的边
-  const edges = rawEdges.filter((edge) => !((edge.label || '').toString().includes('前置')))
-  if (!nodes.length) {
-    return null
-  }
-
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]))
-  const childMap = new Map()
-  const indegreeMap = new Map(nodes.map((node) => [node.id, 0]))
-
-  for (const edge of edges) {
-    if (!childMap.has(edge.source)) {
-      childMap.set(edge.source, [])
-    }
-    childMap.get(edge.source).push(edge.target)
-    indegreeMap.set(edge.target, (indegreeMap.get(edge.target) || 0) + 1)
-  }
-
-  const root = nodes.find((item) => item.id === 'root') || nodes[0]
-  const depthMap = new Map([[root.id, 0]])
-  const queue = [root.id]
-
-  while (queue.length) {
-    const currentId = queue.shift()
-    const currentDepth = depthMap.get(currentId) || 0
-    for (const childId of childMap.get(currentId) || []) {
-      if (!depthMap.has(childId)) {
-        depthMap.set(childId, currentDepth + 1)
-        queue.push(childId)
-      }
-    }
-  }
-
-  const styledNodes = nodes.map((node) => {
-    const depth = depthMap.get(node.id) ?? 1
-    const isRoot = node.id === root.id
-    const hasChildren = childMap.has(node.id)
-    const color = isRoot
-      ? '#24a148'
-      : depth === 1
-        ? '#c44536'
-        : depth === 2
-          ? '#2f7ed8'
-          : '#9ed9ea'
-
-    return {
-      id: node.id,
-      name: node.label,
-      value: node.label,
-      category: Math.min(depth, 3),
-      symbolSize: isRoot ? 58 : hasChildren ? 46 : 38,
-      draggable: true,
-      itemStyle: {
-        color,
-        borderColor: '#eaf4fb',
-        borderWidth: 3,
-        shadowBlur: 10,
-        shadowColor: 'rgba(33, 59, 89, 0.18)'
-      },
-      label: {
-        show: true,
-        color: '#000',
-        fontWeight: 500,
-        fontSize: isRoot ? 18 : depth === 1 ? 15 : depth === 2 ? 13 : 12,
-        lineHeight: 18,
-        formatter: node.label
-      }
-    }
-  })
-
-  const styledLinks = edges.map((edge) => {
-    const sourceDepth = depthMap.get(edge.source) ?? 0
-    const base = {
-      source: edge.source,
-      target: edge.target,
-      value: edge.label || '包含',
-      lineStyle: {
-        color: sourceDepth === 0 ? '#7aa96b' : sourceDepth === 1 ? '#e1a692' : '#9db9d5',
-        width: sourceDepth <= 1 ? 2.2 : 1.6,
-        opacity: 0.95,
-        curveness: 0.08
-      }
-    }
-    return base
-  })
-
-  return {
-    nodes: styledNodes,
-    links: styledLinks,
-    categories: [
-      { name: '课程' },
-      { name: '一级知识点' },
-      { name: '二级知识点' },
-      { name: '扩展知识点' }
-    ],
-    rootId: root.id,
-    indegreeMap
-  }
-})
+const graphNetworkData = computed(() => buildGraphNetworkData(graphData.value))
 
 const learningStats = computed(() => {
   if (!filteredLearningRecords.value.length) {
@@ -1342,11 +762,26 @@ const composeTopic = (knowledgePoint) => {
   return `${learningContextCourse.value} ${knowledgePoint}`.trim()
 }
 
-const ensureCourseSelection = () => {
-  if (!joinedCourses.value.includes(selectedCourse.value)) {
-    selectedCourse.value = joinedCourses.value[0] || ''
-  }
-}
+const { testTotalCount, resetTestState, generateTest, submitTest } = useStudentGeneratedTest({
+  graphData,
+  questionForm,
+  testForm,
+  testCounts,
+  testQuestions,
+  testAnswers,
+  testLoading,
+  testError,
+  testSubmitted,
+  testResult,
+  learningContextCourse,
+  selectedKnowledgePoint,
+  learningRecords,
+  wrongBook,
+  selectedMajorDisplay,
+  selectedMajor,
+  composeTopic,
+  schedulePersistStudentState
+})
 
 const joinCourse = async (courseName) => {
   const course = String(courseName || '').trim()
@@ -1455,210 +890,6 @@ const quitCourse = async (courseName) => {
     })
   } catch {
     profileMessage.value = '课程已退出，但同步服务器失败，请稍后刷新或重试。'
-  }
-}
-
-const escapeHtml = (text) => {
-  return String(text || '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-const renderLatexText = (text) => {
-  const source = String(text || '')
-  if (!source.trim()) {
-    return ''
-  }
-
-  // 支持：
-  // - $$...$$ 块公式（多行）
-  // - $...$ 公式（允许跨行，部分 AI 输出会在 $..$ 中带换行）
-  // - \\(...\\) / \\[...\\] 形式
-  const parts = source.split(/(\$\$[\s\S]+?\$\$|\$[\s\S]+?\$|\\\([\s\S]+?\\\)|\\\[[\s\S]+?\\\])/g)
-
-  const normalizeLatex = (s) => {
-    // AI 常把箭头写成 ->，KaTeX 不一定能自动识别
-    return String(s || '').replace(/-\>/g, '\\\\to')
-  }
-
-  const renderNonLatex = (s) => {
-    // 先转义再渲染 Markdown 的加粗（**...**）
-    return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replaceAll('\n', '<br/>')
-  }
-
-  return parts
-    .map((part) => {
-      if (!part) {
-        return ''
-      }
-
-      // $$...$$
-      if (part.startsWith('$$') && part.endsWith('$$')) {
-        const latex = normalizeLatex(part.slice(2, -2))
-        return katex.renderToString(latex, { displayMode: true, throwOnError: false })
-      }
-
-      // $...$
-      if (part.startsWith('$') && part.endsWith('$')) {
-        const latex = normalizeLatex(part.slice(1, -1))
-        return katex.renderToString(latex, { displayMode: false, throwOnError: false })
-      }
-
-      // \(...\)
-      if (part.startsWith('\\(') && part.endsWith('\\)')) {
-        const latex = normalizeLatex(part.slice(2, -2))
-        return katex.renderToString(latex, { displayMode: false, throwOnError: false })
-      }
-
-      // \[...\]
-      if (part.startsWith('\\[') && part.endsWith('\\]')) {
-        const latex = normalizeLatex(part.slice(2, -2))
-        return katex.renderToString(latex, { displayMode: true, throwOnError: false })
-      }
-
-      return renderNonLatex(part)
-    })
-    .join('')
-}
-
-const loadStudentState = async () => {
-  hydrateJoiningCourses = true
-  let needsPushJoinedMigration = false
-  try {
-    const { data } = await fetchStudentState(props.currentUser.id)
-    // 回显专业，data.major 为 code。确保已加载专业树后再回显。
-    await loadMajorLevel1()
-    selectedMajor1.value = ''
-    selectedMajor2.value = ''
-    selectedMajor3.value = ''
-    if (data?.major) {
-      const path = findMajorPath(majorLevel1.value, data.major)
-      // path 可能为 [lvl1], [lvl1,lvl2], [lvl1,lvl2,lvl3]
-      if (path.length >= 1) selectedMajor1.value = path[0]
-      if (path.length >= 2) {
-        // 确保二级数据已加载
-        await loadMajorLevel2(path[0])
-        selectedMajor2.value = path[1]
-      }
-      if (path.length >= 3) {
-        await loadMajorLevel3(path[1])
-        selectedMajor3.value = path[2]
-      }
-    }
-    // 须先等当前专业下的课程列表加载完成，否则会误把 joinedCourses 过滤为空
-    await fetchAvailableCoursesForCurrentMajor()
-    const fromServer = Array.isArray(data?.joinedCourses)
-      ? data.joinedCourses.filter((x) => typeof x === 'string' && x.trim())
-      : []
-    const legacyJoined = readLegacyJoinedCoursesFromLocalStorage()
-    const mergedJoined = [...new Set([...fromServer, ...legacyJoined])]
-    needsPushJoinedMigration = legacyJoined.length > 0
-    // 登录恢复时以服务端为准，勿按当前 availableCourses 过滤（专业未回显或列表延迟时否则会整表清空）
-    joinedCourses.value = [...new Set(mergedJoined.map((x) => String(x || '').trim()).filter(Boolean))]
-    // 个人中心统计课程 + 学习上下文（进入课程）初始与服务端 courseName 对齐
-    if (data?.courseName && joinedCourses.value.includes(data.courseName)) {
-      selectedCourse.value = data.courseName
-      learningContextCourse.value = data.courseName
-    } else {
-      ensureCourseSelection()
-      learningContextCourse.value = ''
-    }
-
-    // removed handling of profile bio (学习目标) per UI change
-
-    learningRecords.value = Array.isArray(data.learningRecords) ? data.learningRecords : []
-    wrongBook.value = Array.isArray(data.wrongBook) ? data.wrongBook : []
-    void loadDimensionScores()
-  } catch {
-    profileMessage.value = '未读取到历史学习状态，已使用默认配置。'
-  } finally {
-    hydrateJoiningCourses = false
-    stateHydrated.value = true
-  }
-  if (needsPushJoinedMigration && joinedCourses.value.length) {
-    await persistStudentState(false)
-  }
-}
-
-// 在专业树中查找目标 code 的路径（返回 code 数组，按层级）
-const findMajorPath = (majors, targetCode) => {
-  if (!Array.isArray(majors)) return []
-  for (const m of majors) {
-    if (m.code === targetCode) {
-      return [m.code]
-    }
-    if (Array.isArray(m.subfields)) {
-      // 递归查找子节点
-      const sub = findMajorPath(m.subfields, targetCode)
-      if (sub.length) {
-        return [m.code, ...sub]
-      }
-    }
-  }
-  return []
-}
-
-const persistStudentState = async (showMessage = false) => {
-  if (!stateHydrated.value) {
-    return
-  }
-
-  try {
-    await saveStudentState({
-      userId: props.currentUser.id,
-      major: selectedMajor.value || null,
-      courseName: learningContextCourse.value || selectedCourse.value,
-      learningRecords: learningRecords.value,
-      wrongBook: wrongBook.value,
-      joinedCourses: joinedCourses.value
-    })
-    if (showMessage) {
-      profileMessage.value = '个人信息已保存到服务器。'
-    }
-  } catch {
-    if (showMessage) {
-      profileMessage.value = '保存失败，请稍后重试。'
-    }
-  }
-}
-
-const schedulePersistStudentState = () => {
-  if (!stateHydrated.value) {
-    return
-  }
-  if (stateSaveTimer) {
-    clearTimeout(stateSaveTimer)
-  }
-  stateSaveTimer = setTimeout(() => {
-    persistStudentState(false)
-  }, 350)
-
-  scheduleRefreshDimensionScores()
-}
-
-let dimScoreTimer = null
-const scheduleRefreshDimensionScores = () => {
-  if (dimScoreTimer) clearTimeout(dimScoreTimer)
-  dimScoreTimer = setTimeout(() => {
-    void loadDimensionScores()
-  }, 600)
-}
-
-const loadDimensionScores = async () => {
-  if (!props.currentUser?.id) return
-  dimensionScoresLoading.value = true
-  dimensionScoresError.value = ''
-  try {
-    const resp = await fetchStudentDimensionScores(props.currentUser.id)
-    dimensionScores.value = resp?.data || null
-  } catch (e) {
-    dimensionScoresError.value = e?.response?.data?.message || e?.message || '维度分计算失败。'
-    dimensionScores.value = null
-  } finally {
-    dimensionScoresLoading.value = false
   }
 }
 
@@ -1808,6 +1039,32 @@ const markCompletedSafe = async (resourceKey) => {
   }
 }
 
+const {
+  teacherKpTest,
+  teacherKpTestLoading,
+  teacherKpTestError,
+  teacherKpTestAnswers,
+  teacherKpTestSubmitted,
+  teacherKpTestResult,
+  teacherKpTestSubmitting,
+  submitTeacherKpTest,
+  enterTeacherKpTestFromGraph
+} = useStudentTeacherKpTest({
+  currentPage,
+  effectivePage,
+  canStudyCurrentCourse,
+  learningContextCourse,
+  selectedKnowledgePoint,
+  getUserId: () => props.currentUser?.id,
+  learningRecords,
+  wrongBook,
+  selectedMajorDisplay,
+  selectedMajor,
+  schedulePersistStudentState,
+  markCompletedSafe,
+  router
+})
+
 const applyDiscussionDeepLinkFromRoute = async () => {
   const rawDc = route.query.dc
   const rawDp = route.query.dp
@@ -1890,7 +1147,7 @@ const loadGraph = async () => {
     graphData.value = { title: '知识图谱', nodes: [], edges: [], suggestions: [] }
     selectedNodeId.value = ''
     selectedKnowledgePoint.value = ''
-      resources.value = { materials: [], tests: [], totalCount: 0 }
+    resources.value = { materials: [], tests: [], totalCount: 0 }
     learningSuggestions.value = []
     majorRelevance.value = {
       scoreLevel: null,
@@ -2062,27 +1319,6 @@ const renderGraphChart = () => {
   })
 }
 
-const removeWrongItem = (id) => {
-  if (!id) return
-  if (!confirm('确定删除这条错题记录吗？')) return
-  wrongBook.value = wrongBook.value.filter((item) => item.id !== id)
-  if (wrongBookModalItem.value?.id === id) {
-    wrongBookModalItem.value = null
-  }
-  schedulePersistStudentState()
-}
-
-/** 错题本卡片预览：弱化公式占位，避免格子内过长 */
-const wrongBookQuestionPreview = (raw) => {
-  let s = String(raw || '')
-    .replace(/\$\$[\s\S]*?\$\$/g, '〔公式〕')
-    .replace(/\$[^$\n]+?\$/g, '〔式〕')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (s.length > 72) s = `${s.slice(0, 72)}…`
-  return s || '（无题干）'
-}
-
 const wrongBookModalItem = ref(null)
 const openWrongBookModal = (item) => {
   wrongBookModalItem.value = item || null
@@ -2096,13 +1332,6 @@ const closeWrongBookModal = () => {
 watch(currentPage, (v) => {
   if (v !== 'review') closeWrongBookModal()
 })
-
-const removeLearningRecord = (id) => {
-  if (!id) return
-  if (!confirm('确定删除这条学习记录吗？')) return
-  learningRecords.value = learningRecords.value.filter((item) => item.id !== id)
-  schedulePersistStudentState()
-}
 
 const editProfileVisible = ref(false)
 const editProfileForm = ref({ username: '', email: '', major1: '', major2: '', major3: '' })
@@ -2191,7 +1420,7 @@ watch(joinedCoursesSearch, () => {
 })
 
 watch(
-  [currentPage, availableCourses],
+  [currentPage, availableCourses, joinedCourses, myCourseCatalog],
   async () => {
     if (currentPage.value !== 'courses') return
     await loadTeachersForMarketCourses()
@@ -2363,6 +1592,8 @@ const confirmDeleteExam = async (id) => {
       :joined-courses="joinedCourses"
       :my-course-catalog="myCourseCatalog"
       :state-hydrated="stateHydrated"
+      :teachers-by-course="teachersByCourse"
+      :teachers-loading="teachersByCourseLoading"
       @enter="openCourseDetailFromMyCourses"
       @quit="async (c) => { await quitCourse(c); await loadMyCourseCatalog() }"
     />
@@ -2373,6 +1604,7 @@ const confirmDeleteExam = async (id) => {
       :detail="courseDetail || { courseName: '', coverUrl: '', summary: '', syllabus: '' }"
       :loading="courseDetailLoading"
       :error="courseDetailError"
+      :teachers-text="courseDetail?.courseName ? formatTeachersForCourse(courseDetail.courseName) : ''"
       :can-access="Boolean(courseDetail?.hasAccess)"
       :can-edit-meta="false"
       :is-submitting="false"
@@ -2399,7 +1631,7 @@ const confirmDeleteExam = async (id) => {
         :relevance-loading="relevanceLoading"
         :relevance-error="relevanceError"
         :relevance-label="relevanceLabel"
-        :materials="materials"
+        :materials="[]"
         :practice-test-allowed="practiceTestAllowed"
         @go-courses="currentPage = 'courses'"
         @refresh-graph="loadGraph"
@@ -2416,161 +1648,33 @@ const confirmDeleteExam = async (id) => {
           <div ref="graphChartRef" style="width: 100%; height: 420px;"></div>
         </article>
 
-        <article v-if="selectedNode && !isUnjoinedPreviewMode" class="result-card">
-          <h3>{{ selectedNode.label }}</h3>
-          <div class="student-node-action-row">
-            <button
-              type="button"
-              class="match-button"
-              :disabled="!practiceTestAllowed"
-              @click="enterFixedTestFromGraph"
-            >
-              进入测试
-            </button>
-            <button
-              type="button"
-              class="nav-btn"
-              :disabled="!practiceTestAllowed"
-              @click="enterPaperFromGraph"
-            >
-              进入组卷
-            </button>
-          </div>
-          <div style="margin-bottom:14px">
-            <h3>掌握程度</h3>
-            <p v-if="graphNodeMastery.noData" class="panel-subtitle">
-              暂无该知识点及其下级相关的练习记录。
-            </p>
-            <template v-else>
-              <p class="panel-subtitle">
-                <strong style="font-size:1.15em">{{ graphNodeMastery.ratio }}%</strong>
-                <span>（{{ graphNodeMastery.score }} / {{ graphNodeMastery.full }} 分，{{ graphNodeMastery.attemptCount }} 次练习）</span>
-              </p>
-            </template>
-          </div>
-          <div>
-            <h3>学习建议</h3>
-            <p v-if="suggestionLoading" class="panel-subtitle">正在生成学习建议...</p>
-            <p v-else-if="suggestionError" class="error-text">{{ suggestionError }}</p>
-            <ul v-else>
-              <li v-for="item in learningSuggestions" :key="item">{{ item }}</li>
-              <li v-if="!learningSuggestions.length" class="panel-subtitle">暂无建议。</li>
-            </ul>
-          </div>
-          <div class="ui-mt-12">
-            <h3>专业关联度分析</h3>
-            <p v-if="relevanceLoading" class="panel-subtitle">正在分析该知识点与当前专业的关联度...</p>
-            <p v-else-if="relevanceError" class="error-text">{{ relevanceError }}</p>
-            <div v-else>
-              <div v-if="majorRelevance.scoreLevel" class="relevance-meter-wrap">
-                <div class="relevance-meter">
-                  <span
-                    v-for="i in 5"
-                    :key="'relevance-dot-' + i"
-                    class="relevance-dot"
-                    :class="{ active: i <= majorRelevance.scoreLevel }"
-                  />
-                </div>
-                <div class="relevance-meter-text">
-                  <strong>关联度等级：</strong>{{ majorRelevance.scoreLevel }} / 5
-                  <span v-if="relevanceLabel">（{{ relevanceLabel }}）</span>
-                </div>
-              </div>
-              <p v-if="majorRelevance.summary" class="panel-subtitle">{{ majorRelevance.summary }}</p>
-              <div v-if="majorRelevance.relatedContents?.length">
-                <p><strong>相关内容：</strong></p>
-                <ul>
-                  <li v-for="item in majorRelevance.relatedContents" :key="item">{{ item }}</li>
-                </ul>
-              </div>
-              <p v-if="majorRelevance.lowRelevanceReason" class="panel-subtitle">
-                <strong>低关联说明：</strong>{{ majorRelevance.lowRelevanceReason }}
-              </p>
-              <p v-if="!majorRelevance.scoreLevel" class="panel-subtitle">请选择已设置专业后查看分析结果。</p>
-            </div>
-          </div>
-          <div class="ui-mt-12">
-            <h3>学习资源</h3>
-            <p v-if="courseProgress" class="panel-subtitle ui-mt-6">
-              课程进度：<strong>{{ courseProgress.percent || 0 }}%</strong>
-              <span>（{{ courseProgress.completed || 0 }} / {{ courseProgress.total || 0 }}）</span>
-            </p>
-            <p v-if="resourcesLoading" class="panel-subtitle">正在加载资源...</p>
-            <p v-else-if="resourcesError" class="error-text">{{ resourcesError }}</p>
-            <template v-else>
-              <div v-if="!((resources.materials || []).length || (resources.tests || []).length)" class="panel-subtitle">
-                当前知识点暂无资源与测试。
-              </div>
-
-              <table v-else class="data-table">
-                <thead>
-                  <tr>
-                    <th>类型</th>
-                    <th>标题</th>
-                    <th>文件名/题量</th>
-                    <th>上传者/更新时间</th>
-                    <th>状态</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="m in (resources.materials || [])" :key="'m-' + m.id">
-                    <td>{{ m.category || 'ATTACHMENT' }}</td>
-                    <td>{{ m.title }}</td>
-                    <td>{{ m.fileName || '-' }}</td>
-                    <td>
-                      {{ m.teacherName || '-' }}
-                      <span v-if="m.createdAt"> · {{ new Date(m.createdAt).toLocaleString() }}</span>
-                    </td>
-                    <td>
-                      <span v-if="isResourceCompleted(resourceKeyForMaterial(m))">已完成</span>
-                      <span v-else>未完成</span>
-                    </td>
-                    <td>
-                      <a
-                        :href="`/api/materials/${m.id}/download`"
-                        target="_blank"
-                        @click="() => markCompletedSafe(resourceKeyForMaterial(m))"
-                      >下载</a>
-                    </td>
-                  </tr>
-
-                  <tr v-for="t in (resources.tests || [])" :key="'t-' + t.id">
-                    <td>TEST</td>
-                    <td>{{ t.title || '教师发布测试' }}</td>
-                    <td>{{ t.questionCount || 0 }} 题</td>
-                    <td>
-                      <span v-if="t.updatedAt">{{ new Date(t.updatedAt).toLocaleString() }}</span>
-                      <span v-else>-</span>
-                    </td>
-                    <td>
-                      <span v-if="isResourceCompleted(t.resourceKey)">已完成</span>
-                      <span v-else>未完成</span>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        class="match-button"
-                        @click="enterTeacherKpTestFromGraph"
-                        :disabled="isResourceCompleted(t.resourceKey)"
-                      >
-                        {{ isResourceCompleted(t.resourceKey) ? '已完成' : '开始测试' }}
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </template>
-          </div>
-          <KnowledgePointDiscussion
-            :course-name="learningContextCourse"
-            :point-name="selectedKnowledgePoint"
-            :current-user-id="currentUser?.id"
-            :user-role="currentUser?.role"
-            :focus-post-id="discussionFocusPostId"
-            :disabled="isUnjoinedPreviewMode"
-          />
-        </article>
+        <StudentGraphLearningPanel
+          :selected-node="selectedNode"
+          :is-unjoined-preview-mode="isUnjoinedPreviewMode"
+          :graph-node-mastery="graphNodeMastery"
+          :learning-suggestions="learningSuggestions"
+          :suggestion-loading="suggestionLoading"
+          :suggestion-error="suggestionError"
+          :major-relevance="majorRelevance"
+          :relevance-loading="relevanceLoading"
+          :relevance-error="relevanceError"
+          :relevance-label="relevanceLabel"
+          :course-progress="courseProgress"
+          :resources-loading="resourcesLoading"
+          :resources-error="resourcesError"
+          :resources="resources"
+          :learning-context-course="learningContextCourse"
+          :selected-knowledge-point="selectedKnowledgePoint"
+          :current-user="currentUser"
+          :discussion-focus-post-id="discussionFocusPostId"
+          :practice-test-allowed="practiceTestAllowed"
+          :enter-fixed-test-from-graph="enterFixedTestFromGraph"
+          :enter-paper-from-graph="enterPaperFromGraph"
+          :enter-teacher-kp-test-from-graph="enterTeacherKpTestFromGraph"
+          :is-resource-completed="isResourceCompleted"
+          :resource-key-for-material="resourceKeyForMaterial"
+          :mark-completed-safe="markCompletedSafe"
+        />
       </StudentGraph>
     </section>
 
@@ -2629,12 +1733,22 @@ const confirmDeleteExam = async (id) => {
       :saved-exams="savedExams"
       :exam-error="examError"
       :wrong-book-modal-item="wrongBookModalItem"
+      :wrong-drill-course="wrongDrillCourse"
+      :wrong-drill-course-options="wrongDrillCourseOptions"
+      :wrong-drill-session="wrongDrillSession"
+      :wrong-drill-error="wrongDrillError"
+      :wrong-drill-submitting="wrongDrillSubmitting"
+      :infer-wrong-book-question-type="inferWrongBookQuestionType"
+      :set-wrong-drill-course="setWrongDrillCourse"
+      :start-wrong-drill="startWrongDrill"
+      :cancel-wrong-drill="cancelWrongDrill"
+      :submit-wrong-drill="submitWrongDrill"
       :render-latex-text="renderLatexText"
+      :parse-option-letter="parseOptionLetter"
+      :parse-option-text="parseOptionText"
       :wrong-book-question-preview="wrongBookQuestionPreview"
       :open-wrong-book-modal="openWrongBookModal"
       :close-wrong-book-modal="closeWrongBookModal"
-      :remove-wrong-item="removeWrongItem"
-      :remove-learning-record="removeLearningRecord"
       :confirm-delete-exam="confirmDeleteExam"
       :download-exam="downloadExam"
       :render-exam-pdfs="renderExamPdfs"

@@ -71,11 +71,10 @@ public class AiController {
 
     @PostMapping("/generate-question")
     public ResponseEntity<?> generateQuestion(@RequestBody(required = false) GenerateQuestionRequest request) {
-        log.info("Hit /api/generate-question, topic={}, difficulty={}, type={}, major={}",
+        log.info("Hit /api/generate-question, topic={}, difficulty={}, type={}",
             request == null ? null : request.topic(),
             request == null ? null : request.difficulty(),
-            request == null ? null : request.questionType(),
-            request == null ? null : request.major());
+            request == null ? null : request.questionType());
         String topic = request == null ? null : request.topic();
         if (!StringUtils.hasText(topic)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "topic 必填（请先选择课程与知识点）"));
@@ -83,8 +82,7 @@ public class AiController {
         return ResponseEntity.ok(aiService.generateQuestion(
             request == null ? null : request.topic(),
             request == null ? null : request.difficulty(),
-            request == null ? null : request.questionType(),
-            request == null ? null : request.major()
+            request == null ? null : request.questionType()
         ));
     }
 

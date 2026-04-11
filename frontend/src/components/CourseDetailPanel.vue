@@ -4,6 +4,8 @@ const props = defineProps({
   detail: { type: Object, required: true },
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' },
+  /** 授课教师展示文案（用户名，顿号分隔）；空串时显示占位文案 */
+  teachersText: { type: String, default: '' },
   canAccess: { type: Boolean, default: false },
   canEditMeta: { type: Boolean, default: false },
   isSubmitting: { type: Boolean, default: false },
@@ -28,6 +30,9 @@ const updateField = (k, v) => emit('update:edit-form', { ...props.editForm, [k]:
         <img :src="detail.coverUrl" alt="" class="course-detail-cover" />
         <div class="course-detail-main">
           <h3 class="course-name">{{ detail.courseName }}</h3>
+          <p v-if="detail.courseName" class="course-teachers-line">
+            授课教师：{{ teachersText || '暂无授课教师信息' }}
+          </p>
           <p class="course-summary">{{ detail.summary }}</p>
         </div>
       </div>
@@ -98,6 +103,12 @@ const updateField = (k, v) => emit('update:edit-form', { ...props.editForm, [k]:
 }
 .course-detail-main { display: grid; gap: 8px; }
 .course-name { margin: 0; }
+.course-teachers-line {
+  margin: 0;
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.5;
+}
 .course-summary { margin: 0; color: #334155; line-height: 1.65; }
 .course-syllabus {
   white-space: pre-wrap;

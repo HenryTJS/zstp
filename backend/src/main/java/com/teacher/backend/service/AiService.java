@@ -519,7 +519,7 @@ public class AiService {
         return out;
     }
 
-    public Map<String, Object> generateQuestion(String topic, String difficulty, String questionType, String major) {
+    public Map<String, Object> generateQuestion(String topic, String difficulty, String questionType) {
         String resolvedTopic = StringUtils.hasText(topic) ? topic.trim() : "通用知识点";
         String resolvedDifficulty = StringUtils.hasText(difficulty) ? difficulty.trim() : "中等";
         String resolvedQuestionType = normalizeQuestionType(questionType);
@@ -665,8 +665,7 @@ public class AiService {
                 Map<String, Object> q = generateQuestion(
                     it == null ? null : it.topic(),
                     it == null ? null : it.difficulty(),
-                    it == null ? null : it.questionType(),
-                    it == null ? null : it.major()
+                    it == null ? null : it.questionType()
                 );
                 return q == null ? new LinkedHashMap<>() : q;
             }, questionExecutor));

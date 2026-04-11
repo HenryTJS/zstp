@@ -14,4 +14,6 @@ public interface KnowledgePointDiscussionLikeRepository extends JpaRepository<Kn
     Optional<KnowledgePointDiscussionLike> findByPost_IdAndUser_Id(Long postId, Long userId);
 
     void deleteByPost_IdAndUser_Id(Long postId, Long userId);
+
+    void deleteByPost_Id(Long postId);
 }

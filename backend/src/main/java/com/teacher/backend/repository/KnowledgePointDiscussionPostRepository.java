@@ -11,4 +11,6 @@ public interface KnowledgePointDiscussionPostRepository extends JpaRepository<Kn
 
     @EntityGraph(attributePaths = {"author", "replyToUser", "parent", "parent.author"})
     List<KnowledgePointDiscussionPost> findByKnowledgePoint_IdOrderByCreatedAtAsc(Long knowledgePointId);
+
+    List<KnowledgePointDiscussionPost> findByParent_Id(Long parentId);
 }

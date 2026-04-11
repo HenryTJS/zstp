@@ -2,8 +2,18 @@
 const props = defineProps({
   myCourseCatalog: { type: Array, required: true },
   courseInitDone: { type: Boolean, required: true },
-  pendingPermissionRequests: { type: Array, required: true }
+  pendingPermissionRequests: { type: Array, required: true },
+  teachersByCourse: { type: Object, default: () => ({}) },
+  teachersLoading: { type: Boolean, default: false }
 })
+
+const teachersLine = (courseName) => {
+  const cn = String(courseName || '').trim()
+  if (!cn) return '暂无授课教师信息'
+  const list = props.teachersByCourse[cn]
+  if (!Array.isArray(list) || !list.length) return '暂无授课教师信息'
+  return list.map((t) => String(t?.username || '').trim()).filter(Boolean).join('、') || '暂无授课教师信息'
+}
 
 const emit = defineEmits([
   'enter-course',
@@ -22,6 +32,9 @@ const emit = defineEmits([
         <div class="course-market-card-body">
           <img :src="course.coverUrl" alt="" class="my-course-cover" />
           <h4 class="my-course-title ui-mt-8">{{ course.courseName }}</h4>
+          <p class="my-course-teachers">
+            授课教师：<template v-if="teachersLoading">加载中…</template><template v-else>{{ teachersLine(course.courseName) }}</template>
+          </p>
         </div>
 
         <div class="course-market-card-actions course-market-card-actions--split">
@@ -76,10 +89,16 @@ const emit = defineEmits([
   border:1px solid var(--ui-card-border);
 }
 .my-course-title{
-  margin-bottom:6px;
+  margin-bottom:4px;
   font-size:17px;
   font-weight:700;
   color:#0f172a;
+}
+.my-course-teachers{
+  margin:0 0 4px;
+  font-size:13px;
+  color:#475569;
+  line-height:1.45;
 }
 .my-course-summary{
   margin:0;

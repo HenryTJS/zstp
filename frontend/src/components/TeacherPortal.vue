@@ -12,6 +12,7 @@ import {
   listTeacherCoursePermissions,
   listCoursesByMajor,
   listCourseCatalog,
+  listTeachersForCourses,
   getCourseDetail,
   updateCourseMeta,
   uploadCourseCover,
@@ -34,6 +35,7 @@ import TeacherMdImportInput from './TeacherMdImportInput.vue'
 import KnowledgePointDiscussion from './KnowledgePointDiscussion.vue'
 import TeacherPointTestModal from './TeacherPointTestModal.vue'
 import TeacherStudentAnalytics from './TeacherStudentAnalytics.vue'
+import TeacherCourseProgress from './TeacherCourseProgress.vue'
 
 const props = defineProps({
   currentUser: {
@@ -264,6 +266,9 @@ const allMarketCourses = ref([])
 const marketCoursesLoading = ref(false)
 const marketCoursesError = ref('')
 const myCourseCatalog = ref([])
+/** 课程名 -> 拥有授课权限的教师列表（用于广场卡片与课程介绍页） */
+const teachersByCourse = ref({})
+const teachersByCourseLoading = ref(false)
 const courseDetail = ref(null)
 const courseDetailLoading = ref(false)
 const courseDetailError = ref('')
@@ -352,6 +357,31 @@ const loadTeacherCourseMarket = async () => {
   }
 }
 
+const loadTeachersForMyCourseCatalog = async () => {
+  const names = (myCourseCatalog.value || []).map((x) => String(x?.courseName || '').trim()).filter(Boolean)
+  if (!names.length) {
+    teachersByCourse.value = {}
+    return
+  }
+  teachersByCourseLoading.value = true
+  try {
+    const { data } = await listTeachersForCourses(names)
+    teachersByCourse.value = data && typeof data === 'object' ? data : {}
+  } catch {
+    teachersByCourse.value = {}
+  } finally {
+    teachersByCourseLoading.value = false
+  }
+}
+
+const formatTeachersForCourse = (courseName) => {
+  const cn = String(courseName || '').trim()
+  if (!cn) return ''
+  const list = teachersByCourse.value[cn]
+  if (!Array.isArray(list) || !list.length) return '暂无授课教师信息'
+  return list.map((t) => t?.username || '').filter(Boolean).join('、') || '暂无授课教师信息'
+}
+
 const loadMyCourseCatalog = async () => {
   if (!props.currentUser?.id) return
   try {
@@ -361,6 +391,7 @@ const loadMyCourseCatalog = async () => {
   } catch {
     myCourseCatalog.value = []
   }
+  await loadTeachersForMyCourseCatalog()
 }
 
 const loadCourseDetail = async (courseName) => {
@@ -378,6 +409,14 @@ const loadCourseDetail = async (courseName) => {
       coverUrl: data?.coverUrl || '',
       summary: data?.summary || '',
       syllabus: data?.syllabus || ''
+    }
+    try {
+      const { data: tea } = await listTeachersForCourses([cn])
+      if (tea && typeof tea === 'object') {
+        teachersByCourse.value = { ...teachersByCourse.value, ...tea }
+      }
+    } catch {
+      /* ignore */
     }
   } catch (e) {
     courseDetailError.value = e?.response?.data?.message || '加载课程详情失败'
@@ -781,7 +820,7 @@ const openAnalyticsForPoint = (p) => {
   // 尽量滚动到分析面板位置
   try {
     requestAnimationFrame(() => {
-      const el = document.getElementById('teacher-analytics-panel')
+      const el = document.getElementById('teacher-student-analytics-panel')
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   } catch {}
@@ -1494,6 +1533,8 @@ watch(
           :my-course-catalog="myCourseCatalog"
           :pending-permission-requests="pendingTeacherCoursePermissionRequestsList"
           :course-init-done="courseInitDone"
+          :teachers-by-course="teachersByCourse"
+          :teachers-loading="teachersByCourseLoading"
           @enter-course="openCourseDetailFromMarket"
           @quit-course="quitCourseFromMarket"
         />
@@ -1505,6 +1546,7 @@ watch(
           :detail="courseDetail || { courseName: '', coverUrl: '', summary: '', syllabus: '' }"
           :loading="courseDetailLoading"
           :error="courseDetailError"
+          :teachers-text="courseDetail?.courseName ? formatTeachersForCourse(courseDetail.courseName) : ''"
           :can-access="Boolean(courseDetail?.hasAccess)"
           :can-edit-meta="Boolean(courseDetail?.canEditMeta)"
           :is-submitting="courseMetaSaving"
@@ -1542,7 +1584,11 @@ watch(
           :on-open-analytics="openAnalyticsForPoint"
         />
 
-        <div id="teacher-analytics-panel" class="ui-mt-12">
+        <div id="teacher-course-progress-panel" class="ui-mt-12">
+          <TeacherCourseProgress :current-user="currentUser" :selected-course="selectedCourse" />
+        </div>
+
+        <div id="teacher-student-analytics-panel" class="ui-mt-12">
           <TeacherStudentAnalytics
             :current-user="currentUser"
             :selected-course="selectedCourse"

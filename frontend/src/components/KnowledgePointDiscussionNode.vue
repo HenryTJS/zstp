@@ -6,10 +6,12 @@ const props = defineProps({
   post: { type: Object, required: true },
   depth: { type: Number, default: 0 },
   currentUserId: { type: [Number, String], default: null },
-  submitting: { type: Boolean, default: false }
+  submitting: { type: Boolean, default: false },
+  /** 与父级一致：浏览模式等场景禁止操作 */
+  disabled: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['toggle-like', 'submit-reply'])
+const emit = defineEmits(['toggle-like', 'submit-reply', 'delete-post'])
 
 const openReply = ref(false)
 const replyLocal = ref('')
@@ -50,6 +52,13 @@ const replyPlaceholder = computed(() => {
 })
 
 const isRoot = computed(() => props.depth === 0)
+
+const isOwnPost = computed(() => {
+  const uid = props.currentUserId
+  const aid = props.post?.author?.id
+  if (uid == null || uid === '' || aid == null || aid === '') return false
+  return String(uid) === String(aid)
+})
 </script>
 
 <template>
@@ -129,6 +138,31 @@ const isRoot = computed(() => props.depth === 0)
           </svg>
           <span v-if="isRoot" class="kp-disc-count">{{ threadReplyCount(post) }}</span>
         </button>
+        <button
+          v-if="isOwnPost && currentUserId && !disabled"
+          type="button"
+          class="kp-disc-icon-btn kp-disc-delete"
+          title="删除"
+          aria-label="删除我的发言"
+          :disabled="submitting"
+          @click="emit('delete-post', post.id)"
+        >
+          <svg
+            class="kp-disc-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            <line x1="10" y1="11" x2="10" y2="17" />
+            <line x1="14" y1="11" x2="14" y2="17" />
+          </svg>
+        </button>
       </div>
       <div v-if="openReply" class="kp-disc-reply-box">
         <textarea v-model="replyLocal" rows="2" :placeholder="replyPlaceholder" />
@@ -149,8 +183,10 @@ const isRoot = computed(() => props.depth === 0)
       :depth="depth + 1"
       :current-user-id="currentUserId"
       :submitting="submitting"
+      :disabled="disabled"
       @toggle-like="$emit('toggle-like', $event)"
       @submit-reply="$emit('submit-reply', $event)"
+      @delete-post="$emit('delete-post', $event)"
     />
   </div>
 </template>
@@ -305,5 +341,24 @@ const isRoot = computed(() => props.depth === 0)
   border-radius: 6px;
   border: 1px solid #cbd5e1;
   font-family: inherit;
+}
+.kp-disc-delete {
+  color: #64748b;
+}
+.kp-disc-delete:hover:not(:disabled) {
+  color: #b91c1c;
+  background: rgba(185, 28, 28, 0.08);
+}
+.kp-disc-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.student-lms-shell .kp-disc-delete:hover:not(:disabled) {
+  color: #b91c1c !important;
+  background: rgba(185, 28, 28, 0.08) !important;
+}
+.student-lms-shell .kp-disc-delete:disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed;
 }
 </style>

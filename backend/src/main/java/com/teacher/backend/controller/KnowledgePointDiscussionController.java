@@ -24,6 +24,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -282,6 +283,40 @@ public class KnowledgePointDiscussionController {
         long count = likeRepository.countByPost_Id(postId);
         boolean liked = likeRepository.existsByPost_IdAndUser_Id(postId, userId);
         return ResponseEntity.ok(Map.of("likeCount", count, "likedByMe", liked));
+    }
+
+    /**
+     * 发帖人删除自己的帖子（含其下全部回复）；学生/教师/管理员均仅可删本人内容。
+     */
+    @DeleteMapping("/{postId}")
+    @Transactional
+    public ResponseEntity<?> delete(@PathVariable Long postId, @RequestParam Long userId) {
+        if (userId == null) {
+            return error(HttpStatus.BAD_REQUEST, "userId 必填");
+        }
+        User actor = userRepository.findById(userId).orElse(null);
+        if (actor == null || !ALLOWED_ROLES.contains(actor.getRole())) {
+            return error(HttpStatus.FORBIDDEN, "无权限");
+        }
+        KnowledgePointDiscussionPost post = postRepository.findById(postId).orElse(null);
+        if (post == null) {
+            return error(HttpStatus.NOT_FOUND, "帖子不存在");
+        }
+        User author = post.getAuthor();
+        if (author == null || author.getId() == null || !author.getId().equals(userId)) {
+            return error(HttpStatus.FORBIDDEN, "只能删除自己发表的内容");
+        }
+        deletePostSubtree(post);
+        return ResponseEntity.ok(Map.of("message", "ok"));
+    }
+
+    private void deletePostSubtree(KnowledgePointDiscussionPost post) {
+        List<KnowledgePointDiscussionPost> children = postRepository.findByParent_Id(post.getId());
+        for (KnowledgePointDiscussionPost c : children) {
+            deletePostSubtree(c);
+        }
+        likeRepository.deleteByPost_Id(post.getId());
+        postRepository.delete(post);
     }
 
     private static String normalize(String s) {

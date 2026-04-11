@@ -90,6 +90,8 @@ export const createKnowledgePointDiscussionPost = (payload) =>
   http.post('/knowledge-point-discussions', payload)
 export const toggleKnowledgePointDiscussionLike = (postId, payload) =>
   http.post(`/knowledge-point-discussions/${postId}/like`, payload)
+export const deleteKnowledgePointDiscussionPost = (postId, userId) =>
+  http.delete(`/knowledge-point-discussions/${postId}`, { params: { userId } })
 
 export const listUserNotifications = (userId, params) =>
   http.get('/notifications', { params: { userId, ...params } })
