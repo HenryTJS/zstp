@@ -28,10 +28,10 @@ public class StudentState {
     private User user;
 
     @Column(nullable = false, length = 40)
-    private String major = "计算机";
+    private String major = "";
 
     @Column(name = "course_name", nullable = false, length = 120)
-    private String courseName;
+    private String courseName = "";
 
     @Column(name = "learning_records_json", columnDefinition = "TEXT")
     private String learningRecordsJson = "[]";
@@ -70,11 +70,23 @@ public class StudentState {
         if (completedResourceKeysJson == null) {
             completedResourceKeysJson = "[]";
         }
+        if (major == null) {
+            major = "";
+        }
+        if (courseName == null) {
+            courseName = "";
+        }
     }
 
     @PreUpdate
     void onUpdate() {
         updatedAt = LocalDateTime.now();
+        if (major == null) {
+            major = "";
+        }
+        if (courseName == null) {
+            courseName = "";
+        }
     }
 
     public Long getId() {

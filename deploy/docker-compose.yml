@@ -33,6 +33,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       UPLOAD_DIR: /app/uploads
       PORT: "5000"
+      # 可选：不配则后端不调用大模型（见 README）；在 deploy/.env 里设置后 compose 会传入容器
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       # 可按需覆盖默认演示账号（勿在公网使用弱密码）
       # APP_BOOTSTRAP_USERS_0_PASSWORD: ...
     volumes:

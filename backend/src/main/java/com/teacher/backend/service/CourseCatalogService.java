@@ -19,14 +19,6 @@ import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 @Service
 public class CourseCatalogService {
 
-    private static final List<String> DEFAULT_COURSES = List.of(
-        "高等数学",
-        "线性代数与解析几何",
-        "概率论与数理统计",
-        "复变函数与积分变换",
-        "数学物理方程"
-    );
-
     private static final Map<String, String> ALIASES = buildAliases();
 
     private final CourseCatalogEntryRepository courseCatalogEntryRepository;
@@ -42,31 +34,15 @@ public class CourseCatalogService {
         this.courseKnowledgePointRepository = courseKnowledgePointRepository;
         this.courseKnowledgePointPrereqRepository = courseKnowledgePointPrereqRepository;
         this.teacherCoursePermissionRepository = teacherCoursePermissionRepository;
-        ensureDefaultsSeeded();
-    }
-
-    private synchronized void ensureDefaultsSeeded() {
-        if (courseCatalogEntryRepository == null) return;
-        if (courseCatalogEntryRepository.findAllByOrderBySortOrderAscIdAsc().isEmpty()) {
-            int idx = 0;
-            for (String c : DEFAULT_COURSES) {
-                CourseCatalogEntry e = new CourseCatalogEntry();
-                e.setCourseName(c);
-                e.setSortOrder(idx++);
-                courseCatalogEntryRepository.save(e);
-            }
-        }
     }
 
     public List<String> allCourses() {
-        ensureDefaultsSeeded();
         return courseCatalogEntryRepository.findAllByOrderBySortOrderAscIdAsc().stream()
             .map(CourseCatalogEntry::getCourseName)
             .toList();
     }
 
     public List<CourseCatalogEntry> allCourseEntries() {
-        ensureDefaultsSeeded();
         return courseCatalogEntryRepository.findAllByOrderBySortOrderAscIdAsc();
     }
 
@@ -85,14 +61,15 @@ public class CourseCatalogService {
         return courseCatalogEntryRepository.existsByCourseNameIgnoreCase(normalized);
     }
 
+    /** 目录中第一门课；目录为空时返回空串（不注入任何默认课程）。 */
     public String defaultCourse() {
         List<String> courses = allCourses();
-        return courses.isEmpty() ? DEFAULT_COURSES.get(0) : courses.get(0);
+        return courses.isEmpty() ? "" : courses.get(0);
     }
 
     public String normalizeCourseName(String rawCourseName) {
         if (!StringUtils.hasText(rawCourseName)) {
-            return defaultCourse();
+            return "";
         }
 
         String trimmed = rawCourseName.trim();
@@ -135,7 +112,10 @@ public class CourseCatalogService {
 
         String normalized = normalizeCourseName(rawCourseName);
 
-        // normalized 可能命中了 defaultCourse（用户输入空或未知），这里仍允许它存在
+        // normalized 可能为空串（用户未选课程）；此处不写入目录
+        if (!StringUtils.hasText(normalized)) {
+            return allCourses();
+        }
         if (!courseCatalogEntryRepository.existsByCourseNameIgnoreCase(normalized)) {
             int maxSort = courseCatalogEntryRepository.findAllByOrderBySortOrderAscIdAsc().stream()
                 .mapToInt(CourseCatalogEntry::getSortOrder)

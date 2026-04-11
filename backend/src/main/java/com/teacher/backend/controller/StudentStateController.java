@@ -26,8 +26,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/student-state")
 public class StudentStateController {
 
-    private static final String DEFAULT_MAJOR = "计算机";
-
     private final UserRepository userRepository;
     private final StudentStateRepository studentStateRepository;
     private final CourseCatalogService courseCatalogService;
@@ -59,9 +57,9 @@ public class StudentStateController {
         if (state == null) {
             return ResponseEntity.ok(Map.of(
                 "userId", userId,
-                "major", DEFAULT_MAJOR,
-                "majorName", DEFAULT_MAJOR,
-                "courseName", courseCatalogService.defaultCourse(),
+                "major", "",
+                "majorName", "",
+                "courseName", "",
                 "learningRecords", List.of(),
                 "wrongBook", List.of(),
                 "joinedCourses", List.of(),
@@ -103,7 +101,7 @@ public class StudentStateController {
 
         // major 字段只保存 code，直接保存
         String code = request != null ? request.major() : null;
-        state.setMajor(code != null ? code : DEFAULT_MAJOR);
+        state.setMajor(code != null ? code : "");
         state.setCourseName(courseCatalogService.normalizeCourseName(request != null ? request.courseName() : null));
         state.setLearningRecordsJson(writeJsonArray(request != null ? request.learningRecords() : null));
         state.setWrongBookJson(writeJsonArray(request != null ? request.wrongBook() : null));

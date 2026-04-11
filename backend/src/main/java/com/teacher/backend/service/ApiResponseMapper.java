@@ -57,8 +57,8 @@ public class ApiResponseMapper {
                 response.put("major3", null);
             }
         }, () -> {
-            // 尚未产生 student_states 记录（学生从未触发过保存学习状态）
-            response.put("major1", "未同步");
+            // 尚未产生 student_states 记录；部署端可能无专业选择入口，不注入占位专业
+            response.put("major1", null);
             response.put("major2", null);
             response.put("major3", null);
         });

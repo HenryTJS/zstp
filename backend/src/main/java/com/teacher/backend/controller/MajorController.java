@@ -2,19 +2,30 @@ package com.teacher.backend.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.bind.annotation.*;
-import java.io.File;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 
 @RestController
 @RequestMapping("/api/majors")
 public class MajorController {
+
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    private List<Map<String, Object>> readMajorTree() throws IOException {
+        ClassPathResource resource = new ClassPathResource("bcmr.json");
+        try (InputStream in = resource.getInputStream()) {
+            return mapper.readValue(in, new TypeReference<>() {});
+        }
+    }
+
     @GetMapping("/tree")
     public List<Map<String, Object>> getMajorTree(@RequestParam(defaultValue = "1") int level,
                                                   @RequestParam(required = false) String parentCode) throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        File jsonFile = new File("bcmr.json");
-        List<Map<String, Object>> majors = mapper.readValue(jsonFile, new TypeReference<>() {});
+        List<Map<String, Object>> majors = readMajorTree();
         // 将原始的 number 字段映射为 code，前端期望使用 code 字段
         majors = majors.stream().map(this::mapNumberToCodeRecursive).toList();
         if (level == 1) {
