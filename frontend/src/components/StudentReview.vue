@@ -59,11 +59,8 @@ const optionMarks = (opt, item) => {
   <section class="panel-stack">
     <article v-if="!wrongDrillSession" class="result-card">
       <h3>错题巩固测试</h3>
-      <p class="panel-subtitle">
-        在同一门课程内随机抽取错题（每次最多 5 题且不重复）。仅在「错题巩固」中连续答对两次后不再参与随机抽取；中途答错则重新计数。提交结果会计入掌握度与累计练习。
-      </p>
       <p v-if="!wrongDrillCourseOptions.length" class="panel-subtitle">
-        当前没有可测课程：请先在已加入课程中积累错题，或等待错题退出巩固条件（连续两次巩固答对）。
+        当前没有可测课程。
       </p>
       <div v-else class="inline-form wrong-drill-toolbar">
         <label class="wrong-drill-course-label">
