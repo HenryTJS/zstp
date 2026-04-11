@@ -12,7 +12,7 @@ const props = defineProps({
   editForm: { type: Object, default: () => ({ coverUrl: '', summary: '', syllabus: '' }) }
 })
 
-const emit = defineEmits(['join', 'apply', 'enter', 'save-meta', 'upload-cover', 'update:edit-form'])
+const emit = defineEmits(['join', 'apply', 'enter', 'quit', 'save-meta', 'upload-cover', 'update:edit-form'])
 
 const updateField = (k, v) => emit('update:edit-form', { ...props.editForm, [k]: v })
 </script>
@@ -42,9 +42,14 @@ const updateField = (k, v) => emit('update:edit-form', { ...props.editForm, [k]:
       </div>
 
       <div class="inline-form ui-mt-12">
-        <button v-if="canAccess" type="button" class="match-button" @click="emit('enter')">进入知识图谱</button>
-        <button v-else-if="role === 'student'" type="button" class="match-button" @click="emit('join')">加入课程</button>
-        <button v-else-if="role === 'teacher'" type="button" class="match-button" @click="emit('apply')">申请权限</button>
+        <template v-if="canAccess">
+          <button type="button" class="match-button" @click="emit('enter')">进入课程</button>
+          <button type="button" class="cancel-button" @click="emit('quit')">退出课程</button>
+        </template>
+        <template v-else>
+          <button v-if="role === 'student'" type="button" class="match-button" @click="emit('join')">加入课程</button>
+          <button v-else-if="role === 'teacher'" type="button" class="match-button" @click="emit('apply')">申请权限</button>
+        </template>
       </div>
 
       <div v-if="canEditMeta" class="ui-mt-16">

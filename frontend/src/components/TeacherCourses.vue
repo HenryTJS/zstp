@@ -15,10 +15,12 @@ const teachersLine = (courseName) => {
   return list.map((t) => String(t?.username || '').trim()).filter(Boolean).join('、') || '暂无授课教师信息'
 }
 
-const emit = defineEmits([
-  'enter-course',
-  'quit-course'
-])
+const emit = defineEmits(['enter-course'])
+
+const onCardClick = (courseName) => {
+  if (!props.courseInitDone) return
+  emit('enter-course', String(courseName || '').trim())
+}
 </script>
 
 <template>
@@ -28,32 +30,23 @@ const emit = defineEmits([
     </div>
 
     <div v-if="myCourseCatalog.length" class="course-market-grid">
-      <article v-for="course in myCourseCatalog" :key="course.courseName" class="course-market-card">
+      <article
+        v-for="course in myCourseCatalog"
+        :key="course.courseName"
+        class="course-market-card course-market-card--clickable"
+        :class="{ 'is-disabled': !courseInitDone }"
+        role="button"
+        :tabindex="courseInitDone ? 0 : -1"
+        @click="onCardClick(course.courseName)"
+        @keydown.enter.prevent="onCardClick(course.courseName)"
+        @keydown.space.prevent="onCardClick(course.courseName)"
+      >
         <div class="course-market-card-body">
           <img :src="course.coverUrl" alt="" class="my-course-cover" />
           <h4 class="my-course-title ui-mt-8">{{ course.courseName }}</h4>
           <p class="my-course-teachers">
             授课教师：<template v-if="teachersLoading">加载中…</template><template v-else>{{ teachersLine(course.courseName) }}</template>
           </p>
-        </div>
-
-        <div class="course-market-card-actions course-market-card-actions--split">
-          <button
-            type="button"
-            class="match-button"
-            :disabled="!courseInitDone"
-            @click="emit('enter-course', course.courseName)"
-          >
-            进入课程
-          </button>
-          <button
-            type="button"
-            class="cancel-button"
-            :disabled="!courseInitDone"
-            @click="emit('quit-course', course.courseName)"
-          >
-            退出课程
-          </button>
         </div>
       </article>
     </div>
@@ -99,6 +92,14 @@ const emit = defineEmits([
   font-size:13px;
   color:#475569;
   line-height:1.45;
+}
+.course-market-card--clickable{
+  cursor:pointer;
+}
+.course-market-card--clickable.is-disabled{
+  cursor:not-allowed;
+  opacity:.55;
+  pointer-events:none;
 }
 .my-course-summary{
   margin:0;

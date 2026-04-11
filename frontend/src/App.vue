@@ -155,22 +155,15 @@ const openCourseFromSearch = async (course) => {
   const cn = String(course?.courseName || '').trim()
   if (!cn) return
   const role = currentUser.value?.role
-  const hasAccess = Boolean(course?.hasAccess)
-  navCourseSearch.value = ''
-  if (role === 'student') {
-    if (hasAccess) {
-      await router.push({ path: '/student/graph', query: { course: cn } })
-    } else {
+  // 先完成路由跳转再清空搜索词，避免「先卸载 router-view 再导航」导致仍停留在课程广场等旧页
+  try {
+    if (role === 'student') {
       await router.push({ path: '/student/course-detail', query: { course: cn } })
-    }
-    return
-  }
-  if (role === 'teacher') {
-    if (hasAccess) {
-      await router.push({ path: '/teacher/manage', query: { course: cn } })
-    } else {
+    } else if (role === 'teacher') {
       await router.push({ path: '/teacher/course-detail', query: { course: cn } })
     }
+  } finally {
+    navCourseSearch.value = ''
   }
 }
 
@@ -224,9 +217,8 @@ const teachersTextForCourse = (courseName) => {
           <div v-if="(isStudentUser && isOnStudentRoute) || (isTeacherUser && isOnTeacherRoute)" class="nav-course-search">
             <input
               v-model="navCourseSearch"
-              class="match-height"
+              class="match-height nav-course-search-input"
               placeholder="搜索全部课程"
-              style="width: 260px"
             />
           </div>
 
@@ -277,39 +269,8 @@ const teachersTextForCourse = (courseName) => {
     </header>
 
     <div class="app-shell">
-      <main class="panel-wrap">
-        <section
-          v-if="showSearchResultsOnly"
-          class="result-card nav-search-page-block"
-        >
-          <div class="nav-search-header">
-            <h3>课程搜索结果</h3>
-            <p class="panel-subtitle">关键词：{{ navCourseSearch }}</p>
-          </div>
-          <p v-if="navSearchLoading" class="panel-subtitle">加载课程中...</p>
-          <p v-else-if="navSearchError" class="error-text">{{ navSearchError }}</p>
-          <template v-else>
-            <p class="panel-subtitle nav-search-count">共 {{ rankedSearchCourses.length }} 门课程，按匹配度从高到低</p>
-            <div v-if="rankedSearchCourses.length" class="nav-search-list">
-              <button
-                v-for="c in rankedSearchCourses"
-                :key="c.courseName"
-                type="button"
-                class="nav-search-row"
-                @click="openCourseFromSearch(c)"
-              >
-                <img :src="c.coverUrl" alt="" class="nav-search-cover" />
-                <span class="nav-search-main">
-                  <span class="nav-search-name">{{ c.courseName }}</span>
-                  <span class="nav-search-teachers">授课教师：{{ teachersTextForCourse(c.courseName) }}</span>
-                  <span class="nav-search-summary">{{ c.summary || '暂无课程简介' }}</span>
-                </span>
-                <span class="nav-search-action" :class="{ 'is-access': c.hasAccess }">{{ c.hasAccess ? '直接进入' : '查看介绍' }}</span>
-              </button>
-            </div>
-          </template>
-        </section>
-        <router-view v-if="!showSearchResultsOnly" v-slot="{ Component }">
+      <main class="panel-wrap app-main-with-search">
+        <router-view v-slot="{ Component }">
           <component
             :is="Component"
             @login-success="handleLoginSuccess"
@@ -317,18 +278,69 @@ const teachersTextForCourse = (courseName) => {
             @update-user="handleUpdateUser"
           />
         </router-view>
+        <div
+          v-if="showSearchResultsOnly"
+          class="nav-search-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="课程搜索结果"
+          @click.self="navCourseSearch = ''"
+        >
+          <section class="result-card nav-search-page-block">
+            <div class="nav-search-header">
+              <h3>课程搜索结果</h3>
+              <p class="panel-subtitle">关键词：{{ navCourseSearch }}</p>
+            </div>
+            <p v-if="navSearchLoading" class="panel-subtitle">加载课程中...</p>
+            <p v-else-if="navSearchError" class="error-text">{{ navSearchError }}</p>
+            <template v-else>
+              <p class="panel-subtitle nav-search-count">共 {{ rankedSearchCourses.length }} 门课程，按匹配度从高到低</p>
+              <div v-if="rankedSearchCourses.length" class="nav-search-list">
+                <button
+                  v-for="c in rankedSearchCourses"
+                  :key="c.courseName"
+                  type="button"
+                  class="nav-search-row"
+                  @click.stop="openCourseFromSearch(c)"
+                >
+                  <img :src="c.coverUrl" alt="" class="nav-search-cover" />
+                  <span class="nav-search-main">
+                    <span class="nav-search-name">{{ c.courseName }}</span>
+                    <span class="nav-search-teachers">授课教师：{{ teachersTextForCourse(c.courseName) }}</span>
+                    <span class="nav-search-summary">{{ c.summary || '暂无课程简介' }}</span>
+                  </span>
+                  <span class="nav-search-action" :class="{ 'is-access': c.hasAccess }">课程介绍</span>
+                </button>
+              </div>
+            </template>
+          </section>
+        </div>
       </main>
     </div>
   </div>
 </template>
 
 <style scoped>
+.app-main-with-search {
+  position: relative;
+  min-height: min(70vh, 720px);
+}
+.nav-search-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  overflow: auto;
+  padding: 4px 0 20px;
+  background: rgba(248, 250, 252, 0.88);
+  backdrop-filter: blur(10px);
+}
 .nav-course-search { position: relative; }
 .nav-search-page-block {
   margin-bottom: 14px;
-  border-radius: 14px;
-  border: 1px solid var(--ui-accent-200);
-  background: linear-gradient(180deg, #ffffff 0%, var(--ui-accent-50) 100%);
+  border-radius: var(--ui-card-radius);
+  border: 1px solid var(--ui-card-border);
+  background: linear-gradient(165deg, #ffffff 0%, #fafaff 50%, #f5f3ff 100%);
+  box-shadow: var(--shadow-card);
 }
 .nav-search-header {
   display: flex;
@@ -353,9 +365,9 @@ const teachersTextForCourse = (courseName) => {
   transition: all .18s ease;
 }
 .nav-search-row:hover {
-  transform: translateY(-1px);
-  border-color: var(--ui-accent-300);
-  box-shadow: 0 8px 20px rgba(31, 111, 191, 0.12);
+  transform: translateY(-2px);
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: var(--shadow-card-hover);
 }
 .nav-search-cover {
   width: 96px;
@@ -365,11 +377,11 @@ const teachersTextForCourse = (courseName) => {
   border: 1px solid var(--ui-accent-100);
 }
 .nav-search-main { display: grid; gap: 4px; min-width: 0; }
-.nav-search-name { font-weight: 700; color: #111827; }
-.nav-search-teachers { font-size: 12px; color: #4b5563; }
+.nav-search-name { font-weight: 700; color: #0f172a; letter-spacing: -0.02em; }
+.nav-search-teachers { font-size: 12px; color: #64748b; }
 .nav-search-summary {
   font-size: 13px;
-  color: #374151;
+  color: #475569;
   white-space: normal;
   word-break: break-word;
   line-height: 1.45;

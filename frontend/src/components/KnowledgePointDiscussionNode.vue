@@ -23,10 +23,20 @@ const roleLabel = (role) => {
   return role || ''
 }
 
-const formatTime = (iso) => {
+const formatTimeShort = (iso) => {
   if (!iso) return ''
   try {
-    return new Date(iso).toLocaleString()
+    const d = new Date(iso)
+    const now = new Date()
+    if (d.toDateString() === now.toDateString()) {
+      return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    }
+    return d.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   } catch {
     return String(iso)
   }
@@ -48,7 +58,7 @@ function threadReplyCount(p) {
 
 const replyPlaceholder = computed(() => {
   const name = props.post.author?.username || 'TA'
-  return `回复 @${name}：`
+  return `回复 @${name}…`
 })
 
 const isRoot = computed(() => props.depth === 0)
@@ -59,306 +69,312 @@ const isOwnPost = computed(() => {
   if (uid == null || uid === '' || aid == null || aid === '') return false
   return String(uid) === String(aid)
 })
+
+const authorInitial = computed(() => {
+  const u = String(props.post.author?.username || '?').trim()
+  return u ? u.charAt(0).toUpperCase() : '?'
+})
 </script>
 
 <template>
-  <div class="kp-disc-node" :style="{ marginLeft: depth ? Math.min(depth * 16, 72) + 'px' : '0' }">
-    <div
-      :id="'kp-disc-post-' + post.id"
-      class="kp-disc-card"
-      :class="{ 'kp-disc-card--nested': depth > 0 }"
-    >
-      <div class="kp-disc-meta">
-        <span v-if="isRoot && post.postKind === 'QA'" class="kp-disc-kind-tag kp-disc-kind-tag--qa">答疑帖</span>
-        <span v-if="isRoot && post.postKind === 'DISCUSSION'" class="kp-disc-kind-tag kp-disc-kind-tag--dc">讨论帖</span>
-        <span class="kp-disc-author">{{ post.author?.username || '—' }}</span>
-        <template v-if="post.replyTo?.username">
-          <span class="kp-disc-reply-verb">回复</span>
-          <span class="kp-disc-reply-target">@{{ post.replyTo.username }}</span>
-          <span v-if="post.replyTo.role" class="kp-disc-reply-target-role"
-            >（{{ roleLabel(post.replyTo.role) }}）</span>
-        </template>
-        <span class="kp-disc-role">{{ roleLabel(post.author?.role) }}</span>
-        <span class="kp-disc-sep">·</span>
-        <span class="kp-disc-time">{{ formatTime(post.createdAt) }}</span>
-      </div>
-      <div class="kp-disc-body">{{ post.content }}</div>
-      <div class="kp-disc-actions">
-        <button
-          type="button"
-          class="kp-disc-icon-btn kp-disc-like"
-          :class="{ active: post.likedByMe }"
-          :disabled="!currentUserId"
-          :title="post.likedByMe ? '取消赞' : '点赞'"
-          :aria-label="`点赞 ${post.likeCount ?? 0}`"
-          @click="emit('toggle-like', post.id)"
-        >
-          <svg
-            class="kp-disc-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
+  <div
+    class="kp-disc-node"
+    :class="{ 'kp-disc-node--nested': depth > 0 }"
+    :style="{ '--kp-depth': String(Math.min(depth, 4)) }"
+  >
+    <div :id="'kp-disc-post-' + post.id" class="kp-disc-comment">
+      <div class="kp-disc-avatar" :aria-hidden="true">{{ authorInitial }}</div>
+      <div class="kp-disc-main">
+        <div class="kp-disc-head">
+          <span class="kp-disc-author">{{ post.author?.username || '—' }}</span>
+          <span v-if="isRoot && post.postKind === 'QA'" class="kp-disc-chip kp-disc-chip--qa">答疑</span>
+          <span v-if="isRoot && post.postKind === 'DISCUSSION'" class="kp-disc-chip kp-disc-chip--dc">讨论</span>
+          <span v-if="post.replyTo?.username" class="kp-disc-reply-hint">
+            回复 <span class="kp-disc-at">@{{ post.replyTo.username }}</span>
+          </span>
+          <span class="kp-disc-role-pill">{{ roleLabel(post.author?.role) }}</span>
+          <span class="kp-disc-time">{{ formatTimeShort(post.createdAt) }}</span>
+        </div>
+        <div class="kp-disc-body">{{ post.content }}</div>
+        <div class="kp-disc-actions">
+          <button
+            type="button"
+            class="kp-disc-link-btn"
+            :class="{ 'kp-disc-link-btn--on': post.likedByMe }"
+            :disabled="!currentUserId"
+            @click="emit('toggle-like', post.id)"
           >
-            <path
-              v-if="post.likedByMe"
-              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-              fill="currentColor"
-              stroke="none"
-            />
-            <path
-              v-else
-              d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"
-              fill="none"
-            />
-          </svg>
-          <span class="kp-disc-count">{{ post.likeCount ?? 0 }}</span>
-        </button>
-        <button
-          type="button"
-          class="kp-disc-icon-btn kp-disc-reply-btn"
-          title="回复"
-          :aria-label="isRoot ? `评论 ${threadReplyCount(post)}` : '回复'"
-          @click="openReply = !openReply"
-        >
-          <svg
-            class="kp-disc-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          <span v-if="isRoot" class="kp-disc-count">{{ threadReplyCount(post) }}</span>
-        </button>
-        <button
-          v-if="isOwnPost && currentUserId && !disabled"
-          type="button"
-          class="kp-disc-icon-btn kp-disc-delete"
-          title="删除"
-          aria-label="删除我的发言"
-          :disabled="submitting"
-          @click="emit('delete-post', post.id)"
-        >
-          <svg
-            class="kp-disc-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="3 6 5 6 21 6" />
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            <line x1="10" y1="11" x2="10" y2="17" />
-            <line x1="14" y1="11" x2="14" y2="17" />
-          </svg>
-        </button>
-      </div>
-      <div v-if="openReply" class="kp-disc-reply-box">
-        <textarea v-model="replyLocal" rows="2" :placeholder="replyPlaceholder" />
-        <button
-          type="button"
-          class="match-button"
-          :disabled="submitting || !replyLocal.trim() || !currentUserId"
-          @click="sendReply(post.id)"
-        >
-          {{ submitting ? '发送中…' : '发表回复' }}
-        </button>
+            {{ post.likedByMe ? '已赞' : '点赞' }}
+            <span v-if="(post.likeCount ?? 0) > 0" class="kp-disc-num">{{ post.likeCount }}</span>
+          </button>
+          <span class="kp-disc-dot">·</span>
+          <button type="button" class="kp-disc-link-btn" @click="openReply = !openReply">
+            回复<span v-if="isRoot && threadReplyCount(post) > 0" class="kp-disc-num">{{ threadReplyCount(post) }}</span>
+          </button>
+          <template v-if="isOwnPost && currentUserId && !disabled">
+            <span class="kp-disc-dot">·</span>
+            <button
+              type="button"
+              class="kp-disc-link-btn kp-disc-link-btn--danger"
+              :disabled="submitting"
+              @click="emit('delete-post', post.id)"
+            >
+              删除
+            </button>
+          </template>
+        </div>
+        <div v-if="openReply" class="kp-disc-reply-box">
+          <textarea v-model="replyLocal" rows="2" :placeholder="replyPlaceholder" />
+          <div class="kp-disc-reply-actions">
+            <button type="button" class="kp-disc-reply-cancel" @click="openReply = false">取消</button>
+            <button
+              type="button"
+              class="match-button kp-disc-reply-send"
+              :disabled="submitting || !replyLocal.trim() || !currentUserId"
+              @click="sendReply(post.id)"
+            >
+              {{ submitting ? '发送中…' : '发送' }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
-    <KnowledgePointDiscussionNode
-      v-for="r in post.replies || []"
-      :key="r.id"
-      :post="r"
-      :depth="depth + 1"
-      :current-user-id="currentUserId"
-      :submitting="submitting"
-      :disabled="disabled"
-      @toggle-like="$emit('toggle-like', $event)"
-      @submit-reply="$emit('submit-reply', $event)"
-      @delete-post="$emit('delete-post', $event)"
-    />
+    <div v-if="post.replies?.length" class="kp-disc-children">
+      <KnowledgePointDiscussionNode
+        v-for="r in post.replies || []"
+        :key="r.id"
+        :post="r"
+        :depth="depth + 1"
+        :current-user-id="currentUserId"
+        :submitting="submitting"
+        :disabled="disabled"
+        @toggle-like="$emit('toggle-like', $event)"
+        @submit-reply="$emit('submit-reply', $event)"
+        @delete-post="$emit('delete-post', $event)"
+      />
+    </div>
   </div>
 </template>
 
 <style scoped>
 .kp-disc-node {
-  margin-top: 10px;
+  margin-top: 0;
 }
-.kp-disc-card {
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.6);
+
+.kp-disc-node--nested {
+  margin-left: calc(8px + var(--kp-depth, 0) * 10px);
+  padding-left: 10px;
+  border-left: 2px solid #e2e8f0;
 }
-.kp-disc-card--nested {
-  border-left: 3px solid #cbd5e1;
-  background: rgba(248, 250, 252, 0.95);
+
+.kp-disc-comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
-.kp-disc-kind-tag {
-  font-size: 0.72rem;
+
+.kp-disc-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 13px;
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 6px;
-  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  user-select: none;
 }
-.kp-disc-kind-tag--qa {
-  background: rgba(234, 88, 12, 0.15);
-  color: #c2410c;
+
+.kp-disc-main {
+  min-width: 0;
+  flex: 1;
 }
-.kp-disc-kind-tag--dc {
-  background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
-}
-.kp-disc-meta {
+
+.kp-disc-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 8px;
   align-items: center;
-  font-size: 0.9em;
-  margin-bottom: 8px;
-  line-height: 1.4;
+  gap: 4px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  margin-bottom: 4px;
 }
+
 .kp-disc-author {
   font-weight: 600;
   color: #0f172a;
+  font-size: 13px;
 }
-.kp-disc-reply-verb {
+
+.kp-disc-chip {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+}
+
+.kp-disc-chip--qa {
+  background: rgba(234, 88, 12, 0.12);
+  color: #c2410c;
+}
+
+.kp-disc-chip--dc {
+  background: rgba(79, 70, 229, 0.12);
+  color: #4f46e5;
+}
+
+.kp-disc-reply-hint {
   color: #64748b;
-  font-size: 0.92em;
+  font-size: 12px;
 }
-.kp-disc-reply-target {
+
+.kp-disc-at {
+  color: #4f46e5;
   font-weight: 600;
-  color: #2563eb;
 }
-.kp-disc-reply-target-role {
+
+.kp-disc-role-pill {
   color: #94a3b8;
-  font-size: 0.85em;
+  font-size: 11px;
 }
-.kp-disc-role {
-  color: #64748b;
-  font-size: 0.85em;
-}
-.kp-disc-sep {
-  color: #cbd5e1;
-  user-select: none;
-}
+
 .kp-disc-time {
   color: #94a3b8;
-  font-size: 0.85em;
+  font-size: 11px;
+  margin-left: auto;
 }
+
 .kp-disc-body {
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.5;
-  color: #1e293b;
+  line-height: 1.45;
+  font-size: 13px;
+  color: #334155;
 }
+
 .kp-disc-actions {
-  margin-top: 10px;
+  margin-top: 6px;
   display: flex;
-  gap: 6px 16px;
   flex-wrap: wrap;
   align-items: center;
+  gap: 2px 0;
+  font-size: 12px;
 }
-.kp-disc-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: transparent;
+
+.kp-disc-link-btn {
+  background: none;
   border: none;
+  padding: 2px 4px;
+  margin: 0;
   cursor: pointer;
-  padding: 6px 8px;
-  border-radius: 8px;
-  font-size: 0.875rem;
   color: #64748b;
-  transition: background 0.15s ease, color 0.15s ease;
+  font-size: 12px;
+  border-radius: 4px;
+  min-height: auto !important;
 }
-.student-lms-shell .kp-disc-icon-btn {
+
+.student-lms-shell .kp-disc-link-btn {
   background: transparent !important;
   border: none !important;
   color: #64748b !important;
-  min-height: auto;
-  padding: 6px 8px;
+  min-height: auto !important;
+  padding: 2px 4px !important;
 }
-.student-lms-shell .kp-disc-icon-btn:hover:not(:disabled) {
-  background: rgba(15, 23, 42, 0.06) !important;
-  color: #0f172a !important;
+
+.student-lms-shell .kp-disc-link-btn:hover:not(:disabled) {
+  color: #4f46e5 !important;
+  background: rgba(79, 70, 229, 0.06) !important;
 }
-.kp-disc-icon-btn:hover {
-  background: rgba(15, 23, 42, 0.06);
-  color: #0f172a;
+
+.kp-disc-link-btn:hover:not(:disabled) {
+  color: #4f46e5;
+  background: rgba(79, 70, 229, 0.06);
 }
-.kp-disc-icon-btn:focus,
-.kp-disc-icon-btn:focus-visible {
-  outline: none;
-  box-shadow: none;
-}
-.kp-disc-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-.kp-disc-count {
-  min-width: 1.25em;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: #475569;
-}
-.kp-disc-icon-btn:hover .kp-disc-count {
-  color: #0f172a;
-}
-.kp-disc-like.active {
-  color: #dc2626;
-}
-.kp-disc-like.active .kp-disc-count {
-  color: #dc2626;
-}
-.kp-disc-like:disabled {
+
+.kp-disc-link-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
-.kp-disc-like:disabled:hover {
-  background: transparent;
+
+.kp-disc-link-btn--on {
+  color: #dc2626 !important;
 }
-.kp-disc-reply-box {
-  margin-top: 8px;
-}
-.kp-disc-reply-box textarea {
-  width: 100%;
-  box-sizing: border-box;
-  margin-bottom: 6px;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  font-family: inherit;
-}
-.kp-disc-delete {
-  color: #64748b;
-}
-.kp-disc-delete:hover:not(:disabled) {
-  color: #b91c1c;
-  background: rgba(185, 28, 28, 0.08);
-}
-.kp-disc-delete:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.student-lms-shell .kp-disc-delete:hover:not(:disabled) {
+
+.kp-disc-link-btn--danger:hover:not(:disabled) {
   color: #b91c1c !important;
   background: rgba(185, 28, 28, 0.08) !important;
 }
-.student-lms-shell .kp-disc-delete:disabled {
-  opacity: 0.45 !important;
-  cursor: not-allowed;
+
+.kp-disc-dot {
+  color: #cbd5e1;
+  user-select: none;
+  padding: 0 2px;
+}
+
+.kp-disc-num {
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.kp-disc-link-btn--on .kp-disc-num {
+  color: #dc2626;
+}
+
+.kp-disc-reply-box {
+  margin-top: 8px;
+}
+
+.kp-disc-reply-box textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 52px;
+}
+
+.kp-disc-reply-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.kp-disc-reply-cancel {
+  background: none !important;
+  border: none !important;
+  color: #64748b !important;
+  font-size: 12px !important;
+  cursor: pointer;
+  padding: 4px 8px !important;
+  min-height: auto !important;
+}
+
+.kp-disc-reply-cancel:hover {
+  color: #0f172a !important;
+}
+
+.kp-disc-reply-send {
+  padding: 5px 14px !important;
+  min-height: 32px !important;
+  font-size: 13px !important;
+}
+
+.kp-disc-children {
+  margin-top: 0;
 }
 </style>

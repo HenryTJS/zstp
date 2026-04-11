@@ -8,11 +8,16 @@
   padding:var(--ui-btn-padding);
   font-size:var(--ui-btn-font-size);
   line-height:1.2;
-  border:1px solid var(--ui-primary-border);
-  background:var(--ui-primary);
+  border:1px solid rgba(67,56,202,.9);
+  background:linear-gradient(135deg,#4f46e5,#6366f1);
   color:#fff;
   border-radius:var(--ui-btn-radius);
-  cursor:pointer
+  cursor:pointer;
+  box-shadow:0 4px 14px -2px rgba(79,70,229,.35);
+}
+.match-button:hover{
+  background:linear-gradient(135deg,#4338ca,#4f46e5);
+  box-shadow:0 6px 18px -2px rgba(79,70,229,.42);
 }
 .small-input{width:80px;min-height:var(--ui-input-h)}
 .order-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -21,7 +26,7 @@
 /* modal overlay and container */
 .modal-mask{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:1200}
 .modal-wrapper{max-width:900px;width:92%;}
-.modal-container{background:#fff;padding:20px;border-radius:8px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.12)}
+.modal-container{background:#fff;padding:22px;border-radius:16px;position:relative;box-shadow:0 20px 50px -12px rgba(15,23,42,.18),0 8px 24px rgba(79,70,229,.08);border:1px solid rgba(15,23,42,.06)}
 .modal-close{position:absolute;right:10px;top:8px;border:none;background:transparent;font-size:20px;line-height:1;color:#666;cursor:pointer}
 .grid-form.single-col{display:grid;grid-template-columns:1fr;gap:12px}
 .grid-form.single-col label{display:flex;flex-direction:column}
@@ -70,21 +75,21 @@
 }
 
 .course-market-card{
-  border:1px solid var(--ui-accent-200);
-  border-radius:14px;
-  padding:14px 14px 12px;
-  background:linear-gradient(180deg,#ffffff 0%,var(--ui-accent-50) 100%);
+  border:1px solid var(--ui-card-border);
+  border-radius:var(--ui-card-radius);
+  padding:16px 16px 14px;
+  background:linear-gradient(165deg,#ffffff 0%,#fafaff 55%,#f5f3ff 100%);
   min-height:240px;
   display:flex;
   flex-direction:column;
   min-width:0;
-  box-shadow:0 8px 20px rgba(15,23,42,.04);
-  transition:all .18s ease;
+  box-shadow:var(--shadow-card);
+  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;
 }
 .course-market-card:hover{
-  transform:translateY(-2px);
-  box-shadow:0 14px 28px rgba(31,111,191,.12);
-  border-color:var(--ui-accent-300);
+  transform:translateY(-3px);
+  box-shadow:var(--shadow-card-hover);
+  border-color:rgba(99,102,241,.35);
 }
 
 .course-market-card-body{
@@ -179,12 +184,14 @@
 .teacher-theme .result-card{
   border:1px solid var(--ui-card-border);
   border-radius:var(--ui-card-radius);
-  box-shadow:0 2px 8px rgba(15,23,42,.04);
+  box-shadow:var(--shadow-card);
   padding:var(--ui-card-padding);
+  background:linear-gradient(180deg,#ffffff 0%,#fafafa 100%);
 }
 
 .teacher-theme .result-card h3{
-  color:#1f3f5f;
+  color:#0f172a;
+  letter-spacing:-0.02em;
 }
 
 .teacher-theme .data-table{
@@ -196,8 +203,8 @@
 }
 
 .teacher-theme .data-table th{
-  background:#f2f7fd;
-  color:#2a4e72;
+  background:linear-gradient(180deg,#f5f3ff 0%,#ede9fe 100%);
+  color:#3730a3;
   font-weight:700;
   border-bottom:1px solid var(--ui-table-border);
 }
@@ -210,16 +217,20 @@
 
 .teacher-theme .match-button{
   border-radius:var(--ui-btn-radius);
-  background:var(--ui-primary);
-  border:1px solid var(--ui-primary-border);
+  background:linear-gradient(135deg,#4f46e5,#6366f1);
+  border:1px solid rgba(67,56,202,.9);
   color:#fff;
   min-height:var(--ui-btn-h);
   padding:var(--ui-btn-padding);
   font-size:var(--ui-btn-font-size);
   font-weight:700;
+  box-shadow:0 4px 14px -2px rgba(79,70,229,.35);
 }
 
-.teacher-theme .match-button:hover{ background:var(--ui-primary-hover); }
+.teacher-theme .match-button:hover{
+  background:linear-gradient(135deg,#4338ca,#4f46e5);
+  box-shadow:0 6px 18px -2px rgba(79,70,229,.42);
+}
 
 .teacher-theme .cancel-button,
 .teacher-theme .nav-btn{

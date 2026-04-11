@@ -1536,7 +1536,6 @@ watch(
           :teachers-by-course="teachersByCourse"
           :teachers-loading="teachersByCourseLoading"
           @enter-course="openCourseDetailFromMarket"
-          @quit-course="quitCourseFromMarket"
         />
       </template>
 
@@ -1553,6 +1552,7 @@ watch(
           :edit-form="courseMetaForm"
           @update:edit-form="(v) => (courseMetaForm = v)"
           @enter="() => { if (courseDetail?.courseName) enterCourseFromMarket(courseDetail.courseName) }"
+          @quit="() => { if (courseDetail?.courseName) quitCourseFromMarket(courseDetail.courseName) }"
           @apply="() => openPermissionRequest(courseDetail?.courseName)"
           @join="() => null"
           @save-meta="saveCourseMeta"

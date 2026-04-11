@@ -10,59 +10,64 @@
 }
 
 :root {
-  --bg: #f7f8fa;
-  --paper: #fff;
-  --ink: #262626;
-  --ink-soft: #8c8c8c;
-  --accent: #3578e5;
-  --line: #e4e6eb;
-  --ok: #0f766e;
+  --bg: #ececf4;
+  --bg-mesh: radial-gradient(1200px 600px at 12% -10%, rgba(99, 102, 241, 0.14), transparent 55%),
+    radial-gradient(900px 480px at 88% 0%, rgba(14, 165, 233, 0.1), transparent 50%),
+    radial-gradient(700px 500px at 50% 100%, rgba(168, 85, 247, 0.08), transparent 55%);
+  --paper: #ffffff;
+  --ink: #0f172a;
+  --ink-soft: #64748b;
+  --accent: #6366f1;
+  --accent-soft: #818cf8;
+  --line: #e2e8f0;
+  --ok: #0d9488;
   --danger: #be123c;
-  --ui-btn-h: 36px;
-  --ui-btn-radius: 8px;
+  --ui-btn-h: 38px;
+  --ui-btn-radius: 10px;
   --ui-btn-font-size: 14px;
-  --ui-btn-padding: 7px 14px;
-  --ui-input-h: 36px;
-  --ui-card-radius: 14px;
-  --ui-card-padding: 16px 18px;
+  --ui-btn-padding: 8px 16px;
+  --ui-input-h: 38px;
+  --ui-card-radius: 16px;
+  --ui-card-padding: 18px 20px;
   --ui-table-radius: 12px;
-  --ui-primary: #1f6fbf;
-  --ui-primary-hover: #1a64ad;
-  --ui-primary-border: #1a64ad;
-  --ui-accent-50: #f5f9ff;
-  --ui-accent-100: #eaf2ff;
-  --ui-accent-200: #d6e6ff;
-  --ui-accent-300: #b8d3ff;
-  --ui-accent-600: #1f6fbf;
-  --ui-accent-700: #1a64ad;
+  --ui-primary: #4f46e5;
+  --ui-primary-hover: #4338ca;
+  --ui-primary-border: #4338ca;
+  --ui-accent-50: #f5f3ff;
+  --ui-accent-100: #ede9fe;
+  --ui-accent-200: #ddd6fe;
+  --ui-accent-300: #c4b5fd;
+  --ui-accent-600: #6366f1;
+  --ui-accent-700: #4f46e5;
   --ui-secondary-bg: #f8fafc;
-  --ui-secondary-border: #ccd8e6;
-  --ui-secondary-text: #2e4b68;
-  --ui-secondary-hover-bg: #edf3f8;
-  --ui-secondary-hover-border: #b7c8db;
-  --ui-card-border: #d8e3ef;
-  --ui-table-border: #dbe7f5;
-  --ui-nav-btn-border: #9bc2ef;
-  --ui-nav-btn-bg: #f5f9ff;
-  --ui-nav-btn-text: #1f4f86;
-  --ui-nav-btn-hover-bg: #e9f2ff;
-  --ui-nav-btn-hover-border: #6fa7e5;
-  --ui-nav-btn-hover-text: #123a67;
-  --ui-nav-btn-active-bg-from: #0f5da8;
-  --ui-nav-btn-active-bg-to: #2679ce;
-  --ui-user-card-border: #b8d0eb;
+  --ui-secondary-border: #cbd5e1;
+  --ui-secondary-text: #334155;
+  --ui-secondary-hover-bg: #f1f5f9;
+  --ui-secondary-hover-border: #94a3b8;
+  --ui-card-border: rgba(15, 23, 42, 0.08);
+  --ui-table-border: #e2e8f0;
+  --ui-nav-btn-border: rgba(255, 255, 255, 0.14);
+  --ui-nav-btn-bg: rgba(255, 255, 255, 0.08);
+  --ui-nav-btn-text: rgba(248, 250, 252, 0.92);
+  --ui-nav-btn-hover-bg: rgba(255, 255, 255, 0.14);
+  --ui-nav-btn-hover-border: rgba(255, 255, 255, 0.22);
+  --ui-nav-btn-hover-text: #ffffff;
+  --ui-nav-btn-active-bg-from: #4f46e5;
+  --ui-nav-btn-active-bg-to: #7c3aed;
+  --ui-user-card-border: rgba(255, 255, 255, 0.16);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-card: 0 4px 6px -1px rgba(15, 23, 42, 0.06), 0 12px 28px -8px rgba(15, 23, 42, 0.1);
+  --shadow-card-hover: 0 8px 16px -4px rgba(79, 70, 229, 0.12), 0 20px 40px -12px rgba(15, 23, 42, 0.12);
 }
 
-/* 日间模式下主色加深，夜间输入框描边加亮 */
 :root {
-  --brand: #1a237e;
-  --section-nav: #22223b;
+  --brand: #4f46e5;
+  --section-nav: #1e293b;
 }
 
 .brand-block h1 {
-  color: var(--brand) !important;
-  font-weight: 800;
-  letter-spacing: 1px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 /* 夜间模式样式已移除，保留统一日间（light）变量 */
@@ -78,9 +83,11 @@ body[data-theme='dark'] .theme-toggle-btn {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-family: 'DM Sans', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
   color: var(--ink);
-  background: var(--bg);
+  background-color: var(--bg);
+  background-image: var(--bg-mesh);
+  background-attachment: fixed;
 }
 
 h1,
@@ -91,24 +98,67 @@ h3 {
 }
 
 .app-shell {
-  max-width: 1120px;
+  max-width: 1140px;
   margin: 0 auto;
-  padding: 18px 16px 32px;
+  padding: 22px 18px 40px;
 }
 
 .top-nav {
   width: 100%;
-  background: var(--paper) !important;
-  border-bottom: 1px solid var(--line);
-  padding: 10px 0;
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 12px 40px -12px rgba(15, 23, 42, 0.45);
+  padding: 12px 0;
+}
+
+.top-nav .brand-block h1 {
+  color: #f8fafc !important;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.top-nav .brand-en {
+  color: rgba(226, 232, 240, 0.65) !important;
+}
+
+.top-nav .nav-course-search input.match-height,
+.top-nav .nav-course-search input {
+  width: 260px;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #f8fafc !important;
+  border-radius: 10px !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.top-nav .nav-course-search input::placeholder {
+  color: rgba(248, 250, 252, 0.45);
+}
+
+.top-nav .dn-bell-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #e2e8f0 !important;
+}
+
+.top-nav .dn-bell-btn:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+}
+
+.top-nav .ap-bell-btn {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #e2e8f0 !important;
+}
+
+.top-nav .ap-bell-btn:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
 }
 
 /* dark top-nav removed */
 
 .top-nav-shell {
-  max-width: 1120px;
+  max-width: 1140px;
   margin: 0 auto;
-  padding: 0 16px;
+  padding: 0 18px;
 }
 
 .top-nav-inner {
@@ -132,6 +182,7 @@ h3 {
   color: var(--ink);
 }
 
+
 .brand-en {
   margin: 0;
   font-size: 12px;
@@ -151,6 +202,19 @@ h3 {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.top-nav .nav-actions .nav-btn {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.top-nav .nav-actions .nav-btn:hover,
+.top-nav .nav-actions .nav-btn.active {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
 }
 
 .top-user-card {
@@ -192,9 +256,9 @@ h3 {
 
 .nav-btn:hover,
 .nav-btn.active {
-  border-color: var(--accent);
-  background: #e6f0ff;
-  color: var(--accent);
+  border-color: var(--ui-accent-300);
+  background: var(--ui-accent-50);
+  color: var(--ui-primary);
 }
 
 .nav-btn.nav-logout {
@@ -330,19 +394,21 @@ h3 {
 .top-nav-inner-teacher .top-user-card,
 .top-nav-inner-admin .top-user-card{
   border:1px solid var(--ui-user-card-border);
-  background:#f6fbff;
+  background:rgba(255,255,255,.06);
+  backdrop-filter:blur(10px);
+  box-shadow:0 4px 20px rgba(0,0,0,.15);
 }
 
 .top-nav-inner-student .top-user-name,
 .top-nav-inner-teacher .top-user-name,
 .top-nav-inner-admin .top-user-name{
-  color:var(--ui-nav-btn-text);
+  color:#f8fafc;
 }
 
 .top-nav-inner-student .top-user-role,
 .top-nav-inner-teacher .top-user-role,
 .top-nav-inner-admin .top-user-role{
-  color:#5f738c;
+  color:rgba(226,232,240,.72);
 }
 
 .tabs {
@@ -365,9 +431,9 @@ h3 {
 
 .tab-btn.active,
 .tab-btn:hover {
-  background: #e6f0ff;
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--ui-accent-50);
+  border-color: var(--ui-accent-300);
+  color: var(--ui-primary);
 }
 
 .panel-wrap {
@@ -474,10 +540,11 @@ button:disabled {
 .result-card,
 .suggestion-card {
   margin-top: 14px;
-  border: 1px solid var(--line);
-  background: #ffffff;
-  border-radius: 8px;
-  padding: 14px;
+  border: 1px solid var(--ui-card-border);
+  background: var(--paper);
+  border-radius: var(--ui-card-radius);
+  padding: var(--ui-card-padding);
+  box-shadow: var(--shadow-card);
 }
 
 .result-card p,
@@ -489,10 +556,11 @@ button:disabled {
 .graph-canvas {
   width: 100%;
   min-height: 420px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: var(--ui-card-radius);
+  background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
   overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .error-text {
@@ -551,10 +619,11 @@ button:disabled {
 }
 
 .kpi-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  background: #ffffff;
+  border: 1px solid var(--ui-card-border);
+  border-radius: var(--ui-card-radius);
+  padding: 14px;
+  background: var(--paper);
+  box-shadow: var(--shadow-sm);
 }
 
 .kpi-card p {
@@ -600,8 +669,10 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(360px, 480px);
   gap: 18px;
-  padding: 18px;
-  background: linear-gradient(140deg, #ffffff 0%, #f6f9ff 60%, #edf4ff 100%);
+  padding: 22px;
+  background: linear-gradient(135deg, #ffffff 0%, #fafaff 42%, #f5f3ff 100%) !important;
+  border: 1px solid rgba(99, 102, 241, 0.12) !important;
+  box-shadow: var(--shadow-card);
 }
 
 .profile-hero-card--no-actions {
@@ -624,8 +695,8 @@ button:disabled {
   justify-content: center;
   font-weight: 700;
   color: #fff;
-  background: linear-gradient(135deg, #1d4ed8, #2563eb);
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.35);
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  box-shadow: 0 10px 24px rgba(79, 70, 229, 0.38);
 }
 
 .profile-bio-preview {
@@ -635,12 +706,13 @@ button:disabled {
 }
 
 .profile-hero-actions {
-  border: 1px solid #dbe6f7;
-  border-radius: 12px;
-  background: #ffffff;
-  padding: 12px;
+  border: 1px solid var(--ui-card-border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 14px;
   display: grid;
   gap: 12px;
+  box-shadow: var(--shadow-sm);
 }
 
 .profile-shortcuts {
@@ -648,15 +720,15 @@ button:disabled {
 }
 
 .profile-shortcuts .nav-btn {
-  border: 1px solid #c7d7ee;
-  color: #1e3a5f;
-  background: #f8fbff;
+  border: 1px solid var(--ui-accent-200);
+  color: var(--ui-primary);
+  background: var(--ui-accent-50);
 }
 
 .profile-shortcuts .nav-btn:hover {
-  border-color: #95b4e2;
-  background: #ecf3ff;
-  color: #0f315a;
+  border-color: var(--ui-accent-300);
+  background: var(--ui-accent-100);
+  color: var(--ui-primary-hover);
 }
 
 .profile-overview-card,
@@ -836,11 +908,6 @@ button:disabled {
   }
 }
 
-body {
-  color: var(--ink);
-  background: var(--bg);
-}
-
 .login-card,
 .result-card,
 .suggestion-card {
@@ -860,7 +927,6 @@ input, select, textarea {
 .suggestion-card,
 .kpi-card,
 .account-panel,
-.profile-hero-card,
 .profile-hero-actions {
   background: var(--paper) !important;
   color: var(--ink) !important;
@@ -882,5 +948,7 @@ h1, h2, h3 {
 
 body {
   color: var(--ink) !important;
-  background: var(--bg) !important;
+  background-color: var(--bg) !important;
+  background-image: var(--bg-mesh) !important;
+  background-attachment: fixed !important;
 }

@@ -18,7 +18,11 @@ const props = defineProps({
   /** 通知跳转：滚动并高亮对应帖子卡片 */
   focusPostId: { type: [Number, String], default: null },
   /** 浏览模式等场景禁止发帖 */
-  disabled: { type: Boolean, default: false }
+  disabled: { type: Boolean, default: false },
+  /** 嵌入知识点详情分块：去掉顶部分割线与多余外边距 */
+  embedded: { type: Boolean, default: false },
+  /** 由外层区块展示标题时隐藏内部「交流区」标题 */
+  hideTitle: { type: Boolean, default: false }
 })
 
 const threads = ref([])
@@ -173,49 +177,55 @@ const onDeletePost = async (postId) => {
 </script>
 
 <template>
-  <div class="kp-discussion-wrap">
-    <h3>交流区</h3>
-    <p v-if="disabled" class="panel-subtitle">当前为浏览模式，加入课程后可参与讨论。</p>
-    <p v-if="error" class="error-text">{{ error }}</p>
-    <div v-if="!disabled && currentUserId" class="kp-disc-new">
+  <div class="kp-discussion-wrap" :class="{ 'kp-discussion-wrap--embedded': embedded }">
+    <h3 v-if="!hideTitle">交流区</h3>
+    <p v-if="disabled" class="panel-subtitle kp-disc-hint">当前为浏览模式，加入课程后可参与讨论。</p>
+    <p v-if="error" class="error-text kp-disc-hint">{{ error }}</p>
+    <div v-if="!disabled && currentUserId" class="kp-disc-composer">
       <div v-if="canPickQa() || canPickDiscussion()" class="kp-disc-kind-row">
         <template v-if="canPickQa()">
           <label class="kp-disc-kind-opt">
             <input v-model="rootPostKind" type="radio" value="NORMAL" />
-            <span>正常帖</span>
+            <span>评论</span>
           </label>
           <label class="kp-disc-kind-opt">
             <input v-model="rootPostKind" type="radio" value="QA" />
-            <span>答疑帖</span>
+            <span>答疑</span>
           </label>
         </template>
         <template v-else-if="canPickDiscussion()">
           <label class="kp-disc-kind-opt">
             <input v-model="rootPostKind" type="radio" value="NORMAL" />
-            <span>正常帖</span>
+            <span>评论</span>
           </label>
           <label class="kp-disc-kind-opt">
             <input v-model="rootPostKind" type="radio" value="DISCUSSION" />
-            <span>讨论帖</span>
+            <span>讨论</span>
           </label>
         </template>
       </div>
-      <textarea v-model="newPostContent" rows="3" placeholder="发表新帖…" />
-      <button
-        type="button"
-        class="match-button"
-        style="margin-top: 8px"
-        :disabled="submitting || !newPostContent.trim()"
-        @click="submitRoot"
-      >
-        {{ submitting ? '发送中…' : '发帖' }}
-      </button>
+      <div class="kp-disc-composer-row">
+        <textarea
+          v-model="newPostContent"
+          class="kp-disc-composer-input"
+          rows="2"
+          placeholder="写点什么…"
+        />
+        <button
+          type="button"
+          class="match-button kp-disc-publish-btn"
+          :disabled="submitting || !newPostContent.trim()"
+          @click="submitRoot"
+        >
+          {{ submitting ? '…' : '发布' }}
+        </button>
+      </div>
     </div>
-    <div v-else-if="!disabled && !currentUserId" class="panel-subtitle">请登录后发帖。</div>
+    <div v-else-if="!disabled && !currentUserId" class="panel-subtitle kp-disc-hint">登录后可参与评论。</div>
 
-    <p v-if="loading" class="panel-subtitle ui-mt-12">加载中…</p>
-    <div v-else-if="!threads.length" class="panel-subtitle ui-mt-12">暂无帖子，来发第一条吧。</div>
-    <div v-else class="kp-disc-threads">
+    <p v-if="loading" class="panel-subtitle kp-disc-list-meta">加载中…</p>
+    <div v-else-if="!threads.length" class="panel-subtitle kp-disc-list-meta kp-disc-empty">暂无评论，来抢沙发吧</div>
+    <div v-else class="kp-disc-threads kp-disc-threads--scroll">
       <KnowledgePointDiscussionNode
         v-for="p in threads"
         :key="p.id"
@@ -238,40 +248,123 @@ const onDeletePost = async (postId) => {
   padding-top: 16px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
-.kp-disc-new textarea {
-  width: 100%;
+.kp-discussion-wrap--embedded {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.kp-disc-hint {
+  margin-bottom: 8px !important;
+  font-size: 13px !important;
+}
+
+.kp-disc-composer {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  margin-bottom: 8px;
+}
+
+.kp-disc-composer-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.kp-disc-composer-input {
+  flex: 1;
+  min-width: 0;
   box-sizing: border-box;
-  padding: 10px;
+  padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #e2e8f0;
   font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 52px;
+  background: #fff;
 }
+
+.kp-disc-publish-btn {
+  flex-shrink: 0;
+  padding: 8px 16px !important;
+  min-height: 36px !important;
+  font-size: 13px !important;
+}
+
 .kp-disc-threads {
-  margin-top: 12px;
+  margin-top: 0;
 }
+
+.kp-disc-threads--scroll {
+  max-height: min(360px, 42vh);
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-right: -4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 23, 42, 0.2) transparent;
+}
+
+.kp-disc-threads--scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.kp-disc-threads--scroll::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.18);
+  border-radius: 999px;
+}
+
+.kp-disc-list-meta {
+  margin-top: 8px !important;
+  margin-bottom: 4px !important;
+  font-size: 12px !important;
+  color: #64748b !important;
+}
+
+.kp-disc-empty {
+  padding: 12px 0;
+  text-align: center;
+}
+
 .kp-disc-kind-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 18px;
+  gap: 6px 14px;
   margin-bottom: 8px;
-  font-size: 0.9rem;
-  color: #334155;
+  font-size: 12px;
+  color: #64748b;
 }
 .kp-disc-kind-opt {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   cursor: pointer;
 }
+
+@media (max-width: 560px) {
+  .kp-disc-composer-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .kp-disc-publish-btn {
+    width: 100%;
+  }
+}
+
 :deep(.kp-disc-focus-flash) {
   animation: kp-disc-flash 2s ease;
 }
 @keyframes kp-disc-flash {
   0%,
   55% {
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.4);
+    background: rgba(99, 102, 241, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.28);
+    border-radius: 8px;
   }
   100% {
+    background: transparent;
     box-shadow: none;
   }
 }

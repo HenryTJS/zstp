@@ -1,7 +1,7 @@
 /* Shared modal styles for student portal */
 .modal-mask{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:1200}
 .modal-wrapper{max-width:680px;width:92%;}
-.modal-container{background:#fff;padding:20px;border-radius:8px;position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.12)}
+.modal-container{background:#fff;padding:22px;border-radius:16px;position:relative;box-shadow:0 20px 50px -12px rgba(15,23,42,.18),0 8px 24px rgba(79,70,229,.08);border:1px solid rgba(15,23,42,.06)}
 .modal-close{position:absolute;right:10px;top:8px;border:none;background:transparent;font-size:20px;line-height:1;color:#666;cursor:pointer}
 .match-height{height:var(--ui-input-h);padding:7px 10px;box-sizing:border-box}
 .match-button{

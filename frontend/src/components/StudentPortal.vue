@@ -151,6 +151,57 @@ const joinedCoursesSearch = ref('')
 const joinedCoursesPage = ref(1)
 const coursePageSize = 8
 
+/** 课程广场「我的课程」卡片上的资源完成进度：课程名 -> { percent, completed, total } | null */
+const courseProgressByCourse = ref({})
+const marketCourseProgressLoading = ref(false)
+let marketCourseProgressReqId = 0
+
+const marketCourseNamesForProgress = computed(() => {
+  const joined = new Set((joinedCourses.value || []).map((x) => String(x || '').trim()).filter(Boolean))
+  const all = Array.isArray(myCourseCatalog.value) ? myCourseCatalog.value : []
+  return all.filter((c) => joined.has(String(c?.courseName || '').trim())).map((c) => String(c.courseName || '').trim())
+})
+
+const loadMarketCourseProgress = async () => {
+  const uid = props.currentUser?.id
+  const names = marketCourseNamesForProgress.value
+  if (!uid || !names.length) {
+    courseProgressByCourse.value = {}
+    marketCourseProgressLoading.value = false
+    return
+  }
+  const reqId = ++marketCourseProgressReqId
+  marketCourseProgressLoading.value = true
+  try {
+    const entries = await Promise.all(
+      names.map(async (cn) => {
+        try {
+          const { data } = await fetchResourceProgress(uid, cn)
+          const d = data && typeof data === 'object' ? data : null
+          return [
+            cn,
+            d
+              ? {
+                  percent: Number(d.percent ?? 0),
+                  completed: Number(d.completed ?? 0),
+                  total: Number(d.total ?? 0)
+                }
+              : { percent: 0, completed: 0, total: 0 }
+          ]
+        } catch {
+          return [cn, null]
+        }
+      })
+    )
+    if (reqId !== marketCourseProgressReqId) return
+    courseProgressByCourse.value = Object.fromEntries(entries)
+  } finally {
+    if (reqId === marketCourseProgressReqId) {
+      marketCourseProgressLoading.value = false
+    }
+  }
+}
+
 /** 课程名 -> 拥有该课程查看权限的教师 [{ teacherId, username }]（在 availableCourses 定义后填充） */
 const teachersByCourse = ref({})
 const teachersByCourseLoading = ref(false)
@@ -874,6 +925,10 @@ const quitCourse = async (courseName) => {
 
   joinedCourses.value = joinedCourses.value.filter((c) => c !== course)
 
+  const nextProgress = { ...courseProgressByCourse.value }
+  delete nextProgress[course]
+  courseProgressByCourse.value = nextProgress
+
   if (wasCurrent) {
     selectedCourse.value = joinedCourses.value[0] || ''
     clearExerciseUiAfterQuittingCurrentCourse()
@@ -1016,6 +1071,16 @@ const loadResourcesByKnowledgePoint = async (pointName) => {
     const { data } = await fetchResourceProgress(props.currentUser.id, cn)
     courseProgress.value = data || null
     completedResourceKeys.value = Array.isArray(data?.completedKeys) ? data.completedKeys : []
+    if (data && typeof data === 'object') {
+      courseProgressByCourse.value = {
+        ...courseProgressByCourse.value,
+        [cn]: {
+          percent: Number(data.percent ?? 0),
+          completed: Number(data.completed ?? 0),
+          total: Number(data.total ?? 0)
+        }
+      }
+    }
   } catch {
     courseProgress.value = null
     completedResourceKeys.value = []
@@ -1034,6 +1099,16 @@ const markCompletedSafe = async (resourceKey) => {
     const { data } = await fetchResourceProgress(props.currentUser.id, cn)
     courseProgress.value = data || null
     completedResourceKeys.value = Array.isArray(data?.completedKeys) ? data.completedKeys : completedResourceKeys.value
+    if (data && typeof data === 'object') {
+      courseProgressByCourse.value = {
+        ...courseProgressByCourse.value,
+        [cn]: {
+          percent: Number(data.percent ?? 0),
+          completed: Number(data.completed ?? 0),
+          total: Number(data.total ?? 0)
+        }
+      }
+    }
   } catch {
     // ignore
   }
@@ -1428,6 +1503,15 @@ watch(
   { deep: true }
 )
 
+watch(
+  () => [effectivePage.value, marketCourseNamesForProgress.value.slice().sort().join('|'), props.currentUser?.id],
+  () => {
+    if (effectivePage.value !== 'courses') return
+    void loadMarketCourseProgress()
+  },
+  { flush: 'post' }
+)
+
 watch([selectedMajor1, selectedMajor2, selectedMajor3], () => {
   if (currentPage.value === 'graph' && selectedKnowledgePoint.value) {
     void loadMajorRelevanceFor(selectedKnowledgePoint.value)
@@ -1594,8 +1678,9 @@ const confirmDeleteExam = async (id) => {
       :state-hydrated="stateHydrated"
       :teachers-by-course="teachersByCourse"
       :teachers-loading="teachersByCourseLoading"
-      @enter="openCourseDetailFromMyCourses"
-      @quit="async (c) => { await quitCourse(c); await loadMyCourseCatalog() }"
+      :course-progress-by-course="courseProgressByCourse"
+      :course-progress-loading="marketCourseProgressLoading"
+      @open-detail="openCourseDetailFromMyCourses"
     />
 
     <CourseDetailPanel
@@ -1611,6 +1696,14 @@ const confirmDeleteExam = async (id) => {
       :edit-form="{ coverUrl: '', summary: '', syllabus: '' }"
       @join="async () => { if (courseDetail?.courseName) { await joinCourse(courseDetail.courseName); await loadMyCourseCatalog(); await enterCourseFromMarket(courseDetail.courseName) } }"
       @enter="async () => { if (courseDetail?.courseName) await enterCourseFromMarket(courseDetail.courseName) }"
+      @quit="async () => {
+        const cn = courseDetail?.courseName
+        if (!cn) return
+        await quitCourse(cn)
+        await loadMyCourseCatalog()
+        currentPage.value = 'courses'
+        await router.push({ path: '/student/courses' })
+      }"
       @apply="() => null"
       @save-meta="() => null"
       @update:edit-form="() => null"
@@ -1659,7 +1752,6 @@ const confirmDeleteExam = async (id) => {
           :relevance-loading="relevanceLoading"
           :relevance-error="relevanceError"
           :relevance-label="relevanceLabel"
-          :course-progress="courseProgress"
           :resources-loading="resourcesLoading"
           :resources-error="resourcesError"
           :resources="resources"
