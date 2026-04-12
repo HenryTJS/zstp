@@ -23,9 +23,11 @@ import com.teacher.backend.dto.SubmitTeacherCoursePermissionRequest;
 import com.teacher.backend.entity.TeacherCoursePermission;
 import com.teacher.backend.entity.TeacherCoursePermissionRequest;
 import com.teacher.backend.entity.User;
+import com.teacher.backend.entity.UserNotification;
 import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 import com.teacher.backend.repository.TeacherCoursePermissionRequestRepository;
 import com.teacher.backend.repository.UserRepository;
+import com.teacher.backend.repository.UserNotificationRepository;
 import com.teacher.backend.service.CourseCatalogService;
 
 @RestController
@@ -45,19 +47,25 @@ public class TeacherCoursePermissionRequestController {
     /** 申请新增一门课程（通过后写入目录并授权） */
     private static final String KIND_CREATE_NEW = "CREATE_NEW";
 
+    /** 与前端 DiscussionNotificationBell 约定：教师端权限审批结果通知 */
+    private static final String NOTIFY_TYPE_TEACHER_PERMISSION = "TEACHER_PERMISSION";
+
     private final UserRepository userRepository;
     private final TeacherCoursePermissionRepository permissionRepository;
     private final TeacherCoursePermissionRequestRepository requestRepository;
     private final CourseCatalogService courseCatalogService;
+    private final UserNotificationRepository userNotificationRepository;
 
     public TeacherCoursePermissionRequestController(UserRepository userRepository,
                                                     TeacherCoursePermissionRepository permissionRepository,
                                                     TeacherCoursePermissionRequestRepository requestRepository,
-                                                    CourseCatalogService courseCatalogService) {
+                                                    CourseCatalogService courseCatalogService,
+                                                    UserNotificationRepository userNotificationRepository) {
         this.userRepository = userRepository;
         this.permissionRepository = permissionRepository;
         this.requestRepository = requestRepository;
         this.courseCatalogService = courseCatalogService;
+        this.userNotificationRepository = userNotificationRepository;
     }
 
     @GetMapping
@@ -235,11 +243,56 @@ public class TeacherCoursePermissionRequestController {
 
         requestRepository.save(row);
 
+        notifyTeacherPermissionDecision(row);
+
         return ResponseEntity.ok(Map.of(
             "message", "decided",
             "requestId", requestId,
             "status", row.getStatus()
         ));
+    }
+
+    /**
+     * 审批通过/拒绝后推送到教师「通知」列表（与公告、讨论区通知同一套 UI）。
+     */
+    private void notifyTeacherPermissionDecision(TeacherCoursePermissionRequest row) {
+        Long teacherId = row.getTeacherId();
+        if (teacherId == null) {
+            return;
+        }
+        boolean approved = STATUS_APPROVED.equals(row.getStatus());
+        String course = row.getCourseName() == null ? "" : row.getCourseName().trim();
+        String kindLabel = KIND_CREATE_NEW.equals(row.getRequestKind()) ? "新开课程" : "加入已有课程";
+        String reason = row.getAdminReason() == null ? "" : row.getAdminReason().trim();
+
+        String title = approved ? "课程权限申请已通过" : "课程权限申请未通过";
+        StringBuilder body = new StringBuilder();
+        if (approved) {
+            body.append("管理员已通过你的申请（").append(kindLabel).append("）。");
+        } else {
+            body.append("管理员未通过你的申请（").append(kindLabel).append("）。");
+        }
+        if (StringUtils.hasText(course)) {
+            body.append(" 课程：").append(course).append("。");
+        }
+        if (StringUtils.hasText(reason)) {
+            body.append(" 说明：").append(reason);
+        }
+        String bodyStr = body.toString();
+        if (bodyStr.length() > 500) {
+            bodyStr = bodyStr.substring(0, 497) + "...";
+        }
+
+        UserNotification n = new UserNotification();
+        n.setUserId(teacherId);
+        n.setType(NOTIFY_TYPE_TEACHER_PERMISSION);
+        n.setTitle(title);
+        n.setBody(bodyStr);
+        n.setRead(false);
+        n.setCourseName(course);
+        n.setPointName("");
+        n.setPostId(row.getId() == null ? 0L : row.getId());
+        userNotificationRepository.save(n);
     }
 
     private static String normalizeStatus(String status) {

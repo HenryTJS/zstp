@@ -280,7 +280,7 @@ const close = () => emit('close')
     <div class="modal-wrapper" style="max-width: 720px; width: 94vw">
       <div class="modal-container" style="max-height: 88vh; overflow: auto">
         <button class="modal-close" type="button" aria-label="关闭" @click="close">×</button>
-        <h3>发布知识点测试</h3>
+        <h3 class="portal-section-title portal-section-title--amber">发布知识点测试</h3>
 
         <label class="block-label">
           试卷标题
@@ -373,4 +373,7 @@ const close = () => emit('close')
   color: #15803d;
   margin-top: 8px;
 }
+</style>
+<style>
+@import './teacher-portal.css';
 </style>

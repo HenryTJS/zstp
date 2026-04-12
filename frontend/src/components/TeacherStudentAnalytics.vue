@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
 
 <template>
   <article class="result-card">
-    <h3>学生分析</h3>
+    <h3 class="portal-section-title portal-section-title--violet">学生分析</h3>
 
     <label class="ui-mt-12" style="display: block">
       统计知识点
@@ -161,24 +161,21 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="ui-mt-12">
-        <h3>每题平均得分率</h3>
-        <p v-if="!(stats.perQuestionAvg && stats.perQuestionAvg.length)" class="panel-subtitle">
-          暂无题目统计数据（可能未发布测试或无人提交）。
-        </p>
+        <h3 class="portal-subsection-title portal-subsection-title--amber">每题平均得分率</h3>
         <div ref="chartRef" class="teacher-analytics-chart"></div>
       </div>
 
       <div class="ui-mt-12">
-        <h3>高得分题 / 低得分题</h3>
+        <h3 class="portal-subsection-title portal-subsection-title--rose">高得分题 / 低得分题</h3>
         <div class="grid-form two-col">
           <div>
-            <p class="panel-subtitle"><strong>高得分题</strong></p>
+            <h4 class="portal-subsection-title portal-subsection-title--violet">高得分题</h4>
             <ul>
               <li v-for="r in stats.highScoreQuestions || []" :key="'h' + r.index">Q{{ r.index }}：{{ r.ratio }}%</li>
             </ul>
           </div>
           <div>
-            <p class="panel-subtitle"><strong>低得分题</strong></p>
+            <h4 class="portal-subsection-title portal-subsection-title--teal">低得分题</h4>
             <ul>
               <li v-for="r in stats.lowScoreQuestions || []" :key="'l' + r.index">Q{{ r.index }}：{{ r.ratio }}%</li>
             </ul>

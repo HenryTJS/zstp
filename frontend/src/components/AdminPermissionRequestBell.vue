@@ -9,6 +9,8 @@ const props = defineProps({
 const panelOpen = ref(false)
 const pendingList = ref([])
 const loading = ref(false)
+/** 轮询拉取失败时展示，避免静默清空列表 */
+const listError = ref('')
 let pollTimer = null
 
 const decisionOpen = ref(false)
@@ -26,9 +28,10 @@ const decisionForm = ref({
 
 const pendingCount = () => pendingList.value.length
 
-const fetchPending = async () => {
+const fetchPending = async (silent = false) => {
   if (!props.adminUserId) return
-  loading.value = true
+  if (!silent) loading.value = true
+  listError.value = ''
   try {
     const res = await listTeacherCoursePermissionRequests({
       adminUserId: props.adminUserId,
@@ -36,10 +39,11 @@ const fetchPending = async () => {
     })
     const payload = res && res.data ? res.data : res
     pendingList.value = Array.isArray(payload) ? payload : []
-  } catch {
-    pendingList.value = []
+  } catch (e) {
+    listError.value = e?.response?.data?.message || e?.message || '加载待审批列表失败'
+    if (!silent) pendingList.value = []
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -51,8 +55,8 @@ watch(
       pollTimer = null
     }
     if (id) {
-      void fetchPending()
-      pollTimer = window.setInterval(() => void fetchPending(), 45000)
+      void fetchPending(false)
+      pollTimer = window.setInterval(() => void fetchPending(true), 45000)
     } else {
       pendingList.value = []
     }
@@ -66,7 +70,7 @@ onBeforeUnmount(() => {
 
 const togglePanel = () => {
   panelOpen.value = !panelOpen.value
-  if (panelOpen.value) void fetchPending()
+  if (panelOpen.value) void fetchPending(false)
 }
 
 const openDecision = (req, decision) => {
@@ -107,7 +111,7 @@ const submitDecision = async () => {
       reason: decisionForm.value.reason.trim()
     })
     decisionOpen.value = false
-    await fetchPending()
+    await fetchPending(false)
   } catch (e) {
     decisionError.value = e?.response?.data?.message || e?.message || '操作失败。'
   } finally {
@@ -139,6 +143,7 @@ const excerpt = (t, n = 72) => {
         <button type="button" class="ap-close" aria-label="关闭" @click="panelOpen = false">×</button>
       </div>
       <p v-if="loading" class="ap-muted">加载中…</p>
+      <p v-else-if="listError" class="error-text" style="padding: 10px 12px; margin: 0">{{ listError }}</p>
       <ul v-else-if="!pendingList.length" class="ap-list ap-muted">暂无待审批申请</ul>
       <ul v-else class="ap-list">
         <li v-for="r in pendingList" :key="r.id" class="ap-item">
@@ -159,7 +164,7 @@ const excerpt = (t, n = 72) => {
       <div class="modal-wrapper">
         <div class="modal-container">
           <button class="modal-close" type="button" @click="closeDecision" aria-label="关闭">×</button>
-          <h3>审批教师权限申请</h3>
+          <h3 class="portal-section-title portal-section-title--rose">审批教师权限申请</h3>
           <p class="panel-subtitle" style="margin-top: 8px">
             教师：<strong>{{ decisionForm.teacherUsername || '-' }}</strong> · 类型：<strong>{{
               decisionForm.requestKind === 'CREATE_NEW' ? '新增课程（同意后将写入目录并授权）' : '加入已有课程'
@@ -335,4 +340,7 @@ const excerpt = (t, n = 72) => {
 .ap-btn-no:hover {
   filter: brightness(.98);
 }
+</style>
+<style>
+@import './student-portal.css';
 </style>

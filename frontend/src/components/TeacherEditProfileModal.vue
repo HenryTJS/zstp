@@ -13,7 +13,7 @@ const emit = defineEmits(['close', 'save'])
     <div class="modal-wrapper">
       <div class="modal-container">
         <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
-        <h3>编辑个人资料</h3>
+        <h3 class="portal-section-title portal-section-title--violet">编辑个人资料</h3>
         <div class="grid-form single-col ui-mt-12">
           <label>
             用户名
@@ -40,4 +40,6 @@ const emit = defineEmits(['close', 'save'])
   </div>
 </template>
 
-<style src="./teacher-portal.css"></style>
+<style>
+@import './teacher-portal.css';
+</style>

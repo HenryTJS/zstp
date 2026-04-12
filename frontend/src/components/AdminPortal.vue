@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   bulkImportUsers,
@@ -13,6 +13,7 @@ import {
   updateCourseConfig,
   updateUser
 } from '../api/client'
+import { appShellKey } from '../appShell'
 import AccountSecurityPanel from './AccountSecurityPanel.vue'
 import AiAssistantWidget from './AiAssistantWidget.vue'
 import colleges from '../data/colleges.json'
@@ -28,12 +29,34 @@ const props = defineProps({
   }
 })
 const emit = defineEmits(['logout', 'update-user'])
+const shell = inject(appShellKey, null)
+const relayLogout = () => {
+  if (typeof shell?.logout === 'function') void shell.logout()
+  else emit('logout')
+}
+const relayUpdateUser = (patch) => {
+  if (typeof shell?.updateUser === 'function') shell.updateUser(patch)
+  else emit('update-user', patch)
+}
 const route = useRoute()
 
-const currentPage = ref(route.params.page || props.activePage || 'profile')
-watch(() => route.params.page, (v) => {
-  currentPage.value = v || props.activePage || 'profile'
+const adminPathSegment = computed(() => {
+  const p = route.path
+  if (!p.startsWith('/admin')) return 'profile'
+  let rest = p.slice('/admin'.length)
+  if (rest.startsWith('/')) rest = rest.slice(1)
+  const seg = (rest.split('/')[0] || '').trim()
+  return seg || 'profile'
 })
+
+const currentPage = ref(adminPathSegment.value || props.activePage || 'profile')
+watch(
+  () => adminPathSegment.value,
+  (v) => {
+    currentPage.value = v || props.activePage || 'profile'
+  },
+  { immediate: true }
+)
 
 const profileForm = ref({
   username: props.currentUser.username || '',
@@ -331,7 +354,7 @@ const handleSaveProfile = async () => {
     try {
       localStorage.setItem('currentUser', JSON.stringify(updatedUser))
     } catch (e) {}
-    emit('update-user', {
+    relayUpdateUser({
       username: updatedUser.username,
       email: updatedUser.email,
       workId: updatedUser.workId
@@ -609,7 +632,7 @@ const saveSelectedCourseConfig = async () => {
 
       <div class="profile-grid">
         <article class="result-card profile-overview-card">
-          <h3>概览</h3>
+          <h3 class="portal-section-title">概览</h3>
           <div class="profile-stat-list">
             <div>
               <span>已发布公告</span>
@@ -623,7 +646,7 @@ const saveSelectedCourseConfig = async () => {
         </article>
 
         <article class="result-card profile-detail-card">
-          <h3>账号信息</h3>
+          <h3 class="portal-section-title portal-section-title--violet">账号信息</h3>
           <div class="grid-form">
             <label>
               用户名
@@ -645,7 +668,7 @@ const saveSelectedCourseConfig = async () => {
           <div class="profile-btn-row">
             <button type="button" class="nav-btn" @click="openEditProfile">编辑资料</button>
             <button type="button" class="nav-btn" @click="changePasswordVisible = true">修改密码</button>
-            <button type="button" class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
+            <button type="button" class="danger-btn profile-logout-btn" @click="relayLogout">退出登录</button>
           </div>
           <p v-if="profileMessage" class="ok-text">{{ profileMessage }}</p>
         </article>
@@ -654,7 +677,7 @@ const saveSelectedCourseConfig = async () => {
 
     <section v-else-if="currentPage === 'user-stats'" class="panel-stack admin-theme">
       <article class="result-card">
-        <h3>用户统计与批量导入</h3>
+        <h3 class="portal-section-title portal-section-title--teal">用户统计与批量导入</h3>
         <div class="inline-form admin-import-actions" style="margin-top:12px;flex-wrap:wrap;gap:10px;align-items:center">
           <button type="button" class="match-button" @click="downloadImportTemplate">下载 Excel 模板</button>
           <input
@@ -705,7 +728,7 @@ const saveSelectedCourseConfig = async () => {
         </div>
         <div class="grid-form two-col" style="margin-top:24px">
           <article>
-            <h3>学生统计</h3>
+            <h3 class="portal-section-title portal-section-title--emerald">学生统计</h3>
         <p v-if="usersLoading && !students.length" class="panel-subtitle">加载中…</p>
         <p v-else-if="usersError && !students.length" class="error-text">{{ usersError }}</p>
 
@@ -728,7 +751,7 @@ const saveSelectedCourseConfig = async () => {
           </article>
 
           <article>
-            <h3>教师统计</h3>
+            <h3 class="portal-section-title portal-section-title--amber">教师统计</h3>
             <p v-if="usersLoading && !teachers.length" class="panel-subtitle">加载中…</p>
             <p v-else-if="usersError && !teachers.length" class="error-text">{{ usersError }}</p>
 
@@ -753,7 +776,7 @@ const saveSelectedCourseConfig = async () => {
       </article>
 
       <article class="result-card">
-        <h3>学生列表</h3>
+        <h3 class="portal-section-title portal-section-title--rose">学生列表</h3>
         <div v-if="usersLoading && !students.length" class="panel-subtitle">加载中…</div>
         <div v-else-if="!students.length" class="panel-subtitle">暂无学生数据。</div>
         <div v-else style="max-height:520px;overflow:auto;">
@@ -783,7 +806,7 @@ const saveSelectedCourseConfig = async () => {
       </article>
 
       <article class="result-card">
-        <h3>教师列表</h3>
+        <h3 class="portal-section-title portal-section-title--cyan">教师列表</h3>
         <div v-if="usersLoading && !teachers.length" class="panel-subtitle">加载中…</div>
         <div v-else-if="!teachers.length" class="panel-subtitle">暂无教师数据。</div>
         <div v-else style="max-height:520px;overflow:auto;">
@@ -811,7 +834,7 @@ const saveSelectedCourseConfig = async () => {
 
     <section v-else-if="currentPage === 'course-configs'" class="panel-stack admin-theme">
       <article class="result-card">
-        <h3>课程权重与学分配置</h3>
+        <h3 class="portal-section-title portal-section-title--orange">课程权重与学分配置</h3>
 
         <p v-if="courseConfigError" class="error-text">{{ courseConfigError }}</p>
         <p v-if="courseConfigMessage" class="ok-text">{{ courseConfigMessage }}</p>
@@ -910,10 +933,7 @@ const saveSelectedCourseConfig = async () => {
         </div>
 
         <article class="result-card ui-mt-12">
-          <h3>学分规则（一组学分对应多个专业）</h3>
-          <p class="panel-subtitle">
-            每条为一组：填写学分后，在一/二/三级列表中多选专业，点「将所选加入本组」合并到本组；可重复添加多组。系统按学生专业路径从最深向浅匹配：命中某条规则中的 code 即用该组学分；全部未命中则为 0.5。
-          </p>
+          <h3 class="portal-section-title portal-section-title--sky">学分规则（一组学分对应多个专业）</h3>
 
           <div class="ui-actions-row">
             <button type="button" class="cancel-button" :disabled="courseConfigLoading" @click="addCreditRule">添加学分组</button>
@@ -965,7 +985,6 @@ const saveSelectedCourseConfig = async () => {
               <button type="button" class="cancel-button" @click="mergeSelectionsIntoGroup(r)">将所选加入本组</button>
             </div>
           </div>
-          <p v-if="!creditRulesForm.length" class="panel-subtitle ui-mt-12">暂无规则（未配置的专业均按默认学分 0.5）。</p>
         </article>
 
         <div class="ui-actions-row">
@@ -978,7 +997,7 @@ const saveSelectedCourseConfig = async () => {
 
     <section v-else-if="currentPage === 'announcements'" class="panel-stack admin-theme">
       <article class="result-card">
-        <h3>发布公告</h3>
+        <h3 class="portal-section-title portal-section-title--violet">发布公告</h3>
         <p v-if="annError" class="error-text">{{ annError }}</p>
         <p v-if="annMessage" class="ok-text">{{ annMessage }}</p>
         <div class="grid-form single-col" style="margin-top:12px">
@@ -999,10 +1018,9 @@ const saveSelectedCourseConfig = async () => {
       </article>
 
       <article class="result-card">
-        <h3>公告列表</h3>
+        <h3 class="portal-section-title portal-section-title--emerald">公告列表</h3>
         <p v-if="annLoading && !announcements.length" class="panel-subtitle">加载中…</p>
-        <p v-else-if="!announcements.length" class="panel-subtitle">暂无公告。</p>
-        <table v-else class="data-table">
+        <table v-else-if="announcements.length" class="data-table">
           <thead>
             <tr>
               <th>标题</th>
@@ -1027,7 +1045,7 @@ const saveSelectedCourseConfig = async () => {
       <div class="modal-wrapper">
         <div class="modal-container">
           <button class="modal-close" type="button" @click="editProfileVisible = false" aria-label="关闭">×</button>
-          <h3>编辑资料</h3>
+          <h3 class="portal-section-title portal-section-title--teal">编辑资料</h3>
           <div class="grid-form single-col" style="margin-top:12px">
             <label>
               用户名
@@ -1054,7 +1072,7 @@ const saveSelectedCourseConfig = async () => {
       <div class="modal-wrapper">
         <div class="modal-container">
           <button class="modal-close" type="button" @click="changePasswordVisible = false" aria-label="关闭">×</button>
-          <h3>修改密码</h3>
+          <h3 class="portal-section-title portal-section-title--slate">修改密码</h3>
           <div class="ui-mt-12">
             <AccountSecurityPanel ref="passwordPanelRef" :current-user="currentUser" :embedded="true" />
           </div>
@@ -1068,7 +1086,9 @@ const saveSelectedCourseConfig = async () => {
     <AiAssistantWidget role="admin" :current-user="currentUser" />
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>
 <style scoped>
 .credit-rule-block {
   border: 1px solid rgba(0, 0, 0, 0.08);

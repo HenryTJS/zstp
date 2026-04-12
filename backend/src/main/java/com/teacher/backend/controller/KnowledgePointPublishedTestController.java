@@ -12,6 +12,7 @@ import java.util.Set;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.teacher.backend.entity.KnowledgePointPublishedTest;
+import com.teacher.backend.entity.KnowledgePointTestSubmission;
 import com.teacher.backend.entity.StudentState;
 import com.teacher.backend.entity.User;
 import com.teacher.backend.repository.KnowledgePointPublishedTestRepository;
@@ -502,6 +503,77 @@ public class KnowledgePointPublishedTestController {
         out.put("perQuestionAvg", perQuestionAvg);
         out.put("highScoreQuestions", high);
         out.put("lowScoreQuestions", low);
+        return ResponseEntity.ok(out);
+    }
+
+    /**
+     * 教师端：单课数据看板汇总（已发布测试套数、提交人次、各知识点测试概况）。
+     * 与 {@link #stats} 口径一致：完成率 = 该课已加入学生数作为分母。
+     */
+    @GetMapping("/course-summary")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> courseSummary(@RequestParam Long teacherUserId, @RequestParam String courseName) {
+        if (teacherUserId == null) {
+            return error(HttpStatus.BAD_REQUEST, "teacherUserId 必填");
+        }
+        User teacher = userRepository.findById(teacherUserId).orElse(null);
+        if (teacher == null || (!"teacher".equals(teacher.getRole()) && !"admin".equals(teacher.getRole()))) {
+            return error(HttpStatus.FORBIDDEN, "仅教师或管理员");
+        }
+        String cn = courseCatalogService.normalizeCourseName(courseName);
+        if (!StringUtils.hasText(cn)) {
+            return error(HttpStatus.BAD_REQUEST, "courseName 不能为空");
+        }
+        if (!"admin".equals(teacher.getRole())
+                && !permissionRepository.existsByTeacherIdAndCourseName(teacherUserId, cn)) {
+            return error(HttpStatus.FORBIDDEN, "无该课程权限");
+        }
+
+        int eligible = 0;
+        try {
+            eligible = studentStateRepository.findUserIdsWithCourseInJoined(cn).size();
+        } catch (Exception ignored) {
+            eligible = 0;
+        }
+
+        List<KnowledgePointPublishedTest> tests = testRepository.findByCourseName(cn);
+        List<Map<String, Object>> testRows = new ArrayList<>();
+        for (KnowledgePointPublishedTest t : tests) {
+            if (t == null || t.getId() == null) {
+                continue;
+            }
+            List<KnowledgePointTestSubmission> subs = submissionRepository.findByTestId(t.getId());
+            int submitted = subs == null ? 0 : subs.size();
+            int completionRate = eligible <= 0 ? 0 : (int) Math.round((submitted * 100.0) / eligible);
+            double avg = 0;
+            if (submitted > 0) {
+                avg = subs.stream()
+                        .mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore())
+                        .average()
+                        .orElse(0);
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("testId", t.getId());
+            row.put("pointName", t.getPointName());
+            row.put("title", t.getTitle());
+            row.put("submissions", submitted);
+            row.put("completionRate", completionRate);
+            row.put("avgScore", Math.round(avg * 100.0) / 100.0);
+            testRows.add(row);
+        }
+        testRows.sort((a, b) -> Integer.compare(toInt(b.get("submissions")), toInt(a.get("submissions"))));
+
+        Double avgAll = submissionRepository.avgTotalScoreByCourseName(cn);
+        double courseAvgScore = avgAll == null ? 0 : Math.round(avgAll * 100.0) / 100.0;
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("courseName", cn);
+        out.put("eligibleStudents", eligible);
+        out.put("publishedTestCount", tests.size());
+        out.put("testSubmissionCount", submissionRepository.countByCourseName(cn));
+        out.put("distinctSubmitters", submissionRepository.countDistinctStudentUserIdByCourseName(cn));
+        out.put("courseAvgScore", courseAvgScore);
+        out.put("tests", testRows);
         return ResponseEntity.ok(out);
     }
 

@@ -31,15 +31,12 @@ const enterTest = () => emit('enter-test')
 <template>
   <section class="panel-stack">
     <article v-if="!canShowGraphPage" class="result-card">
-      <h3>请先选择课程</h3>
-      <p class="panel-subtitle">请先到「课程广场」对某门课使用「进入课程」或「查看课程」，再浏览知识图谱。</p>
+      <h3 class="portal-section-title portal-section-title--cyan">请先选择课程</h3>
       <button type="button" class="match-button" @click="goCourses">去课程广场</button>
     </article>
     <template v-else>
       <article v-if="isUnjoinedPreviewMode" class="result-card" style="border-left:4px solid #f59e0b">
-        <p class="panel-subtitle" style="margin:0">
-          <strong>浏览模式：</strong>仅可查看图谱结构，点击节点不会加载资料、学习建议与关联度分析。加入该课程后可完整使用。
-        </p>
+        <h3 class="portal-section-title portal-section-title--amber" style="margin-bottom: 0">浏览模式</h3>
       </article>
       <!-- 图谱画布与右侧信息仍由父组件提供 ref/内容，这里只负责上半部分布局 -->
       <slot />
@@ -47,4 +44,6 @@ const enterTest = () => emit('enter-test')
   </section>
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>

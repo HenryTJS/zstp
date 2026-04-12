@@ -361,14 +361,13 @@ const goCourses = () => emit('go-courses')
 <template>
   <section class="panel-stack">
     <article v-if="!joinedCourses.length" class="result-card">
-      <h3>组卷</h3>
-      <p class="panel-subtitle">请先在「课程广场」加入至少一门课程，再使用组卷功能。</p>
+      <h3 class="portal-section-title portal-section-title--orange">组卷</h3>
       <button type="button" class="match-button" @click="goCourses">去课程广场</button>
     </article>
 
     <template v-else>
       <article class="result-card">
-        <h3>自定义组卷</h3>
+        <h3 class="portal-section-title portal-section-title--teal">自定义组卷</h3>
 
         <div class="grid-form two-col ui-mt-12">
           <label>
@@ -480,7 +479,7 @@ const goCourses = () => emit('go-courses')
       </article>
 
       <article v-if="previewRows.length" class="result-card">
-        <h3>已生成题目预览</h3>
+        <h3 class="portal-section-title portal-section-title--violet">已生成题目预览</h3>
         <div v-for="(pr, idx) in previewRows" :key="pr.id + '-pv'" class="ui-mt-14">
           <h4>
             第 {{ idx + 1 }} 题（{{ pr.question?.question_type || '—' }} · {{ clampFullScore(pr.fullScore) }} 分）
@@ -495,4 +494,6 @@ const goCourses = () => emit('go-courses')
   </section>
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>

@@ -58,11 +58,8 @@ const optionMarks = (opt, item) => {
 <template>
   <section class="panel-stack">
     <article v-if="!wrongDrillSession" class="result-card">
-      <h3>错题巩固测试</h3>
-      <p v-if="!wrongDrillCourseOptions.length" class="panel-subtitle">
-        当前没有可测课程。
-      </p>
-      <div v-else class="inline-form wrong-drill-toolbar">
+      <h3 class="portal-section-title portal-section-title--rose">错题巩固测试</h3>
+      <div v-if="wrongDrillCourseOptions.length" class="inline-form wrong-drill-toolbar">
         <label class="wrong-drill-course-label">
           课程
           <select
@@ -94,9 +91,8 @@ const optionMarks = (opt, item) => {
     />
 
     <article class="result-card">
-      <h3>错题本</h3>
-      <p v-if="!(filteredWrongBookForLearningPage || []).length" class="panel-subtitle">暂无收藏错题。</p>
-      <div v-else class="wrong-book-grid">
+      <h3 class="portal-section-title portal-section-title--violet">错题本</h3>
+      <div v-if="(filteredWrongBookForLearningPage || []).length" class="wrong-book-grid">
         <article v-for="item in filteredWrongBookForLearningPage" :key="item.id" class="wrong-book-card">
           <div class="wrong-book-card-top">
             <strong class="wrong-book-title">{{ item.course }} · {{ item.knowledgePoint }}</strong>
@@ -116,9 +112,8 @@ const optionMarks = (opt, item) => {
     </article>
 
     <article class="result-card">
-      <h3>学习记录</h3>
-      <p v-if="!(filteredLearningRecordsForLearningPage || []).length" class="panel-subtitle">暂无学习记录。</p>
-      <table v-else class="data-table">
+      <h3 class="portal-section-title portal-section-title--teal">学习记录</h3>
+      <table v-if="(filteredLearningRecordsForLearningPage || []).length" class="data-table">
         <thead>
           <tr>
             <th>时间</th>
@@ -139,9 +134,8 @@ const optionMarks = (opt, item) => {
     </article>
 
     <article class="result-card">
-      <h3>已保存试卷</h3>
-      <p v-if="!(savedExams || []).length" class="panel-subtitle">暂无已保存试卷。</p>
-      <table v-else class="data-table">
+      <h3 class="portal-section-title portal-section-title--amber">已保存试卷</h3>
+      <table v-if="(savedExams || []).length" class="data-table">
         <thead>
           <tr>
             <th>标题</th>
@@ -196,7 +190,7 @@ const optionMarks = (opt, item) => {
         <div class="modal-wrapper wrong-book-modal-wrap">
           <div class="modal-container wrong-book-modal-box">
             <button type="button" class="modal-close" @click="closeWrongBookModal" aria-label="关闭">×</button>
-            <h3>题目与解析</h3>
+            <h3 class="portal-section-title portal-section-title--cyan">题目与解析</h3>
             <p class="panel-subtitle wrong-book-modal-sub">
               {{ wrongBookModalItem.course }} · {{ wrongBookModalItem.knowledgePoint }}
             </p>
@@ -291,4 +285,6 @@ const optionMarks = (opt, item) => {
   </section>
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>

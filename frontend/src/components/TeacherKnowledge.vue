@@ -73,8 +73,8 @@ const onDeleteSelected = () => props.onDeleteSelectedPoints()
 
 <template>
   <article class="result-card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <h3>课程知识点设置</h3>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap;">
+      <h3 class="portal-section-title portal-section-title--emerald" style="margin-bottom:0;flex:1;min-width:200px;">课程知识点设置</h3>
       <div class="ui-toolbar-row">
         <button type="button" class="cancel-button" @click="onDownloadTemplate">下载 MD 模板</button>
         <button type="button" class="cancel-button" @click="onOpenMdImport">导入 MD</button>
@@ -181,5 +181,7 @@ const onDeleteSelected = () => props.onDeleteSelectedPoints()
   </article>
 </template>
 
-<style src="./teacher-portal.css"></style>
+<style>
+@import './teacher-portal.css';
+</style>
 

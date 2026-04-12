@@ -213,4 +213,6 @@ defineProps({
   </article>
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>

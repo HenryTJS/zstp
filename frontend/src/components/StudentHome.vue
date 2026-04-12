@@ -115,7 +115,7 @@ watch(
 
     <div class="profile-grid">
       <article class="result-card profile-overview-card">
-        <h3>学习画像</h3>
+        <h3 class="portal-section-title">学习画像</h3>
         <div class="profile-stat-list">
           <div>
             <span>累计练习</span>
@@ -132,12 +132,9 @@ watch(
         </div>
 
         <div class="ui-mt-12">
-          <h3 style="margin-bottom:8px;">五维能力雷达图</h3>
+          <h3 class="portal-section-title portal-section-title--violet">五维能力雷达图</h3>
           <p v-show="dimensionScoresLoading" class="panel-subtitle">计算中…</p>
           <p v-show="!dimensionScoresLoading && !!dimensionScoresError" class="error-text">{{ dimensionScoresError }}</p>
-          <p v-show="!dimensionScoresLoading && !dimensionScoresError && !dimensionScores?.usedCourses?.length" class="panel-subtitle">
-            暂无足够练习记录，完成练习后将自动生成。
-          </p>
           <div
             ref="radarRef"
             class="student-radar-box"
@@ -147,7 +144,7 @@ watch(
       </article>
 
       <article class="result-card profile-detail-card">
-        <h3>资料设置</h3>
+        <h3 class="portal-section-title portal-section-title--teal">资料设置</h3>
         <div class="grid-form">
           <label>
             用户名
@@ -177,5 +174,7 @@ watch(
   </section>
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>
 

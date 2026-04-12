@@ -11,22 +11,35 @@ const routes = [
     redirect: () => {
       const u = JSON.parse(localStorage.getItem('currentUser') || 'null')
       if (!u) return '/login'
-      if (u.role === 'student') return '/student'
-      if (u.role === 'teacher') return '/teacher'
-      if (u.role === 'admin') return '/admin'
+      if (u.role === 'student') return '/student/home'
+      if (u.role === 'teacher') return '/teacher/profile'
+      if (u.role === 'admin') return '/admin/profile'
       return '/login'
     }
   },
   { path: '/login', component: LoginPage },
+  { path: '/student', redirect: '/student/home' },
   {
-    path: '/student/:page?',
+    path: '/student/:page',
     component: StudentPortal,
-    props: (route) => ({ currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'), activePage: route.params.page || 'home' })
+    props: (route) => ({
+      currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'),
+      activePage: route.params.page || 'home'
+    })
   },
-  { path: '/teacher/:page?', component: TeacherPortal, props: (route) => ({ currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'), activePage: route.params.page || 'profile' }) },
-  { path: '/admin/course-permissions', redirect: '/admin/profile' },
+  { path: '/teacher', redirect: '/teacher/profile' },
   {
-    path: '/admin/:page?',
+    path: '/teacher/:page',
+    component: TeacherPortal,
+    props: (route) => ({
+      currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'),
+      activePage: route.params.page || 'profile'
+    })
+  },
+  { path: '/admin/course-permissions', redirect: '/admin/profile' },
+  { path: '/admin', redirect: '/admin/profile' },
+  {
+    path: '/admin/:page',
     component: AdminPortal,
     props: (route) => ({
       currentUser: JSON.parse(localStorage.getItem('currentUser') || 'null'),

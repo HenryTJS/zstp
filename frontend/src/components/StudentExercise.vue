@@ -37,25 +37,15 @@ const goCourses = () => {
 <template>
   <section class="panel-stack">
     <article v-if="!canStudyCurrentCourse" class="result-card">
-      <h3>暂不可学习</h3>
-      <p class="panel-subtitle">
-        请先在「课程广场」对某门已加入的课程点击「进入课程」，再在此出题与做题（与个人中心「统计课程」无关）。
-      </p>
+      <h3 class="portal-section-title portal-section-title--amber">暂不可学习</h3>
       <button type="button" class="match-button" @click="goCourses">去课程广场</button>
     </article>
 
     <template v-else>
       <article class="result-card">
-        <h3>出题与做题</h3>
-        <p class="panel-subtitle ui-mt-6">
-          当前知识点：<strong>{{ selectedKnowledgePoint || '-' }}</strong>
-        </p>
+        <h3 class="portal-section-title portal-section-title--teal">出题与做题</h3>
 
-        <p v-if="!selectedKnowledgePoint" class="panel-subtitle ui-mt-12">
-          请先回到「知识图谱」点击一个知识点，再在此进行测试。
-        </p>
-
-        <div v-else>
+        <div v-if="selectedKnowledgePoint">
           <div class="grid-form ui-mt-12">
             <label>
               难度
@@ -81,8 +71,7 @@ const goCourses = () => {
         v-if="testQuestions.length && !testSubmitted"
         class="result-card"
       >
-        <h3>测试题目</h3>
-        <p class="panel-subtitle">作答完成后点击“提交并查看成绩与解析”。</p>
+        <h3 class="portal-section-title portal-section-title--violet">测试题目</h3>
 
         <div v-for="(q, idx) in testQuestions" :key="idx" class="ui-mt-14">
           <h4>第 {{ idx + 1 }} 题（{{ q.question_type }}）</h4>
@@ -143,7 +132,7 @@ const goCourses = () => {
         v-if="testSubmitted && testResult"
         class="result-card"
       >
-        <h3>成绩与解析</h3>
+        <h3 class="portal-section-title portal-section-title--emerald">成绩与解析</h3>
         <p><strong>总分：</strong>{{ testResult.totalScore }} / {{ testResult.fullScore }}</p>
 
         <div v-for="(q, idx) in testQuestions" :key="idx" class="ui-mt-14">
@@ -169,4 +158,6 @@ const goCourses = () => {
   </section>
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>

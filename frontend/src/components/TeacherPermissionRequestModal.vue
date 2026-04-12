@@ -17,7 +17,7 @@ const emit = defineEmits(['close', 'update:requestText', 'update:courseName', 's
     <div class="modal-wrapper">
       <div class="modal-container">
         <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
-        <h3>{{ mode === 'create' ? '申请新增课程' : `申请课程权限 — ${courseName || '（未选课程）'}` }}</h3>
+        <h3 class="portal-section-title portal-section-title--teal">{{ mode === 'create' ? '申请新增课程' : `申请课程权限 — ${courseName || '（未选课程）'}` }}</h3>
         <p v-if="mode === 'create'" class="panel-subtitle" style="margin-top: 8px">
           提交后由管理员审批。通过后系统将自动把该课程加入课程目录，并为您开通此课程的授课权限。
         </p>
@@ -65,5 +65,7 @@ const emit = defineEmits(['close', 'update:requestText', 'update:courseName', 's
   </div>
 </template>
 
-<style src="./teacher-portal.css"></style>
+<style>
+@import './teacher-portal.css';
+</style>
 

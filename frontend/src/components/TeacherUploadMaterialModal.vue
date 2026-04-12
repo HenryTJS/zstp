@@ -23,7 +23,7 @@ const acceptFor = (cat) => {
     <div class="modal-wrapper">
       <div class="modal-container">
         <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
-        <h3>上传资料 - {{ uploadForm.point || (uploadTargetPoint && uploadTargetPoint.pointName) }}</h3>
+        <h3 class="portal-section-title portal-section-title--cyan">上传资料 - {{ uploadForm.point || (uploadTargetPoint && uploadTargetPoint.pointName) }}</h3>
         <div class="grid-form single-col ui-mt-12">
           <label>
             分类
@@ -64,4 +64,6 @@ const acceptFor = (cat) => {
   </div>
 </template>
 
-<style src="./teacher-portal.css"></style>
+<style>
+@import './teacher-portal.css';
+</style>

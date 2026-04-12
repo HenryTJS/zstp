@@ -101,6 +101,22 @@ const onItemClick = async (n) => {
     return
   }
 
+  // 管理员审批「课程权限 / 新开课程」申请（与后端 TEACHER_PERMISSION 一致）
+  if (String(n.type || '').toUpperCase() === 'TEACHER_PERMISSION') {
+    open.value = false
+    try {
+      await markUserNotificationRead(n.id, props.userId)
+    } catch {
+      /* ignore */
+    }
+    void fetchList()
+    const cn = String(n.courseName || '').trim()
+    if (cn && roleFromPath.value === 'teacher') {
+      await router.push({ path: '/teacher/course-detail', query: { course: cn } })
+    }
+    return
+  }
+
   open.value = false
   try {
     await markUserNotificationRead(n.id, props.userId)
@@ -182,6 +198,7 @@ const formatTime = (iso) => {
             <button type="button" class="dn-item-btn" @click="onItemClick(n)">
               <span class="dn-item-title">
                 <span v-if="String(n.type || '').toUpperCase() === 'ANNOUNCEMENT'" class="dn-tag">公告</span>
+                <span v-else-if="String(n.type || '').toUpperCase() === 'TEACHER_PERMISSION'" class="dn-tag">课程</span>
                 {{ n.title }}
               </span>
               <span v-if="n.body" class="dn-item-body">{{ n.body }}</span>

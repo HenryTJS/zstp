@@ -29,7 +29,7 @@ const handleSave = async () => {
     <div class="modal-wrapper">
       <div class="modal-container">
         <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
-        <h3>修改密码</h3>
+        <h3 class="portal-section-title portal-section-title--slate">修改密码</h3>
         <div class="ui-mt-12">
           <AccountSecurityPanel ref="passwordPanelRef" :current-user="currentUser" :embedded="true" />
         </div>
@@ -42,5 +42,8 @@ const handleSave = async () => {
   </div>
 </template>
 
-<style src="./student-portal-modal.css"></style>
+<style>
+@import './student-portal-modal.css';
+@import './student-portal.css';
+</style>
 

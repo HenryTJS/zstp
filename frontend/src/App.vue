@@ -1,9 +1,10 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { useRouter, useRoute, isNavigationFailure, NavigationFailureType } from 'vue-router'
+import { computed, provide, ref, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import DiscussionNotificationBell from './components/DiscussionNotificationBell.vue'
 import AdminPermissionRequestBell from './components/AdminPermissionRequestBell.vue'
 import { listCourseCatalog, listTeachersForCourses } from './api/client'
+import { appShellKey } from './appShell'
 
 const router = useRouter()
 const route = useRoute()
@@ -53,28 +54,30 @@ const handleLoginSuccess = (user) => {
   currentUser.value = user
   localStorage.setItem('currentUser', JSON.stringify(user))
   if (user.role === 'student') {
-    router.push('/student')
+    router.push('/student/home')
   } else if (user.role === 'teacher') {
-    router.push('/teacher')
+    router.push('/teacher/profile')
   } else if (user.role === 'admin') {
-    router.push('/admin')
+    router.push('/admin/profile')
   } else {
     router.push('/')
   }
 }
 
-const handleLogout = async () => {
-  // 先离开受保护路由再清登录态，避免 StudentPortal 等仍在 /student 时收到 currentUser=null（required prop）导致渲染异常、视图卡在个人中心
+const handleLogout = () => {
   try {
-    await router.replace({ path: '/login' })
-  } catch (e) {
-    if (!isNavigationFailure(e, NavigationFailureType.duplicated)) {
-      window.location.assign('/login')
-      return
-    }
+    localStorage.removeItem('currentUser')
+  } catch {
+    /* ignore */
   }
-  localStorage.removeItem('currentUser')
   currentUser.value = null
+  // 整页进入登录页：避免 SPA 内 router-view 与地址栏偶发不同步（地址已是 /login 仍显示门户）
+  try {
+    const { href } = router.resolve({ path: '/login' })
+    window.location.assign(href)
+  } catch {
+    window.location.assign('/login')
+  }
 }
 
 const handleUpdateUser = (patch) => {
@@ -84,6 +87,12 @@ const handleUpdateUser = (patch) => {
     localStorage.setItem('currentUser', JSON.stringify(currentUser.value))
   } catch (e) {}
 }
+
+provide(appShellKey, {
+  loginSuccess: handleLoginSuccess,
+  logout: handleLogout,
+  updateUser: handleUpdateUser
+})
 
 const navCourseSearch = ref('')
 const navCourseCatalog = ref([])
@@ -181,6 +190,30 @@ const teachersTextForCourse = (courseName) => {
   return list.map((t) => String(t?.username || '').trim()).filter(Boolean).join('、') || '暂无授课教师信息'
 }
 
+/** 从 path 取首段，避免可选动态参数 /:page? 在部分环境下 params 为空导致导航高亮与内容错位 */
+const pathSegmentAfterPrefix = (fullPath, prefix) => {
+  const p = String(fullPath || '')
+  if (!p.startsWith(prefix)) return ''
+  let rest = p.slice(prefix.length)
+  if (rest.startsWith('/')) rest = rest.slice(1)
+  return (rest.split('/')[0] || '').trim()
+}
+
+const studentNavSegment = computed(() => {
+  if (!isStudentUser.value || !isOnStudentRoute.value) return ''
+  return pathSegmentAfterPrefix(route.path, '/student') || 'home'
+})
+
+const teacherNavSegment = computed(() => {
+  if (!isTeacherUser.value || !isOnTeacherRoute.value) return ''
+  return pathSegmentAfterPrefix(route.path, '/teacher') || 'profile'
+})
+
+const adminNavSegment = computed(() => {
+  if (!isAdminUser.value || !isOnAdminRoute.value) return ''
+  return pathSegmentAfterPrefix(route.path, '/admin') || 'profile'
+})
+
 </script>
 
 <template>
@@ -204,9 +237,10 @@ const teachersTextForCourse = (courseName) => {
             <button
               v-for="page in studentPageList"
               :key="page.key"
+              type="button"
               class="nav-btn section-nav-btn"
-              :class="{ active: route.params.page === page.key || (!route.params.page && page.key === 'home') }"
-              @click="() => router.push(`/student/${page.key}`)">
+              :class="{ active: studentNavSegment === page.key }"
+              @click="() => { navCourseSearch = ''; router.push(`/student/${page.key}`) }">
               {{ page.label }}
             </button>
           </nav>
@@ -215,9 +249,10 @@ const teachersTextForCourse = (courseName) => {
             <button
               v-for="page in teacherPageList"
               :key="page.key"
+              type="button"
               class="nav-btn section-nav-btn"
-              :class="{ active: (route.params.page === page.key) || (!route.params.page && page.key === 'profile') }"
-              @click="() => router.push(`/teacher/${page.key}`)">
+              :class="{ active: teacherNavSegment === page.key }"
+              @click="() => { navCourseSearch = ''; router.push(`/teacher/${page.key}`) }">
               {{ page.label }}
             </button>
           </nav>
@@ -234,8 +269,9 @@ const teachersTextForCourse = (courseName) => {
             <button
               v-for="page in adminPageList"
               :key="page.key"
+              type="button"
               class="nav-btn section-nav-btn"
-              :class="{ active: (route.params.page === page.key) || (!route.params.page && page.key === 'profile') }"
+              :class="{ active: adminNavSegment === page.key }"
               @click="() => router.push(`/admin/${page.key}`)">
               {{ page.label }}
             </button>
@@ -264,9 +300,9 @@ const teachersTextForCourse = (courseName) => {
             <button
               class="nav-btn"
               @click="() => router.push(
-                currentUser.role === 'student' ? '/student'
-                  : currentUser.role === 'teacher' ? '/teacher'
-                    : currentUser.role === 'admin' ? '/admin' : '/'
+                currentUser.role === 'student' ? '/student/home'
+                  : currentUser.role === 'teacher' ? '/teacher/profile'
+                    : currentUser.role === 'admin' ? '/admin/profile' : '/'
               )"
             >
               {{ currentRoleLabel }}主页
@@ -278,15 +314,8 @@ const teachersTextForCourse = (courseName) => {
 
     <div class="app-shell">
       <main class="panel-wrap app-main-with-search">
-        <router-view v-slot="{ Component }">
-          <component
-            :is="Component"
-            :key="route.fullPath"
-            @login-success="handleLoginSuccess"
-            @logout="handleLogout"
-            @update-user="handleUpdateUser"
-          />
-        </router-view>
+        <!-- 登录/登出/改资料由 appShellKey provide 注入子组件；勿再用插槽包一层 component+v-bind，以免 activePage 错乱 -->
+        <router-view />
         <div
           v-if="showSearchResultsOnly"
           class="nav-search-overlay"

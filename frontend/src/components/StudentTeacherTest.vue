@@ -34,29 +34,19 @@ const goCourses = () => {
 <template>
   <section class="panel-stack">
     <article v-if="!canStudyCurrentCourse" class="result-card">
-      <h3>暂不可学习</h3>
-      <p class="panel-subtitle">
-        请先在「课程广场」对某门已加入的课程点击「进入课程」，再进行教师测试（与个人中心「统计课程」无关）。
-      </p>
+      <h3 class="portal-section-title portal-section-title--rose">暂不可学习</h3>
       <button type="button" class="match-button" @click="goCourses">去课程广场</button>
     </article>
 
     <template v-else>
       <article class="result-card">
-        <h3>教师发布测试</h3>
-        <p class="panel-subtitle ui-mt-6">
-          当前知识点：<strong>{{ selectedKnowledgePoint || '-' }}</strong>
-        </p>
+        <h3 class="portal-section-title portal-section-title--cyan">教师发布测试</h3>
         <p v-if="teacherKpTestLoading" class="panel-subtitle">加载中…</p>
         <p v-else-if="teacherKpTestError" class="error-text">{{ teacherKpTestError }}</p>
 
         <template v-else-if="teacherKpTest && teacherKpTest.questions?.length">
-          <p class="panel-subtitle" style="margin-top: 6px">
-            题型为单选题与填空题。
-          </p>
-
           <template v-if="!teacherKpTestSubmitted">
-            <h3 style="margin-top: 10px">{{ teacherKpTest.title }}</h3>
+            <h3 class="portal-section-title portal-section-title--violet" style="margin-top: 10px">{{ teacherKpTest.title }}</h3>
             <div v-for="(q, idx) in teacherKpTest.questions" :key="'tk-' + idx" class="ui-mt-14">
               <h4>第 {{ idx + 1 }} 题（{{ q.question_type }} · {{ q.fullScore ?? 5 }} 分）</h4>
               <p v-if="q.focusPointName" class="panel-subtitle">考查知识点：{{ q.focusPointName }}</p>
@@ -112,12 +102,12 @@ const goCourses = () => {
             </div>
           </template>
         </template>
-
-        <p v-else class="panel-subtitle ui-mt-12">该知识点暂无教师发布测试。</p>
       </article>
     </template>
   </section>
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>
 

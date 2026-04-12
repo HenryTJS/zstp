@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, reactive } from 'vue'
 
 const props = defineProps({
   joinedCourses: { type: Array, required: true },
@@ -22,6 +22,12 @@ const teachersLine = (courseName) => {
 }
 
 const emit = defineEmits(['open-detail'])
+
+const coverFailed = reactive({})
+const onCardCoverError = (courseName) => {
+  const k = String(courseName || '').trim()
+  if (k) coverFailed[k] = true
+}
 
 const onCardClick = (courseName) => {
   if (!props.stateHydrated) return
@@ -47,7 +53,7 @@ const progressFor = (courseName) => {
     <article class="result-card">
       <div class="course-market-head">
         <div>
-          <h3>我的课程</h3>
+          <h3 class="portal-section-title portal-section-title--sky">我的课程</h3>
         </div>
       </div>
 
@@ -64,7 +70,20 @@ const progressFor = (courseName) => {
           @keydown.space.prevent="onCardClick(course.courseName)"
         >
           <div class="course-market-card-body">
-            <img :src="course.coverUrl" alt="" class="my-course-cover" />
+            <img
+              v-if="course.coverUrl && !coverFailed[course.courseName]"
+              :src="course.coverUrl"
+              alt=""
+              class="my-course-cover"
+              @error="onCardCoverError(course.courseName)"
+            />
+            <div
+              v-else
+              class="my-course-cover my-course-cover--placeholder"
+              :aria-label="`${course.courseName} 封面`"
+            >
+              <span>{{ course.courseName }}</span>
+            </div>
             <h4 class="my-course-title ui-mt-8">{{ course.courseName }}</h4>
             <p class="my-course-teachers">
               <template v-if="teachersLoading">加载中…</template><template v-else>{{ teachersLine(course.courseName) }}</template>
@@ -95,12 +114,13 @@ const progressFor = (courseName) => {
           </div>
         </article>
       </div>
-      <p v-else class="panel-subtitle ui-mt-12">当前没有已加入课程，请在导航栏搜索课程并进入详情页加入。</p>
     </article>
   </section>
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>
 <style scoped>
 .my-course-cover{
   width:100%;
@@ -108,6 +128,19 @@ const progressFor = (courseName) => {
   object-fit:cover;
   border-radius:10px;
   border:1px solid var(--ui-card-border);
+}
+.my-course-cover--placeholder{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:10px;
+  box-sizing:border-box;
+  background:linear-gradient(145deg,#eef2ff 0%,#e0e7ff 55%,#dbeafe 100%);
+  color:#3730a3;
+  font-weight:700;
+  font-size:14px;
+  line-height:1.35;
 }
 .my-course-title{
   margin-bottom:4px;

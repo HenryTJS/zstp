@@ -103,7 +103,7 @@ const send = async () => {
   <div v-if="visible" class="ai-mask" @click.self="visible = false">
     <div class="ai-modal">
       <div class="ai-head">
-        <h3>AI 智能体</h3>
+        <h3 class="portal-section-title portal-section-title--violet ai-widget-head-title">AI 智能体</h3>
         <button type="button" class="ai-close" @click="visible = false">×</button>
       </div>
       <div class="ai-list">
@@ -177,6 +177,14 @@ const send = async () => {
 
 .ai-head h3 {
   margin: 0;
+}
+
+.ai-widget-head-title {
+  margin: 0 !important;
+  padding: 8px 12px 8px 14px !important;
+  font-size: 1.05rem !important;
+  flex: 1;
+  min-width: 0;
 }
 
 .ai-close {
@@ -271,4 +279,7 @@ const send = async () => {
   color: #2563eb;
   text-decoration: underline;
 }
+</style>
+<style>
+@import './student-portal.css';
 </style>

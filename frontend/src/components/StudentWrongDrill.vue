@@ -60,10 +60,7 @@ const validateAndSubmit = () => {
 
 <template>
   <article v-if="session && session.items?.length" class="result-card wrong-drill-card">
-    <h3>错题巩固测试</h3>
-    <p class="panel-subtitle">
-      课程：<strong>{{ session.course }}</strong> · 本次共 <strong>{{ session.items.length }}</strong> 题（随机抽取，同一课程每次最多 5 题且不重复）
-    </p>
+    <h3 class="portal-section-title portal-section-title--orange">错题巩固测试</h3>
     <p v-if="error" class="error-text">{{ error }}</p>
     <p v-else-if="formHint" class="error-text">{{ formHint }}</p>
 

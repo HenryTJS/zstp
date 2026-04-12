@@ -19,4 +19,6 @@ defineExpose({
   />
 </template>
 
-<style src="./teacher-portal.css"></style>
+<style>
+@import './teacher-portal.css';
+</style>

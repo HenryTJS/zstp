@@ -178,7 +178,7 @@ const onDeletePost = async (postId) => {
 
 <template>
   <div class="kp-discussion-wrap" :class="{ 'kp-discussion-wrap--embedded': embedded }">
-    <h3 v-if="!hideTitle">交流区</h3>
+    <h3 v-if="!hideTitle" class="portal-section-title portal-section-title--emerald">交流区</h3>
     <p v-if="disabled" class="panel-subtitle kp-disc-hint">当前为浏览模式，加入课程后可参与讨论。</p>
     <p v-if="error" class="error-text kp-disc-hint">{{ error }}</p>
     <div v-if="!disabled && currentUserId" class="kp-disc-composer">
@@ -368,4 +368,7 @@ const onDeletePost = async (postId) => {
     box-shadow: none;
   }
 }
+</style>
+<style>
+@import './student-portal.css';
 </style>

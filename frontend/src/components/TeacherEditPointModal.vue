@@ -16,7 +16,7 @@ const emit = defineEmits(['close', 'save'])
     <div class="modal-wrapper">
       <div class="modal-container">
         <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
-        <h3>{{ editingPoint ? '编辑知识点' : '新增知识点' }}</h3>
+        <h3 class="portal-section-title portal-section-title--violet">{{ editingPoint ? '编辑知识点' : '新增知识点' }}</h3>
         <div class="grid-form single-col">
           <label>
             知识点名称
@@ -54,4 +54,6 @@ const emit = defineEmits(['close', 'save'])
   </div>
 </template>
 
-<style src="./teacher-portal.css"></style>
+<style>
+@import './teacher-portal.css';
+</style>

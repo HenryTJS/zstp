@@ -13,7 +13,7 @@ const emit = defineEmits(['close', 'delete-material'])
     <div class="modal-wrapper">
       <div class="modal-container">
         <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
-        <h3>已上传资料 - {{ pointName }}</h3>
+        <h3 class="portal-section-title portal-section-title--emerald">已上传资料 - {{ pointName }}</h3>
         <div v-if="!materials.length" class="panel-subtitle">暂无资料。</div>
         <table v-else class="data-table">
           <thead>
@@ -44,4 +44,6 @@ const emit = defineEmits(['close', 'delete-material'])
   </div>
 </template>
 
-<style src="./teacher-portal.css"></style>
+<style>
+@import './teacher-portal.css';
+</style>

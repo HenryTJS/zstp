@@ -108,23 +108,8 @@ public class CourseController {
         CourseCatalogEntry e = courseCatalogService.findEntryByCourseName(courseName).orElse(null);
         if (e == null) return error(HttpStatus.NOT_FOUND, "course not found");
         User user = userId == null ? null : userRepository.findById(userId).orElse(null);
-        boolean hasAccess = false;
-        boolean canEditMeta = false;
-        if (user != null) {
-            String role = safe(user.getRole());
-            if ("admin".equalsIgnoreCase(role)) {
-                hasAccess = true;
-                canEditMeta = true;
-            } else if ("teacher".equalsIgnoreCase(role)) {
-                hasAccess = teacherCoursePermissionRepository.existsByTeacherIdAndCourseNameIgnoreCase(user.getId(), e.getCourseName());
-                canEditMeta = hasAccess;
-            } else if ("student".equalsIgnoreCase(role)) {
-                hasAccess = loadStudentJoinedCourses(user.getId()).contains(safe(e.getCourseName()));
-            }
-        }
         Map<String, Object> out = toCatalogMap(e);
-        out.put("hasAccess", hasAccess);
-        out.put("canEditMeta", canEditMeta);
+        putDetailAccessFlags(out, user, e);
         return ResponseEntity.ok(out);
     }
 
@@ -148,7 +133,9 @@ public class CourseController {
         } catch (IllegalArgumentException ex) {
             return error(HttpStatus.NOT_FOUND, ex.getMessage());
         }
-        return ResponseEntity.ok(toCatalogMap(saved));
+        Map<String, Object> out = toCatalogMap(saved);
+        putDetailAccessFlags(out, user, saved);
+        return ResponseEntity.ok(out);
     }
 
     @PostMapping("/courses/cover/upload")
@@ -248,6 +235,28 @@ public class CourseController {
 
     private ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
         return ResponseEntity.status(Objects.requireNonNull(status)).body(Map.of("message", message));
+    }
+
+    /**
+     * 与 {@link #courseDetail} 一致：详情/保存课程元数据后前端依赖 hasAccess、canEditMeta 控制按钮。
+     */
+    private void putDetailAccessFlags(Map<String, Object> out, User user, CourseCatalogEntry e) {
+        boolean hasAccess = false;
+        boolean canEditMeta = false;
+        if (user != null && e != null) {
+            String role = safe(user.getRole());
+            if ("admin".equalsIgnoreCase(role)) {
+                hasAccess = true;
+                canEditMeta = true;
+            } else if ("teacher".equalsIgnoreCase(role)) {
+                hasAccess = teacherCoursePermissionRepository.existsByTeacherIdAndCourseNameIgnoreCase(user.getId(), e.getCourseName());
+                canEditMeta = hasAccess;
+            } else if ("student".equalsIgnoreCase(role)) {
+                hasAccess = loadStudentJoinedCourses(user.getId()).contains(safe(e.getCourseName()));
+            }
+        }
+        out.put("hasAccess", hasAccess);
+        out.put("canEditMeta", canEditMeta);
     }
 
     private Map<String, Object> toCatalogMap(CourseCatalogEntry e) {

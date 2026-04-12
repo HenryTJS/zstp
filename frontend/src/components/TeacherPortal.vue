@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import colleges from '../data/colleges.json'
 import {
@@ -20,6 +20,7 @@ import {
   createTeacherCoursePermissionRequest,
   countPublishedTestsByTeacherCourses
 } from '../api/client'
+import { appShellKey } from '../appShell'
 import { deleteKnowledgePoint, updateKnowledgePoint, deleteMaterial } from '../api/point-material-ops'
 import AiAssistantWidget from './AiAssistantWidget.vue'
 import TeacherCourses from './TeacherCourses.vue'
@@ -36,6 +37,7 @@ import KnowledgePointDiscussion from './KnowledgePointDiscussion.vue'
 import TeacherPointTestModal from './TeacherPointTestModal.vue'
 import TeacherStudentAnalytics from './TeacherStudentAnalytics.vue'
 import TeacherCourseProgress from './TeacherCourseProgress.vue'
+import TeacherCourseDashboard from './TeacherCourseDashboard.vue'
 
 const props = defineProps({
   currentUser: {
@@ -48,14 +50,36 @@ const props = defineProps({
   }
 })
 const emit = defineEmits(['logout', 'update-user', 'login-success'])
+const shell = inject(appShellKey, null)
+const relayLogout = () => {
+  if (typeof shell?.logout === 'function') void shell.logout()
+  else emit('logout')
+}
+const relayUpdateUser = (patch) => {
+  if (typeof shell?.updateUser === 'function') shell.updateUser(patch)
+  else emit('update-user', patch)
+}
 const route = useRoute()
 const router = useRouter()
-// 当前激活子页，优先使用路由 param，再使用 props 作为回退
-const currentPage = ref(route.params.page || props.activePage || 'profile')
-// 同步路由 param 到本地 ref
-watch(() => route.params.page, (v) => {
-  currentPage.value = v || props.activePage || 'profile'
+
+const teacherPathSegment = computed(() => {
+  const p = route.path
+  if (!p.startsWith('/teacher')) return 'profile'
+  let rest = p.slice('/teacher'.length)
+  if (rest.startsWith('/')) rest = rest.slice(1)
+  const seg = (rest.split('/')[0] || '').trim()
+  return seg || 'profile'
 })
+
+// 当前激活子页：与 path 首段一致，避免 /teacher/:page? 下 params 异常
+const currentPage = ref(teacherPathSegment.value || props.activePage || 'profile')
+watch(
+  () => teacherPathSegment.value,
+  (v) => {
+    currentPage.value = v || props.activePage || 'profile'
+  },
+  { immediate: true }
+)
 
 // 数据
 const materials = ref([])
@@ -421,6 +445,7 @@ const loadCourseDetail = async (courseName) => {
   } catch (e) {
     courseDetailError.value = e?.response?.data?.message || '加载课程详情失败'
     courseDetail.value = null
+    courseMetaForm.value = { coverUrl: '', summary: '', syllabus: '' }
   } finally {
     courseDetailLoading.value = false
   }
@@ -438,7 +463,8 @@ const saveCourseMeta = async () => {
       summary: courseMetaForm.value.summary,
       syllabus: courseMetaForm.value.syllabus
     })
-    courseDetail.value = data || courseDetail.value
+    // 合并而非整体替换：旧版后端 PUT /courses/meta 曾不返回 hasAccess/canEditMeta，会导致误判为「申请权限」
+    courseDetail.value = { ...(courseDetail.value || {}), ...(data || {}) }
     await loadMyCourseCatalog()
   } catch (e) {
     courseDetailError.value = e?.response?.data?.message || '保存失败'
@@ -481,7 +507,8 @@ watch(
     }
     if (v === 'course-detail') {
       const c = Array.isArray(route.query.course) ? route.query.course[0] : route.query.course
-      void loadCourseDetail(c)
+      const cn = String(c || '').trim()
+      if (cn) void loadCourseDetail(cn)
     }
   },
   { immediate: false }
@@ -528,6 +555,8 @@ const submitPermissionRequest = async () => {
     })
     permissionRequestDialogVisible.value = false
     await loadTeacherCoursePermissionRequests()
+    await refreshTeacherCoursePermissionsIfNeeded(true)
+    await loadMyCourseCatalog()
   } catch (e) {
     permissionRequestError.value = e?.response?.data?.message || e?.message || '提交申请失败。'
   } finally {
@@ -535,13 +564,21 @@ const submitPermissionRequest = async () => {
   }
 }
 
-const enterCourseFromMarket = (courseName) => {
+const enterCourseFromMarket = async (courseName) => {
   const cn = String(courseName || '').trim()
   if (!cn) return
-  if (!Array.isArray(catalogCourses.value) || !catalogCourses.value.includes(cn)) return
+  courseDetailError.value = ''
+  if (!teacherHasCoursePermission(cn)) {
+      await refreshTeacherCoursePermissionsIfNeeded(true)
+      await loadMyCourseCatalog()
+      if (!teacherHasCoursePermission(cn)) {
+        courseDetailError.value = '当前账号暂无该课程授课权限，请稍后再试或联系管理员。'
+        return
+      }
+    }
   if (selectedCourse.value === cn) {
     // 已进入该课程：允许“再次点击”但不重复切换与刷新
-    router.push({ path: '/teacher/manage', query: { course: cn } })
+    await router.push({ path: '/teacher/manage', query: { course: cn } })
     return
   }
 
@@ -555,7 +592,7 @@ const enterCourseFromMarket = (courseName) => {
 
   // 携带显式 course 参数，并清空可能残留的讨论深链参数（dc/dp/dpost）
   // 避免知识点页被 deepLink 覆盖课程（造成“点A跳B”的偶发情况）
-  router.push({ path: '/teacher/manage', query: { course: cn } })
+  await router.push({ path: '/teacher/manage', query: { course: cn } })
 }
 
 const openCourseDetailFromMarket = async (courseName) => {
@@ -581,6 +618,7 @@ const quitCourseFromMarket = (courseName) => {
   } catch (e) {}
 
   // 清空可能残留的讨论深链参数（dc/dp/dpost）
+  void loadMyCourseCatalog()
   router.push({ path: '/teacher/courses', query: {} })
 }
 
@@ -778,6 +816,16 @@ const loadBaseData = async () => {
 }
 
 const normCourse = (x) => String(x || '').trim()
+
+/** 是否具备该课的授课权限：与 /teacher-course-permissions 或课程广场 hasAccess 列表一致即可进入管理页 */
+const teacherHasCoursePermission = (rawName) => {
+  const cn = normCourse(rawName)
+  if (!cn) return false
+  const opts = Array.isArray(catalogCourses.value) ? catalogCourses.value : []
+  if (opts.includes(cn)) return true
+  const cat = Array.isArray(myCourseCatalog.value) ? myCourseCatalog.value : []
+  return cat.some((row) => normCourse(row?.courseName) === cn)
+}
 const authorizedCourseCount = computed(() => {
   const set = new Set((Array.isArray(courseOptions.value) ? courseOptions.value : []).map(normCourse).filter(Boolean))
   return set.size
@@ -859,7 +907,8 @@ const openUploadModal = (point) => {
   uploadForm.value.files = []
   uploadForm.value.category = uploadForm.value.category || 'ATTACHMENT'
   uploadForm.value.point = point.pointName || point
-  uploadForm.value.course = point.courseName || point.course || point.courseName
+  uploadForm.value.course =
+    point.courseName || point.course || selectedCourse.value || pointForm.value.courseName || ''
   uploadDialogVisible.value = true
 }
 
@@ -902,6 +951,8 @@ const submitMaterial = async () => {
       return
     }
     const category = String(uploadForm.value.category || 'ATTACHMENT').toUpperCase()
+    const refreshPoint = String(uploadForm.value.point || '').trim()
+
     for (const file of uploadForm.value.files) {
       const lowerName = String(file?.name || '').toLowerCase()
       if (category === 'DOCUMENT' && !lowerName.endsWith('.pdf')) {
@@ -929,8 +980,8 @@ const submitMaterial = async () => {
     uploadForm.value.description = ''
     uploadForm.value.files = []
     await loadBaseData()
-    // 刷新当前知识点下的资料（后端会包含下级）
-    if (uploadForm.value.point) await loadMaterialsByKnowledgePoint(uploadForm.value.point)
+    // 刷新当前知识点下的资料（须在清空 uploadForm 之前保存 point/course）
+    if (refreshPoint) await loadMaterialsByKnowledgePoint(refreshPoint)
     message.value = '资料上传成功。'
     // 关闭上传弹窗
     uploadDialogVisible.value = false
@@ -1343,7 +1394,7 @@ const handleSaveProfile = async () => {
     try {
       localStorage.setItem('currentUser', JSON.stringify(enrichedUser))
     } catch (e) {}
-    emit('update-user', {
+    relayUpdateUser({
       username: enrichedUser.username,
       email: enrichedUser.email,
       college: enrichedUser.college,
@@ -1361,7 +1412,7 @@ const handleSaveProfile = async () => {
     try {
       localStorage.setItem('currentUser', JSON.stringify(fallbackUser))
     } catch (e) {}
-    emit('update-user', {
+    relayUpdateUser({
       username: fallbackUser.username,
       email: fallbackUser.email,
       college: fallbackUser.college,
@@ -1399,9 +1450,10 @@ onMounted(async () => {
     // 初始化：拉取管理员分配给当前教师的可见课程
     await refreshTeacherCoursePermissionsIfNeeded(true)
 
-    // 若从课程广场显式携带了 course 参数，则以该参数为准；
-    // 同时清空讨论深链参数，避免后续 deepLink 抢占 selectedCourse。
+    // 若从其它入口显式携带了 course 参数，则同步到「已进入课程」状态（用于资料/知识点页）。
+    // 注意：在「课程详情」子页必须保留 URL 中的 course，否则 loadCourseDetail 拿不到课名会误判为无权限（一直显示申请权限）。
     const incomingCourse = route.query.course ? String(route.query.course).trim() : ''
+    const onCourseDetailPage = currentPage.value === 'course-detail'
     if (incomingCourse) {
       const opts = Array.isArray(catalogCourses.value) ? catalogCourses.value : []
       if (opts.includes(incomingCourse)) {
@@ -1411,17 +1463,31 @@ onMounted(async () => {
         pointForm.value.courseName = incomingCourse
         suppressCourseWatch.value = false
       }
-      // 清理深链参数，避免组件挂载后被 deepLink 覆盖
+      // 清理讨论深链参数；课程详情页不要去掉 course 查询参数
       try {
         const nextQ = { ...route.query }
-        delete nextQ.course
+        if (!onCourseDetailPage) {
+          delete nextQ.course
+        }
         delete nextQ.dc
         delete nextQ.dp
         delete nextQ.dpost
-        await router.replace({ path: route.path, query: nextQ })
+        const same =
+          String(route.query.course || '') === String(nextQ.course || '') &&
+          String(route.query.dc || '') === String(nextQ.dc || '') &&
+          String(route.query.dp || '') === String(nextQ.dp || '') &&
+          String(route.query.dpost || '') === String(nextQ.dpost || '')
+        if (!same) {
+          await router.replace({ path: route.path, query: nextQ })
+        }
       } catch (e) {
         // ignore
       }
+    }
+
+    // 直接进入/刷新「课程详情」时，watch 无 immediate，需主动拉详情（用 incomingCourse，避免 replace 后 route 尚未同步）
+    if (onCourseDetailPage && incomingCourse) {
+      await loadCourseDetail(incomingCourse)
     }
 
     await loadKnowledgePointData()
@@ -1453,8 +1519,12 @@ watch(
   () => route.query.course,
   (c) => {
     if (currentPage.value !== 'course-detail') return
-    const cn = Array.isArray(c) ? c[0] : c
-    void loadCourseDetail(cn)
+    const cn = String(Array.isArray(c) ? c[0] : c || '').trim()
+    if (cn) void loadCourseDetail(cn)
+    else {
+      courseDetail.value = null
+      courseDetailError.value = ''
+    }
   }
 )
 </script>
@@ -1480,7 +1550,7 @@ watch(
 
       <div class="profile-grid">
         <article class="result-card profile-overview-card">
-          <h3>教学统计</h3>
+          <h3 class="portal-section-title">教学统计</h3>
           <div class="profile-stat-list">
             <div>
               <span>已授权课程</span>
@@ -1498,7 +1568,7 @@ watch(
         </article>
 
         <article class="result-card profile-detail-card">
-          <h3>资料设置</h3>
+          <h3 class="portal-section-title portal-section-title--teal">资料设置</h3>
           <div class="grid-form">
               <label>
                 用户名
@@ -1521,7 +1591,7 @@ watch(
             <button type="button" class="nav-btn" @click="openEditProfile">编辑资料</button>
             <button type="button" class="nav-btn" @click="openPasswordPage">修改密码</button>
             
-            <button type="button" class="danger-btn profile-logout-btn" @click="emit('logout')">退出登录</button>
+            <button type="button" class="danger-btn profile-logout-btn" @click="relayLogout">退出登录</button>
           </div>
           <p v-if="profileMessage" class="ok-text">{{ profileMessage }}</p>
         </article>
@@ -1532,10 +1602,12 @@ watch(
         <TeacherCourses
           :my-course-catalog="myCourseCatalog"
           :pending-permission-requests="pendingTeacherCoursePermissionRequestsList"
+          :permission-requests-error="teacherPermissionRequestsError"
           :course-init-done="courseInitDone"
           :teachers-by-course="teachersByCourse"
           :teachers-loading="teachersByCourseLoading"
           @enter-course="openCourseDetailFromMarket"
+          @apply-new-course="openNewCoursePermissionRequest"
         />
       </template>
 
@@ -1551,7 +1623,7 @@ watch(
           :is-submitting="courseMetaSaving"
           :edit-form="courseMetaForm"
           @update:edit-form="(v) => (courseMetaForm = v)"
-          @enter="() => { if (courseDetail?.courseName) enterCourseFromMarket(courseDetail.courseName) }"
+          @enter="() => { if (courseDetail?.courseName) void enterCourseFromMarket(courseDetail.courseName) }"
           @quit="() => { if (courseDetail?.courseName) quitCourseFromMarket(courseDetail.courseName) }"
           @apply="() => openPermissionRequest(courseDetail?.courseName)"
           @join="() => null"
@@ -1561,7 +1633,17 @@ watch(
       </template>
 
       <template v-else-if="currentPage === 'manage'">
+        <div id="teacher-course-dashboard-panel">
+          <TeacherCourseDashboard
+            :current-user="currentUser"
+            :selected-course="selectedCourse"
+            :points="points"
+            :material-count="materials.length"
+          />
+        </div>
+
         <TeacherKnowledge
+          class="ui-mt-12"
           :points="points"
           :selected-point-ids="selectedPointIds"
           :point-message="pointMessage"
@@ -1671,7 +1753,7 @@ watch(
       <div class="modal-wrapper" style="max-width: 760px; width: 94vw">
         <div class="modal-container" style="max-height: 88vh; overflow: auto">
           <button class="modal-close" type="button" aria-label="关闭" @click="closeDiscussionPoint">×</button>
-          <h3>知识点交流区 — {{ discussionTarget.pointName }}</h3>
+          <h3 class="portal-section-title portal-section-title--sky">知识点交流区 — {{ discussionTarget.pointName }}</h3>
           <p class="panel-subtitle" style="margin-top: 4px">课程：{{ discussionTarget.courseName }}</p>
           <KnowledgePointDiscussion
             :course-name="discussionTarget.courseName"
@@ -1688,4 +1770,6 @@ watch(
     <AiAssistantWidget role="teacher" :current-user="currentUser" />
 </template>
 
-<style src="./teacher-portal.css"></style>
+<style>
+@import './teacher-portal.css';
+</style>

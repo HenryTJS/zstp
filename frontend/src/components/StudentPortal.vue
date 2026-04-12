@@ -38,6 +38,15 @@ const props = defineProps({
 })
 // App.vue 会把 loginSuccess 监听透传到 router-view 下的组件；这里声明以消除 Vue 警告
 const emit = defineEmits(['navigate', 'logout', 'update-user', 'loginSuccess'])
+const shell = inject(appShellKey, null)
+const relayLogout = () => {
+  if (typeof shell?.logout === 'function') void shell.logout()
+  else emit('logout')
+}
+const relayUpdateUser = (patch) => {
+  if (typeof shell?.updateUser === 'function') shell.updateUser(patch)
+  else emit('update-user', patch)
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -65,8 +74,19 @@ const normalizeStudentPage = (p) => {
   return allowed.has(raw) ? raw : 'home'
 }
 const currentPage = ref(normalizeStudentPage(props.activePage || 'home'))
+
+/** 与顶栏一致：用 path 首段判断当前页，避免 /student/:page? 下 params 偶发为空 */
+const studentPathSegment = computed(() => {
+  const p = route.path
+  if (!p.startsWith('/student')) return 'home'
+  let rest = p.slice('/student'.length)
+  if (rest.startsWith('/')) rest = rest.slice(1)
+  const seg = (rest.split('/')[0] || '').trim()
+  return seg || 'home'
+})
+
 const effectivePage = computed(() =>
-  normalizeStudentPage(route.params.page || props.activePage || currentPage.value || 'home')
+  normalizeStudentPage(studentPathSegment.value || props.activePage || currentPage.value || 'home')
 )
 
 // 监听外部 activePage prop，驱动内部 currentPage 切换
@@ -80,9 +100,9 @@ watch(
   }
 )
 
-// 以路由为准兜底：避免 props 同步不到导致页面空白
+// 以 path 为准同步 currentPage，与 App.vue 顶栏高亮一致
 watch(
-  () => route.params.page,
+  () => studentPathSegment.value,
   (val) => {
     const next = normalizeStudentPage(val || 'home')
     if (next !== currentPage.value) {
@@ -113,7 +133,7 @@ const relevanceLabel = computed(() => {
   return ''
 })
 import * as echarts from 'echarts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AiAssistantWidget from './AiAssistantWidget.vue'
 import {
@@ -142,6 +162,7 @@ const courseProgress = ref(null) // { total, completed, percent }
 const selectedKnowledgePoint = ref('')
 
 import { http } from '../api/client'
+import { appShellKey } from '../appShell'
 const joinedCourses = ref([])
 const myCourseCatalog = ref([])
 const courseDetail = ref(null)
@@ -842,12 +863,18 @@ const joinCourse = async (courseName) => {
   selectedCourse.value = course
   // 立即落库，避免防抖窗口内退出登录导致未保存
   await persistStudentState(false)
+  await loadMyCourseCatalog()
 }
 
 /** 已加入：从广场进入学习上下文并打开知识图谱（与个人中心「统计课程」无关） */
 const enterCourseFromMarket = async (courseName) => {
   const course = String(courseName || '').trim()
-  if (!course || !joinedCourses.value.includes(course)) return
+  if (!course) return
+  if (!joinedCourses.value.includes(course)) {
+    courseDetailError.value = '请先加入该课程，或刷新页面后重试。'
+    return
+  }
+  courseDetailError.value = ''
   previewUnjoinedCourse.value = ''
   learningContextCourse.value = course
   selectedCourse.value = course
@@ -1459,7 +1486,7 @@ const handleSaveProfile = async () => {
       : { ...props.currentUser, username: profileForm.value.username, email: profileForm.value.email }
     try { localStorage.setItem('currentUser', JSON.stringify(updatedUser)) } catch (e) {}
     // 向父组件传递最新用户信息以便上层刷新
-    emit('update-user', {
+    relayUpdateUser({
       username: updatedUser.username,
       email: updatedUser.email,
       ...(updatedUser.workId !== undefined && updatedUser.workId !== null ? { workId: updatedUser.workId } : {})
@@ -1471,7 +1498,7 @@ const handleSaveProfile = async () => {
     // 即使后端同步失败，也更新 localStorage 显示最新输入，避免用户界面和输入不一致
     const fallbackUser = { ...props.currentUser, username: profileForm.value.username, email: profileForm.value.email }
     try { localStorage.setItem('currentUser', JSON.stringify(fallbackUser)) } catch (e) {}
-    emit('update-user', {
+    relayUpdateUser({
       username: profileForm.value.username,
       email: profileForm.value.email,
       ...(props.currentUser.workId ? { workId: props.currentUser.workId } : {})
@@ -1570,7 +1597,12 @@ watch(
     if (!stateHydrated.value) return
     if (effectivePage.value === 'course-detail') {
       const c = Array.isArray(route.query.course) ? route.query.course[0] : route.query.course
-      void loadCourseDetail(c)
+      const cn = String(c || '').trim()
+      if (cn) void loadCourseDetail(cn)
+      else {
+        courseDetail.value = null
+        courseDetailError.value = ''
+      }
       return
     }
     void applyCourseQueryFromRoute()
@@ -1584,7 +1616,8 @@ onMounted(async () => {
   const isDetailPage = effectivePage.value === 'course-detail'
   if (isDetailPage && hadCourseQuery) {
     const c = Array.isArray(route.query.course) ? route.query.course[0] : route.query.course
-    await loadCourseDetail(c)
+    const cn = String(c || '').trim()
+    if (cn) await loadCourseDetail(cn)
   }
   const appliedCourseQuery = (!isDetailPage && hadCourseQuery) ? await applyCourseQueryFromRoute() : false
   const shouldApplyDiscussionDeepLink = !appliedCourseQuery && Boolean(route.query.dc && route.query.dp)
@@ -1666,7 +1699,7 @@ const confirmDeleteExam = async (id) => {
       @update:selected-course="(v) => (selectedCourse = v)"
       @edit-profile="openEditProfile"
       @change-password="openPasswordPage"
-      @logout="emit('logout')"
+      @logout="relayLogout"
     />
 
     <!-- 修改密码已改为模态窗口 -->
@@ -1731,7 +1764,7 @@ const confirmDeleteExam = async (id) => {
         @enter-test="enterFixedTestFromGraph"
       >
         <article class="result-card">
-          <h3 class="panel-title">{{ graphData.title }}</h3>
+          <h3 class="portal-section-title portal-section-title--violet">{{ graphData.title }}</h3>
           <div class="inline-form">
             <button type="button" class="match-button" :disabled="graphLoading" @click="loadGraph">
               {{ graphLoading ? '加载中...' : '刷新图谱' }}
@@ -1852,8 +1885,8 @@ const confirmDeleteExam = async (id) => {
       v-if="!['home','courses','course-detail','graph','paper','exercise','teacher-test','review'].includes(effectivePage)"
       class="result-card"
     >
-      <h3>页面不存在</h3>
-      <p class="panel-subtitle">未识别的页面：{{ String(route.params.page || props.activePage || '') }}</p>
+      <h3 class="portal-section-title portal-section-title--slate">页面不存在</h3>
+      <p class="panel-subtitle">未识别的页面：{{ String(studentPathSegment || props.activePage || '') }}</p>
       <button type="button" class="nav-btn" @click="() => router.push('/student/home')">返回个人中心</button>
     </article>
 
@@ -1880,4 +1913,6 @@ const confirmDeleteExam = async (id) => {
     <AiAssistantWidget role="student" :current-user="currentUser" />
 </template>
 
-<style src="./student-portal.css"></style>
+<style>
+@import './student-portal.css';
+</style>

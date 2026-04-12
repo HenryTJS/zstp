@@ -92,16 +92,10 @@ onBeforeUnmount(() => {
 
 <template>
   <article class="result-card">
-    <h3>课程总进度分析</h3>
-    <p class="panel-subtitle" style="margin-top: 6px">
-      按已加入学生展示整门课学习资源完成度（从高到低）。
-    </p>
+    <h3 class="portal-section-title portal-section-title--cyan">课程总进度分析</h3>
     <p v-if="courseProgressLoading" class="panel-subtitle ui-mt-10">加载中…</p>
     <p v-else-if="courseProgressError" class="error-text ui-mt-10">{{ courseProgressError }}</p>
     <template v-else>
-      <p class="panel-subtitle ui-mt-10">
-        已加入学生：{{ courseProgress.studentCount || 0 }} 人；课程资源总数：{{ courseProgress.totalResourceCount || 0 }}
-      </p>
       <div ref="progressChartRef" class="teacher-course-progress-chart ui-mt-10"></div>
     </template>
   </article>
