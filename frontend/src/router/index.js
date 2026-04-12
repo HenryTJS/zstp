@@ -41,4 +41,38 @@ const router = createRouter({
   routes
 })
 
+const readStoredUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('currentUser') || 'null')
+  } catch {
+    return null
+  }
+}
+
+/** 未登录或角色不符时禁止进入各端门户（localStorage 已清则必须离开受保护路由） */
+router.beforeEach((to) => {
+  const u = readStoredUser()
+  if (to.path === '/' || to.path === '/login') return true
+
+  if (to.path === '/security' && !u) {
+    return { path: '/login', replace: true }
+  }
+
+  const studentPath = to.path === '/student' || to.path.startsWith('/student/')
+  const teacherPath = to.path === '/teacher' || to.path.startsWith('/teacher/')
+  const adminPath = to.path === '/admin' || to.path.startsWith('/admin/')
+
+  if (studentPath && (!u || u.role !== 'student')) {
+    return { path: '/login', replace: true }
+  }
+  if (teacherPath && (!u || u.role !== 'teacher')) {
+    return { path: '/login', replace: true }
+  }
+  if (adminPath && (!u || u.role !== 'admin')) {
+    return { path: '/login', replace: true }
+  }
+
+  return true
+})
+
 export default router

@@ -510,15 +510,15 @@ const applySelectedCourseConfig = () => {
   weightForm.value.semanticUnderstanding = Number(w.semanticUnderstanding ?? 0.2)
   weightForm.value.spatialImagination = Number(w.spatialImagination ?? 0.2)
   weightForm.value.memoryRetrieval = Number(w.memoryRetrieval ?? 0.2)
-    creditRulesForm.value = Array.isArray(cfg?.creditRules)
-      ? cfg.creditRules.map((r) => ({
-          credit: Number(r.credit ?? 0.5),
-          majorCodes: Array.isArray(r.majorCodes) ? [...r.majorCodes] : [],
-          selL1: [],
-          selL2: [],
-          selL3: []
-        }))
-      : []
+  creditRulesForm.value = Array.isArray(cfg?.creditRules)
+    ? cfg.creditRules.map((r) => ({
+        credit: Number(r.credit ?? 0.5),
+        majorCodes: Array.isArray(r.majorCodes) ? [...r.majorCodes] : [],
+        selL1: [],
+        selL2: [],
+        selL3: []
+      }))
+    : []
 }
 
 watch(() => selectedCourse.value, () => applySelectedCourseConfig())
@@ -530,7 +530,8 @@ watch(
       void loadCourseConfigs()
       void loadMajorFlat()
     }
-  }
+  },
+  { immediate: true }
 )
 
 const addCreditRule = () => {
@@ -815,7 +816,7 @@ const saveSelectedCourseConfig = async () => {
         <p v-if="courseConfigError" class="error-text">{{ courseConfigError }}</p>
         <p v-if="courseConfigMessage" class="ok-text">{{ courseConfigMessage }}</p>
 
-        <div class="ui-actions-row">
+        <div class="ui-actions-row course-config-course-row">
           <label style="min-width: 220px">
             <span class="panel-subtitle">选择课程</span>
             <select v-model="selectedCourse" class="match-height" :disabled="courseConfigLoading">
@@ -943,19 +944,19 @@ const saveSelectedCourseConfig = async () => {
             <div class="grid-form three-col ui-mt-8">
               <label>
                 一级（多选）
-                <select v-model="r.selL1" multiple class="match-height major-multi" size="6">
+                <select v-model="r.selL1" multiple class="major-multi" size="6">
                   <option v-for="m in majorsL1" :key="m.code" :value="m.code">{{ m.name }}（{{ m.code }}）</option>
                 </select>
               </label>
               <label>
                 二级（多选）
-                <select v-model="r.selL2" multiple class="match-height major-multi" size="6">
+                <select v-model="r.selL2" multiple class="major-multi" size="6">
                   <option v-for="m in l2OptionsForRow(r)" :key="m.code" :value="m.code">{{ m.name }}（{{ m.code }}）</option>
                 </select>
               </label>
               <label>
                 三级（多选）
-                <select v-model="r.selL3" multiple class="match-height major-multi" size="6">
+                <select v-model="r.selL3" multiple class="major-multi" size="6">
                   <option v-for="m in l3OptionsForRow(r)" :key="m.code" :value="m.code">{{ m.name }}（{{ m.code }}）</option>
                 </select>
               </label>
@@ -1098,9 +1099,19 @@ const saveSelectedCourseConfig = async () => {
   line-height: 1;
   font-size: 1.1rem;
 }
+.course-config-course-row {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+/* 勿与全局 .match-height 同用：会把 size>1 的 listbox 压成单行高度，专业多选框会「消失」 */
 .major-multi {
   width: 100%;
-  min-height: 140px;
+  min-height: 148px;
+  height: auto;
+  padding: 7px 10px;
+  box-sizing: border-box;
+  line-height: 1.35;
 }
 .grid-form.three-col {
   display: grid;

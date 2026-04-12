@@ -67,7 +67,7 @@ const progressFor = (courseName) => {
             <img :src="course.coverUrl" alt="" class="my-course-cover" />
             <h4 class="my-course-title ui-mt-8">{{ course.courseName }}</h4>
             <p class="my-course-teachers">
-              授课教师：<template v-if="teachersLoading">加载中…</template><template v-else>{{ teachersLine(course.courseName) }}</template>
+              <template v-if="teachersLoading">加载中…</template><template v-else>{{ teachersLine(course.courseName) }}</template>
             </p>
             <div class="my-course-progress">
               <template v-if="courseProgressLoading && progressFor(course.courseName) === undefined">

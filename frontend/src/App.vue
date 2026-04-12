@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter, useRoute, isNavigationFailure, NavigationFailureType } from 'vue-router'
 import DiscussionNotificationBell from './components/DiscussionNotificationBell.vue'
 import AdminPermissionRequestBell from './components/AdminPermissionRequestBell.vue'
 import { listCourseCatalog, listTeachersForCourses } from './api/client'
@@ -63,10 +63,18 @@ const handleLoginSuccess = (user) => {
   }
 }
 
-const handleLogout = () => {
-  currentUser.value = null
+const handleLogout = async () => {
+  // 先离开受保护路由再清登录态，避免 StudentPortal 等仍在 /student 时收到 currentUser=null（required prop）导致渲染异常、视图卡在个人中心
+  try {
+    await router.replace({ path: '/login' })
+  } catch (e) {
+    if (!isNavigationFailure(e, NavigationFailureType.duplicated)) {
+      window.location.assign('/login')
+      return
+    }
+  }
   localStorage.removeItem('currentUser')
-  router.push('/login')
+  currentUser.value = null
 }
 
 const handleUpdateUser = (patch) => {
@@ -273,6 +281,7 @@ const teachersTextForCourse = (courseName) => {
         <router-view v-slot="{ Component }">
           <component
             :is="Component"
+            :key="route.fullPath"
             @login-success="handleLoginSuccess"
             @logout="handleLogout"
             @update-user="handleUpdateUser"
