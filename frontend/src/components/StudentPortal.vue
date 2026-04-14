@@ -10,6 +10,7 @@ import StudentHome from './StudentHome.vue'
 import StudentEditProfileModal from './StudentEditProfileModal.vue'
 import StudentChangePasswordModal from './StudentChangePasswordModal.vue'
 import StudentGraphLearningPanel from './StudentGraphLearningPanel.vue'
+import StudentBranchGraph from './StudentBranchGraph.vue'
 import { useStudentGeneratedTest } from '../composables/useStudentGeneratedTest'
 import { useStudentTeacherKpTest } from '../composables/useStudentTeacherKpTest'
 import { useStudentPersistState } from '../composables/useStudentPersistState'
@@ -560,6 +561,8 @@ const selectedNodeId = ref('')
 const graphClickedNodeCategory = ref(null)
 const graphChartRef = ref(null)
 let graphChart = null
+const graphView = ref('force') // 'force' | 'branch'
+let graphWheelBound = false
 
 // 放开限制：任意层级知识点都可直接进入测试
 const practiceTestAllowed = computed(() => true)
@@ -1344,6 +1347,14 @@ watch(
 )
 
 const renderGraphChart = () => {
+  if (graphView.value !== 'force') {
+    if (graphChart) {
+      graphChart.dispose()
+      graphChart = null
+    }
+    graphWheelBound = false
+    return
+  }
   if (!graphChartRef.value || !graphNetworkData.value) {
     return
   }
@@ -1360,14 +1371,37 @@ const renderGraphChart = () => {
         return
       }
       if (params?.data?.id) {
-        selectedNodeId.value = params.data.id
+        const id = params.data.id
         const name = params.data.name
-        selectedKnowledgePoint.value = name
-        graphClickedNodeCategory.value = typeof params?.data?.category === 'number' ? params.data.category : null
-        void loadResourcesByKnowledgePoint(name)
-        void loadLearningSuggestionsFor(name)
-        void loadMajorRelevanceFor(name)
+        const category = typeof params?.data?.category === 'number' ? params.data.category : null
+        selectKnowledgePointFromGraph({ id, label: name, category })
       }
+    })
+  }
+
+  // Ensure wheel-zoom uses cursor as origin.
+  if (!graphWheelBound) {
+    graphWheelBound = true
+    const zr = graphChart.getZr()
+    zr.off('mousewheel')
+    zr.on('mousewheel', (e) => {
+      try {
+        e?.event?.preventDefault?.()
+      } catch {
+        /* ignore */
+      }
+      // ZRender: wheelDelta > 0 means zoom in.
+      const w = Number(e?.wheelDelta ?? 0)
+      const factor = w > 0 ? 1.12 : 0.9
+      const originX = Number(e?.offsetX ?? 0)
+      const originY = Number(e?.offsetY ?? 0)
+      graphChart.dispatchAction({
+        type: 'graphRoam',
+        seriesIndex: 0,
+        zoom: factor,
+        originX,
+        originY
+      })
     })
   }
 
@@ -1420,6 +1454,34 @@ const renderGraphChart = () => {
     ]
   })
 }
+
+const selectKnowledgePointFromGraph = ({ id, label, category }) => {
+  if (previewUnjoinedCourse.value) return
+  const nid = id != null ? String(id) : ''
+  const name = String(label || '').trim()
+  if (!nid || !name) return
+  selectedNodeId.value = nid
+  selectedKnowledgePoint.value = name
+  graphClickedNodeCategory.value = typeof category === 'number' ? category : null
+  void loadResourcesByKnowledgePoint(name)
+  void loadLearningSuggestionsFor(name)
+  void loadMajorRelevanceFor(name)
+}
+
+watch(graphView, async (v) => {
+  if (effectivePage.value !== 'graph') return
+  if (v === 'force') {
+    await nextTick()
+    renderGraphChart()
+    graphChart?.resize()
+  } else {
+    if (graphChart) {
+      graphChart.dispose()
+      graphChart = null
+    }
+    graphWheelBound = false
+  }
+})
 
 const wrongBookModalItem = ref(null)
 const openWrongBookModal = (item) => {
@@ -1643,7 +1705,7 @@ onBeforeUnmount(() => {
 })
 
 const handleWindowResize = () => {
-  graphChart?.resize()
+  if (graphView.value === 'force') graphChart?.resize()
 }
 
 const downloadExam = (id, type) => {
@@ -1769,9 +1831,23 @@ const confirmDeleteExam = async (id) => {
             <button type="button" class="match-button" :disabled="graphLoading" @click="loadGraph">
               {{ graphLoading ? '加载中...' : '刷新图谱' }}
             </button>
+            <button
+              type="button"
+              class="nav-btn"
+              :disabled="graphLoading || !graphData.nodes?.length"
+              @click="graphView = (graphView === 'force' ? 'branch' : 'force')"
+            >
+              切换视图：{{ graphView === 'force' ? '力导向图' : '分支图' }}
+            </button>
           </div>
           <p v-if="graphError" class="error-text">{{ graphError }}</p>
-          <div ref="graphChartRef" style="width: 100%; height: 420px;"></div>
+          <div v-if="graphView === 'force'" ref="graphChartRef" style="width: 100%; height: 420px;"></div>
+          <StudentBranchGraph
+            v-else
+            :graph-data="graphData"
+            :disabled="isUnjoinedPreviewMode"
+            @node-click="({ id, label }) => selectKnowledgePointFromGraph({ id, label, category: null })"
+          />
         </article>
 
         <StudentGraphLearningPanel

@@ -1,6 +1,8 @@
 <script setup>
 import { ref } from 'vue'
 import { askAiAgent } from '../api/client'
+import MarkdownIt from 'markdown-it'
+import mk from 'markdown-it-katex'
 
 const props = defineProps({
   role: {
@@ -24,53 +26,14 @@ const messages = ref([
   }
 ])
 
-const escapeHtml = (raw) =>
-  String(raw || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+const md = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true
+})
+  .use(mk, { throwOnError: false, errorColor: '#cc0000' })
 
-// Lightweight and safe markdown renderer for assistant messages.
-const renderMarkdown = (raw) => {
-  const escaped = escapeHtml(raw).replace(/\r\n/g, '\n')
-
-  const withCode = escaped.replace(/```([\s\S]*?)```/g, (_, code) => {
-    return `<pre class="md-pre"><code>${code.trim()}</code></pre>`
-  })
-
-  const withInline = withCode
-    .replace(/`([^`\n]+)`/g, '<code class="md-code">$1</code>')
-    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-
-  const lines = withInline.split('\n')
-  let inList = false
-  const out = []
-  for (const line of lines) {
-    if (/^\s*-\s+/.test(line)) {
-      if (!inList) {
-        out.push('<ul>')
-        inList = true
-      }
-      out.push(`<li>${line.replace(/^\s*-\s+/, '')}</li>`)
-      continue
-    }
-    if (inList) {
-      out.push('</ul>')
-      inList = false
-    }
-    if (!line.trim()) {
-      out.push('<br/>')
-    } else {
-      out.push(`<p>${line}</p>`)
-    }
-  }
-  if (inList) out.push('</ul>')
-  return out.join('')
-}
+const renderMarkdown = (raw) => md.render(String(raw || ''))
 
 const send = async () => {
   const text = (input.value || '').trim()
@@ -261,6 +224,12 @@ const send = async () => {
 .md-content :deep(a) {
   color: #2563eb;
   text-decoration: underline;
+}
+
+.md-content :deep(.katex-display) {
+  margin: 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 </style>
 <style>
