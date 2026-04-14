@@ -109,9 +109,6 @@ const send = async () => {
       <div class="modal-container ai-chat-shell" style="max-height: 88vh; overflow: hidden; display: flex; flex-direction: column">
         <button class="modal-close" type="button" aria-label="关闭" @click="visible = false">×</button>
         <h3 class="portal-section-title portal-section-title--violet">AI 学习助手</h3>
-        <p class="panel-subtitle" style="margin-top: 4px; margin-bottom: 0">
-          仅针对本平台的操作与学习场景作答；不确定的功能请勿臆测，可建议用户询问管理员或查阅站内说明。
-        </p>
         <div class="ai-list">
           <div v-for="(m, idx) in messages" :key="idx" :class="['ai-item', m.role === 'user' ? 'is-user' : 'is-ai']">
             <template v-if="m.role === 'assistant'">
