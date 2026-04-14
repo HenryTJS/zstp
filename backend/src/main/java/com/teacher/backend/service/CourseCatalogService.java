@@ -12,9 +12,6 @@ import org.springframework.util.StringUtils;
 
 import com.teacher.backend.entity.CourseCatalogEntry;
 import com.teacher.backend.repository.CourseCatalogEntryRepository;
-import com.teacher.backend.repository.CourseKnowledgePointPrereqRepository;
-import com.teacher.backend.repository.CourseKnowledgePointRepository;
-import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 
 @Service
 public class CourseCatalogService {
@@ -22,18 +19,9 @@ public class CourseCatalogService {
     private static final Map<String, String> ALIASES = buildAliases();
 
     private final CourseCatalogEntryRepository courseCatalogEntryRepository;
-    private final CourseKnowledgePointRepository courseKnowledgePointRepository;
-    private final CourseKnowledgePointPrereqRepository courseKnowledgePointPrereqRepository;
-    private final TeacherCoursePermissionRepository teacherCoursePermissionRepository;
 
-    public CourseCatalogService(CourseCatalogEntryRepository courseCatalogEntryRepository,
-                                 CourseKnowledgePointRepository courseKnowledgePointRepository,
-                                 CourseKnowledgePointPrereqRepository courseKnowledgePointPrereqRepository,
-                                 TeacherCoursePermissionRepository teacherCoursePermissionRepository) {
+    public CourseCatalogService(CourseCatalogEntryRepository courseCatalogEntryRepository) {
         this.courseCatalogEntryRepository = courseCatalogEntryRepository;
-        this.courseKnowledgePointRepository = courseKnowledgePointRepository;
-        this.courseKnowledgePointPrereqRepository = courseKnowledgePointPrereqRepository;
-        this.teacherCoursePermissionRepository = teacherCoursePermissionRepository;
     }
 
     public List<String> allCourses() {
@@ -100,43 +88,14 @@ public class CourseCatalogService {
             }
         }
 
-        // 对于“未预先存在于课程目录”的名称，允许直接作为新课程名使用；
-        // 这样管理员新增课程、再分配权限、教师查看才会串起来。
+        // 对于“未预先存在于课程目录”的名称，允许直接作为新课程名使用（例如审批通过后的新课写入）。
         return trimmed;
-    }
-
-    public List<String> addCourse(String rawCourseName) {
-        if (!StringUtils.hasText(rawCourseName)) {
-            return allCourses();
-        }
-
-        String normalized = normalizeCourseName(rawCourseName);
-
-        // normalized 可能为空串（用户未选课程）；此处不写入目录
-        if (!StringUtils.hasText(normalized)) {
-            return allCourses();
-        }
-        if (!courseCatalogEntryRepository.existsByCourseNameIgnoreCase(normalized)) {
-            int maxSort = courseCatalogEntryRepository.findAllByOrderBySortOrderAscIdAsc().stream()
-                .mapToInt(CourseCatalogEntry::getSortOrder)
-                .max()
-                .orElse(-1);
-            CourseCatalogEntry e = new CourseCatalogEntry();
-            e.setCourseName(normalized);
-            e.setSortOrder(maxSort + 1);
-            e.setCoverUrl(defaultCoverUrl(normalized));
-            e.setSummary(defaultSummary(normalized));
-            e.setSyllabus(defaultSyllabus(normalized));
-            courseCatalogEntryRepository.save(e);
-        }
-
-        return allCourses();
     }
 
     /**
      * 仅按字面（trim + 忽略大小写判重）写入课程目录，不做别名/子串归一化。
-     * <p>审批教师申请时必须使用此方法：{@link #normalizeCourseName} 可能把新课名归并到已有课名，
-     * 导致 {@link #addCourse} 跳过插入，而权限表里仍是原课名，从而出现「已通过但广场看不到新课程」。</p>
+     * <p>审批教师「新增课程」申请时必须使用此方法：{@link #normalizeCourseName} 可能把新课名归并到已有课名，
+     * 导致目录未插入新课行，而权限表里仍是原课名，从而出现「已通过但广场看不到新课程」。</p>
      */
     public void ensureCatalogContainsExactCourseName(String courseName) {
         if (!StringUtils.hasText(courseName)) {
@@ -190,19 +149,6 @@ public class CourseCatalogService {
         if (!StringUtils.hasText(v)) return null;
         String t = v.trim();
         return t.isEmpty() ? null : t;
-    }
-
-    public List<String> deleteCourse(String rawCourseName) {
-        if (!StringUtils.hasText(rawCourseName)) return allCourses();
-        String normalized = normalizeCourseName(rawCourseName);
-
-        // 先清理与课程绑定的数据，避免后续 teacher/view 使用残留
-        courseKnowledgePointPrereqRepository.deleteByCourseName(normalized);
-        courseKnowledgePointRepository.deleteByCourseName(normalized);
-        teacherCoursePermissionRepository.deleteByCourseName(normalized);
-        courseCatalogEntryRepository.deleteByCourseNameIgnoreCase(normalized);
-
-        return allCourses();
     }
 
     private static Map<String, String> buildAliases() {

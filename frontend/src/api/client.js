@@ -6,12 +6,11 @@ export const getCourseDetail = (courseName, userId) =>
 export const updateCourseMeta = (payload) => http.put('/courses/meta', payload)
 export const uploadCourseCover = (formData) => http.post('/courses/cover/upload', formData)
 
-// 教师可见课程权限（由管理员分配后教师端才能查看）
+// 教师可见课程权限（申请经管理员审批后写入）
 export const listTeacherCoursePermissions = (teacherId) =>
   http.get('/teacher-course-permissions', { params: { teacherId } })
 export const listTeachersForCourses = (courseNames) =>
   http.post('/teacher-course-permissions/teachers-for-courses', { courseNames })
-export const assignTeacherCourses = (payload) => http.post('/teacher-course-permissions/assign', payload)
 
 // 教师端申请课程权限（管理员端审批后可授予教师课程权限）
 export const listTeacherCoursePermissionRequests = (payload) =>
@@ -20,11 +19,6 @@ export const createTeacherCoursePermissionRequest = (payload) =>
   http.post('/teacher-course-permission-requests', payload)
 export const decideTeacherCoursePermissionRequest = (payload) =>
   http.post('/teacher-course-permission-requests/decide', payload)
-
-// 管理员课程目录增删
-export const addCourse = (payload) => http.post('/courses', payload)
-export const deleteCourse = (payload) =>
-  http.delete('/courses', { params: { adminUserId: payload?.adminUserId, courseName: payload?.courseName } })
 
 // 课程配置：五维权重 + 专业学分
 export const listCourseConfigs = (adminUserId) => http.get('/course-configs', { params: { adminUserId } })

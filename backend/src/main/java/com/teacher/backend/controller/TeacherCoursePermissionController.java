@@ -11,7 +11,6 @@ import java.util.Set;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.teacher.backend.dto.AssignTeacherCoursesRequest;
 import com.teacher.backend.entity.TeacherCoursePermission;
 import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 import com.teacher.backend.repository.UserRepository;
@@ -29,7 +27,6 @@ import com.teacher.backend.service.CourseCatalogService;
 @RestController
 @RequestMapping("/api/teacher-course-permissions")
 public class TeacherCoursePermissionController {
-    private static final String ROLE_ADMIN = "admin";
 
     private final UserRepository userRepository;
     private final TeacherCoursePermissionRepository permissionRepository;
@@ -97,56 +94,6 @@ public class TeacherCoursePermissionController {
             out.put(course, teachers);
         }
         return ResponseEntity.ok(out);
-    }
-
-    @PostMapping("/assign")
-    @Transactional
-    public ResponseEntity<?> assignTeacherCourses(@RequestBody(required = false) AssignTeacherCoursesRequest request) {
-        if (request == null) return error(HttpStatus.BAD_REQUEST, "request body is required");
-
-        Long adminUserId = request.adminUserId();
-        Long teacherId = request.teacherId();
-        List<String> courseNames = request.courseNames();
-
-        if (adminUserId == null) return error(HttpStatus.BAD_REQUEST, "adminUserId is required");
-        if (teacherId == null) return error(HttpStatus.BAD_REQUEST, "teacherId is required");
-        if (courseNames == null) courseNames = Collections.emptyList();
-
-        boolean isAdmin = userRepository.findById(adminUserId)
-            .filter(u -> ROLE_ADMIN.equals(u.getRole()))
-            .isPresent();
-        if (!isAdmin) {
-            return error(HttpStatus.FORBIDDEN, "only admin can assign courses");
-        }
-
-        var teacherOpt = userRepository.findById(teacherId);
-        boolean teacherExists = teacherOpt.isPresent() && "teacher".equalsIgnoreCase(Objects.toString(teacherOpt.get().getRole(), ""));
-        if (!teacherExists) {
-            return error(HttpStatus.NOT_FOUND, "teacher not found");
-        }
-
-        // 统一归一化课程名，避免前端传入别名导致权限无法匹配
-        List<String> normalized = courseNames.stream()
-            .filter(StringUtils::hasText)
-            .map(String::trim)
-            .filter(s -> !s.isEmpty())
-            .map(courseCatalogService::normalizeCourseName)
-            .distinct()
-            .toList();
-
-        permissionRepository.deleteByTeacherId(teacherId);
-        for (String course : normalized) {
-            TeacherCoursePermission p = new TeacherCoursePermission();
-            p.setTeacherId(teacherId);
-            p.setCourseName(course);
-            permissionRepository.save(p);
-        }
-
-        return ResponseEntity.ok(Map.of(
-            "message", "assigned",
-            "teacherId", teacherId,
-            "courses", normalized
-        ));
     }
 
     private ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {

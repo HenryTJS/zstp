@@ -283,7 +283,7 @@ docker compose version
 
 能看到版本号就成功。
 
-若 `**curl` 下载特别慢**：那是访问国外源慢。可以换用手机热点重试，或搜索「Ubuntu Docker 阿里云镜像源」按文章换国内源（需要一点额外步骤）。
+若 `**curl` 下载特别慢**：那是访问国外源慢。可以换用手机热点重试，或搜索「Ubuntu Docker 阿里云镜像源」按文章换国内源。
 
 ## 第 12 步：安装 Nginx 和 Certbot（用来 HTTPS）
 
@@ -325,8 +325,6 @@ sudo mv zstp-temp/* /opt/zstp/
 sudo rmdir zstp-temp 2>/dev/null || sudo rm -rf zstp-temp
 ```
 
-（略麻烦，**尽量第一次就让 `/opt/zstp` 里直接是项目根**，能看到 `frontend`、`backend`、`deploy` 三个文件夹。）
-
 ### 方法 2：不用 Git，用 WinSCP 拖文件夹
 
 1. 在你 **自己电脑** 上打开 WinSCP，新建会话：
@@ -352,26 +350,28 @@ nano .env
 
 会出现编辑器：建议按下面 **A → B → C** 依次填写，最后保存退出。
 
-**A. 数据库密码（必改）**
+**A. 数据库密码**
 
 1. 你会看到一行 `POSTGRES_PASSWORD=...`
 2. 把 `=` 后面改成 **一长串英文+数字密码**（自己乱打一段 20 位以上，**记下来**）。
 
-**B. AI 大模型（可选；不配则站内「AI 智能体」等会提示未启用）**
+**B. AI 大模型**
 
 `deploy/.env.example` 里已有示例（复制成 `.env` 后默认是注释掉的）。若要让 **AI 助手、依赖大模型的功能** 真正连上模型，请在 **同一份 `.env`** 里增加或取消注释并填写：
 
-| 变量名 | 是否必填 | 说明 |
-| ------ | -------- | ---- |
-| `OPENAI_API_KEY` | 想用 AI 则 **必填** | 你的 API 密钥（常见形如 `sk-...`）。**不要**把密钥发到群聊、不要提交到 Git；只写在服务器这份 `.env` 里。 |
-| `OPENAI_BASE_URL` | 可选 | 不配时默认 `https://api.openai.com/v1`。若使用 **兼容 OpenAI 协议** 的国内网关或自建接口，改成对方提供的地址（是否带 `/v1` 以服务商文档为准）。 |
-| `OPENAI_MODEL` | 可选 | 不配时默认 `gpt-4o-mini`。若网关要求固定模型名，按服务商说明填写。 |
+
+| 变量名               | 是否必填           | 说明                                                                                               |
+| ----------------- | -------------- | ------------------------------------------------------------------------------------------------ |
+| `OPENAI_API_KEY`  | 想用 AI 则 **必填** | 你的 API 密钥（常见形如 `sk-...`）。**不要**把密钥发到群聊、不要提交到 Git；只写在服务器这份 `.env` 里。                              |
+| `OPENAI_BASE_URL` | 可选             | 不配时默认 `https://api.openai.com/v1`。若使用 **兼容 OpenAI 协议** 的国内网关或自建接口，改成对方提供的地址（是否带 `/v1` 以服务商文档为准）。 |
+| `OPENAI_MODEL`    | 可选             | 不配时默认 `gpt-4o-mini`。若网关要求固定模型名，按服务商说明填写。                                                         |
+
 
 不配 `OPENAI_API_KEY` 时，网站其它功能一般仍正常，但用户会看到类似 **「AI 服务暂未启用，请联系管理员配置 OPENAI_API_KEY」** 的提示，这是预期行为。
 
 **C. 保存退出**
 
-3. 按 `**Ctrl + O`** 回车保存，再按 `**Ctrl + X**` 退出。
+1. 按 `**Ctrl + O`** 回车保存，再按 `**Ctrl + X`** 退出。
 
 **若你以后再改 `.env`（例如补上了 `OPENAI_API_KEY`）**：改完保存后，必须在第 16 步里 **重新执行** `docker compose up -d --build`，或至少执行 `docker compose up -d --force-recreate backend`，否则 **后端容器仍用旧环境变量**，页面上还是会显示未启用。
 
@@ -399,7 +399,7 @@ docker compose logs -f backend
 
 按 `**Ctrl + C**` 退出日志（不会关网站）。
 
-**关于 AI 是否生效**：日志里若出现 **`AI enabled`**（并带有脱敏后的 key 信息），说明后端已读到 `OPENAI_API_KEY`。若出现 **`AI disabled because OPENAI_API_KEY is empty`**，说明密钥仍为空或未传入容器，请回到 **第 15 步 B** 检查 `.env`，并确认已按第 15 步末尾 **重建 backend 容器**。
+**关于 AI 是否生效**：日志里若出现 `**AI enabled`**（并带有脱敏后的 key 信息），说明后端已读到 `OPENAI_API_KEY`。若出现 `**AI disabled because OPENAI_API_KEY is empty**`，说明密钥仍为空或未传入容器，请回到 **第 15 步 B** 检查 `.env`，并确认已按第 15 步末尾 **重建 backend 容器**。
 
 ## 第 17 步：在服务器上自测
 
@@ -432,7 +432,7 @@ sudo certbot --nginx -d 你的域名
 1. 输入 **邮箱**（用于证书到期提醒）。
 2. 同意服务条款：输入 `**Y`**。
 3. 是否分享邮箱：可输入 `**N`**。
-4. Certbot 可能问是否把 HTTP 自动跳 HTTPS，选 `**2**` 或推荐项。
+4. Certbot 可能问是否把 HTTP 自动跳 HTTPS，选 `**2`** 或推荐项。
 
 成功后会显示 **Congratulations** 之类字样。
 
@@ -501,13 +501,13 @@ https://你的域名
 # 第十二部分：仍然打不开——按表自查
 
 
-| 现象          | 你先检查什么                                                             |
-| ----------- | ------------------------------------------------------------------ |
-| 浏览器连不上      | 备案是否真的 **已通过**？域名 **A 记录** 是否指向 **现在这台** 公网 IP？                    |
-| 只有 IP 能开会话  | **域名 + 备案** 未完成时很常见，继续等备案或先用 IP 自测（给评委还是要域名 HTTPS）。                |
-| **502**     | `docker compose ps` 是否都在跑；`docker compose logs web backend` 有无报错。  |
-| **证书申请失败**  | 域名是否已解析到本机；**80 端口** 是否放行；服务器上 `sudo systemctl status nginx` 是否正常。 |
-| **忘记数据库密码** | 看服务器上 `/opt/zstp/deploy/.env` 里的 `POSTGRES_PASSWORD`（不要发给别人）。      |
+| 现象                                    | 你先检查什么                                                                                                                                                                                                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 浏览器连不上                                | 备案是否真的 **已通过**？域名 **A 记录** 是否指向 **现在这台** 公网 IP？                                                                                                                                                                                                   |
+| 只有 IP 能开会话                            | **域名 + 备案** 未完成时很常见，继续等备案或先用 IP 自测（给评委还是要域名 HTTPS）。                                                                                                                                                                                               |
+| **502**                               | `docker compose ps` 是否都在跑；`docker compose logs web backend` 有无报错。                                                                                                                                                                                 |
+| **证书申请失败**                            | 域名是否已解析到本机；**80 端口** 是否放行；服务器上 `sudo systemctl status nginx` 是否正常。                                                                                                                                                                                |
+| **忘记数据库密码**                           | 看服务器上 `/opt/zstp/deploy/.env` 里的 `POSTGRES_PASSWORD`（不要发给别人）。                                                                                                                                                                                     |
 | **页面提示「AI 服务暂未启用…配置 OPENAI_API_KEY」** | 在 `/opt/zstp/deploy/.env` 中填写 `OPENAI_API_KEY`（及网关需要的 `OPENAI_BASE_URL` / `OPENAI_MODEL`），保存后在 `deploy` 目录执行 `docker compose up -d --build` 或 `docker compose up -d --force-recreate backend`，再看 `docker compose logs backend` 是否出现 `AI enabled`。 |
 
 
@@ -515,7 +515,7 @@ https://你的域名
 
 ## 附录：本仓库里和部署相关的文件
 
-- `deploy/docker-compose.yml`：一键启动数据库 + 后端 + 网站（其中 `OPENAI_*` 从 `.env` 传入后端容器）  
+- `deploy/docker-compose.yml`：一键启动数据库 + 后端 + 网站（其中 `OPENAI_`* 从 `.env` 传入后端容器）  
 - `deploy/.env.example`：`.env` 模板（含数据库密码与可选的 AI 变量说明）  
 - `deploy/host-nginx.example.conf`：仅供参考的合成配置（你按上面「第 20 步」改系统里的 Nginx 即可）
 

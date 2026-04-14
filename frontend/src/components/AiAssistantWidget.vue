@@ -17,7 +17,11 @@ const visible = ref(false)
 const input = ref('')
 const loading = ref(false)
 const messages = ref([
-  { role: 'assistant', content: '你好，我是 AI 助手。你可以直接问我平台使用、学习或教学相关问题。' }
+  {
+    role: 'assistant',
+    content:
+      '你好，我是 **AI 学生自学平台** 内置助手，可协助你使用本站的课程广场、知识图谱、交流区、通知与 AI 练习等功能。请直接描述你当前页面或想完成的任务；若问题超出本平台范围，我会说明边界。'
+  }
 ])
 
 const escapeHtml = (raw) =>
@@ -98,35 +102,39 @@ const send = async () => {
 </script>
 
 <template>
-  <button class="ai-fab" type="button" @click="visible = true" aria-label="打开AI助手">🤖</button>
+  <button class="ai-fab" type="button" @click="visible = true" aria-label="打开 AI 学习助手">🤖</button>
 
-  <div v-if="visible" class="ai-mask" @click.self="visible = false">
-    <div class="ai-modal">
-      <div class="ai-head">
-        <h3 class="portal-section-title portal-section-title--violet ai-widget-head-title">AI 智能体</h3>
-        <button type="button" class="ai-close" @click="visible = false">×</button>
-      </div>
-      <div class="ai-list">
-        <div v-for="(m, idx) in messages" :key="idx" :class="['ai-item', m.role === 'user' ? 'is-user' : 'is-ai']">
-          <template v-if="m.role === 'assistant'">
-            <div class="md-content" v-html="renderMarkdown(m.content)"></div>
-          </template>
-          <template v-else>
-            {{ m.content }}
-          </template>
+  <div v-if="visible" class="modal-mask" @click.self="visible = false">
+    <div class="modal-wrapper" style="max-width: 760px; width: 94vw">
+      <div class="modal-container ai-chat-shell" style="max-height: 88vh; overflow: hidden; display: flex; flex-direction: column">
+        <button class="modal-close" type="button" aria-label="关闭" @click="visible = false">×</button>
+        <h3 class="portal-section-title portal-section-title--violet">AI 学习助手</h3>
+        <p class="panel-subtitle" style="margin-top: 4px; margin-bottom: 0">
+          仅针对本平台的操作与学习场景作答；不确定的功能请勿臆测，可建议用户询问管理员或查阅站内说明。
+        </p>
+        <div class="ai-list">
+          <div v-for="(m, idx) in messages" :key="idx" :class="['ai-item', m.role === 'user' ? 'is-user' : 'is-ai']">
+            <template v-if="m.role === 'assistant'">
+              <div class="md-content" v-html="renderMarkdown(m.content)"></div>
+            </template>
+            <template v-else>
+              {{ m.content }}
+            </template>
+          </div>
         </div>
-      </div>
-      <div class="ai-input-row">
-        <textarea
-          v-model="input"
-          rows="3"
-          :disabled="loading"
-          placeholder="输入你的问题..."
-          @keydown.enter.exact.prevent="send"
-        ></textarea>
-        <button type="button" class="match-button" :disabled="loading || !input.trim()" @click="send">
-          {{ loading ? '思考中…' : '发送' }}
-        </button>
+        <div class="ai-input-row">
+          <textarea
+            v-model="input"
+            class="ai-chat-textarea"
+            rows="3"
+            :disabled="loading"
+            placeholder="描述你在平台上的具体问题…"
+            @keydown.enter.exact.prevent="send"
+          ></textarea>
+          <button type="button" class="match-button" :disabled="loading || !input.trim()" @click="send">
+            {{ loading ? '思考中…' : '发送' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -140,76 +148,35 @@ const send = async () => {
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  border: none;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   cursor: pointer;
   font-size: 24px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(135deg, #4f46e5, #6366f1);
+  box-shadow: 0 8px 24px -4px rgba(79, 70, 229, 0.45), 0 4px 12px rgba(15, 23, 42, 0.12);
   z-index: 1100;
 }
 
-.ai-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1200;
+.ai-fab:hover {
+  filter: brightness(1.05);
 }
 
-.ai-modal {
-  width: min(760px, calc(100vw - 32px));
-  max-height: min(80vh, 760px);
-  background: #fff;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.ai-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid #eee;
-}
-
-.ai-head h3 {
+.ai-chat-shell h3.portal-section-title {
   margin: 0;
-}
-
-.ai-widget-head-title {
-  margin: 0 !important;
-  padding: 8px 12px 8px 14px !important;
-  font-size: 1.05rem !important;
-  flex: 1;
-  min-width: 0;
-}
-
-.ai-close {
-  width: 30px;
-  height: 30px;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  background: #fff;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.ai-close:hover {
-  background: #f3f4f6;
+  padding-right: 28px;
 }
 
 .ai-list {
+  margin-top: 14px;
   padding: 12px;
   overflow: auto;
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: #fafafa;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 .ai-item {
@@ -231,16 +198,35 @@ const send = async () => {
 }
 
 .ai-input-row {
-  padding: 12px;
-  border-top: 1px solid #eee;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
   display: flex;
   gap: 10px;
+  align-items: flex-end;
 }
 
-.ai-input-row textarea {
+.ai-chat-textarea {
   flex: 1;
   resize: vertical;
   min-height: 72px;
+  padding: 10px 12px;
+  border-radius: var(--ui-btn-radius, 10px);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  font: inherit;
+  line-height: 1.45;
+  box-sizing: border-box;
+}
+
+.ai-chat-textarea:focus {
+  outline: none;
+  border-color: rgba(79, 70, 229, 0.45);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+
+.ai-chat-textarea:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .md-content :deep(p) {

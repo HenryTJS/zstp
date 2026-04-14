@@ -229,7 +229,7 @@ public class TeacherCoursePermissionRequestController {
         row.setDecidedAt(LocalDateTime.now());
 
         if (STATUS_APPROVED.equals(nextStatus)) {
-            // 必须与申请/权限表中的 course_name 一致写入目录（不能用 addCourse+normalize，子串/别名会把新课名归并到旧课导致不插入）
+            // 必须与申请/权限表中的 course_name 一致写入目录（不能用仅 normalize 的写入路径，子串/别名会把新课名归并到旧课导致不插入）
             courseCatalogService.ensureCatalogContainsExactCourseName(row.getCourseName());
             // 若已存在则不重复写（幂等）
             boolean exists = permissionRepository.existsByTeacherIdAndCourseName(row.getTeacherId(), row.getCourseName());
