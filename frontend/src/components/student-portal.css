@@ -863,3 +863,13 @@ h4.portal-subsection-title{
 @media (max-width:1024px){
   .course-market-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
+
+@media (max-width:768px){
+  .course-market-grid{grid-template-columns:1fr;}
+  .student-lms-header{padding:14px 16px;margin-bottom:12px;}
+  .student-lms-header h2{font-size:18px;}
+  .student-kp-hero{padding:14px 14px;gap:12px;}
+  .student-kp-hero-title{font-size:1.12rem;}
+  .student-kp-body{padding:12px 14px 16px;}
+  .student-radar-box{height:260px;}
+}

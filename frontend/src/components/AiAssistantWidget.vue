@@ -143,8 +143,8 @@ const send = async () => {
 <style scoped>
 .ai-fab {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: max(16px, env(safe-area-inset-bottom, 0px));
   width: 52px;
   height: 52px;
   border-radius: 50%;

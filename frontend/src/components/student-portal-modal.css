@@ -28,3 +28,14 @@
 }
 .grid-form.single-col{display:grid;grid-template-columns:1fr;gap:12px}
 .grid-form.single-col label{display:flex;flex-direction:column}
+
+@media (max-width:768px){
+  .modal-mask{padding:max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom));align-items:flex-end}
+  .modal-wrapper{width:100%;max-width:100%}
+  .modal-container{
+    border-radius:16px 16px 0 0;
+    max-height:min(92dvh,92vh);
+    overflow:auto;
+    padding:18px 14px max(18px,env(safe-area-inset-bottom,0px))
+  }
+}

@@ -83,11 +83,17 @@ body[data-theme='dark'] .theme-toggle-btn {
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: 'DM Sans', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
   color: var(--ink);
   background-color: var(--bg);
   background-image: var(--bg-mesh);
   background-attachment: fixed;
+}
+
+.app-page {
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 h1,
@@ -855,6 +861,10 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .student-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
   .profile-grid {
     grid-template-columns: 1fr;
   }
@@ -863,39 +873,141 @@ button:disabled {
   .grid-form.two-col {
     grid-template-columns: 1fr;
   }
+
+  .graph-canvas {
+    min-height: 320px;
+  }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .top-nav-shell {
+    padding: 0 12px;
+  }
+
   .top-nav {
     padding: 10px 0;
   }
 
-  .top-nav-inner {
-    align-items: flex-start;
-    flex-direction: column;
+  .top-nav .brand-block h1 {
+    font-size: 16px !important;
+    line-height: 1.25;
   }
 
-  .nav-actions {
+  .top-nav .brand-en {
+    font-size: 10px;
+  }
+
+  .top-nav-inner {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 10px;
+  }
+
+  .top-nav-inner-student .brand-block,
+  .top-nav-inner-teacher .brand-block,
+  .top-nav-inner-admin .brand-block {
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .top-nav-inner .dn-bell-wrap,
+  .top-nav-inner .ap-bell-wrap {
+    order: 2;
+    flex-shrink: 0;
+  }
+
+  .top-nav-inner .top-user-card {
+    order: 3;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(200px, 42vw);
+  }
+
+  .top-nav-inner-student .section-nav-inline,
+  .top-nav-inner-teacher .section-nav-inline,
+  .top-nav-inner-admin .section-nav-inline {
+    order: 10;
+    flex: 1 1 100%;
     width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .top-nav-inner-student .nav-course-search,
+  .top-nav-inner-teacher .nav-course-search {
+    order: 11;
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .top-nav .nav-course-search input.match-height,
+  .top-nav .nav-course-search input {
+    width: 100% !important;
+    max-width: none;
+    min-height: 40px;
+  }
+
+  .top-nav-inner .nav-actions {
+    order: 12;
+    width: 100%;
+    flex: 1 1 100%;
     justify-content: flex-start;
+  }
+
+  .top-nav-inner-student .section-nav-btn,
+  .top-nav-inner-teacher .section-nav-btn,
+  .top-nav-inner-admin .section-nav-btn {
+    flex: 0 0 auto;
+    min-width: auto;
+    padding: 8px 12px;
+    font-size: 13px;
   }
 
   .top-user-card {
-    width: 100%;
-    text-align: left;
+    min-width: 0;
+    padding: 6px 10px;
+    text-align: right;
   }
 
-  .section-nav {
-    width: 100%;
-    justify-content: flex-start;
+  .top-user-name {
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .section-nav-inline {
-    justify-content: flex-start;
+  .app-shell {
+    padding: 12px 12px max(28px, env(safe-area-inset-bottom, 0px));
   }
 
-  .nav-btn {
-    flex: 1 1 120px;
+  .graph-canvas {
+    min-height: 260px;
+  }
+
+  .result-card,
+  .suggestion-card {
+    padding: 14px 14px;
+  }
+
+  .data-table {
+    font-size: 13px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 6px 4px;
   }
 
   .panel {
@@ -905,6 +1017,24 @@ button:disabled {
   .panel-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .ui-actions-row,
+  .inline-form {
+    flex-wrap: wrap;
+  }
+
+  .nav-btn {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .top-nav-inner .top-user-card {
+    order: 4;
+    flex: 1 1 100%;
+    max-width: none;
+    text-align: left;
   }
 }
 

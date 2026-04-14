@@ -169,6 +169,12 @@
   .course-market-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 
+@media (max-width:768px){
+  .grid-form.four-col{grid-template-columns:1fr;align-items:stretch}
+  .modal-wrapper{max-width:min(900px,100vw - 16px);width:min(94vw,100% - 16px)}
+  .order-row{flex-wrap:wrap;gap:8px}
+}
+
 /* 知识点表「编号」列：保证 10、10.1 等两位数不被窄列裁切 */
 .kp-num-col{
   min-width:4.25em;
