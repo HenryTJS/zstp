@@ -5,8 +5,6 @@
 
 ## 功能总览
 
-说明：下列为**当前 Web 前端已接入**的能力；部分管理类接口在后端可用但无专门管理页面，见下文「管理员端」与「API 概览」。
-
 ### 学生端
 
 - **顶栏**：课程搜索、消息铃铛、AI 学习助手悬浮按钮
@@ -75,6 +73,62 @@ zstp/
   start-all.ps1          # Windows 一键启动（PowerShell）
   LICENSE
 ```
+
+### 前端架构（已模块化）
+
+前端采用「按角色 + 按业务域」的模块化组织，入口组件尽量只负责页面编排，业务状态与副作用下沉到 `composables`，样式集中到 `src/styles`。
+
+```text
+frontend/src/
+  modules/
+    student/
+      StudentPortal.vue
+      course/
+        components/
+        composables/
+        index.js
+      graph/
+        components/
+        composables/
+        index.js
+      learning/
+        components/
+        composables/
+        index.js
+      profile/
+        components/
+        composables/
+        index.js
+      review/
+        components/
+        composables/
+        index.js
+    teacher/
+      TeacherPortal.vue
+      pages/
+      components/
+      composables/
+      index.js
+    admin/
+      AdminPortal.vue
+      components/
+      index.js
+  styles/
+    student/
+    teacher/
+    admin/
+  router/
+    index.js
+  App.vue
+```
+
+### 前端拆分约定
+
+- 页面级组件：负责模板编排与事件分发，避免堆积业务逻辑。
+- 业务逻辑：统一收敛到 `composables`（接口调用、状态管理、生命周期、路由联动）。
+- 样式：优先放在 `src/styles/<role>/`，组件中通过 `@import` 或 `style src` 引入。
+- 模块出口：每个业务域使用 `index.js` 暴露统一入口，减少跨目录耦合。
+- 路由：统一在 `router/index.js` 维护，角色门户路由直接指向 `modules` 下入口组件。
 
 ## 快速开始（本地开发）
 
@@ -180,7 +234,7 @@ npm run dev
   - `GET /api/teacher-course-permission-requests`
   - `POST /api/teacher-course-permission-requests`
   - `POST /api/teacher-course-permission-requests/decide`
-- 学习资源（进度）
+- 学习资源
   - `GET /api/resources/by-knowledge-point`
   - `POST /api/resources/complete`
   - `GET /api/resources/progress`
