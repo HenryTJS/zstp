@@ -1,0 +1,7 @@
+export { default as TeacherPortal } from './TeacherPortal.vue'
+export { useTeacherPortalWorkspace } from './composables/useTeacherPortalWorkspace'
+export { useTeacherKnowledgeModule } from './composables/useTeacherKnowledgeModule'
+export { useTeacherCourseMarketModule } from './composables/useTeacherCourseMarketModule'
+export { useTeacherProfileModule } from './composables/useTeacherProfileModule'
+export { useTeacherPortalLifecycle } from './composables/useTeacherPortalLifecycle'
+export { createTeacherSharedRefs } from './composables/createTeacherSharedRefs'

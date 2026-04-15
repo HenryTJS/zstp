@@ -1,8 +1,8 @@
-import { createRouter, createWebHistory } from 'vue-router'
+﻿import { createRouter, createWebHistory } from 'vue-router'
 import LoginPage from '../components/LoginPage.vue'
-import StudentPortal from '../components/StudentPortal.vue'
-import TeacherPortal from '../components/TeacherPortal.vue'
-import AdminPortal from '../components/AdminPortal.vue'
+import StudentPortal from '../modules/student/StudentPortal.vue'
+import TeacherPortal from '../modules/teacher/TeacherPortal.vue'
+import AdminPortal from '../modules/admin/AdminPortal.vue'
 import AccountSecurityPanel from '../components/AccountSecurityPanel.vue'
 
 const routes = [
@@ -62,7 +62,7 @@ const readStoredUser = () => {
   }
 }
 
-/** 未登录或角色不符时禁止进入各端门户（localStorage 已清则必须离开受保护路由） */
+/** 未登录或角色不符时禁止进入各端门户（localStorage 清空后必须离开受保护路由） */
 router.beforeEach((to) => {
   const u = readStoredUser()
   if (to.path === '/' || to.path === '/login') return true
@@ -89,3 +89,4 @@ router.beforeEach((to) => {
 })
 
 export default router
+

@@ -93,6 +93,17 @@ export function useStudentPersistState({
     scheduleRefreshDimensionScores()
   }
 
+  const clearPendingTimers = () => {
+    if (stateSaveTimer) {
+      clearTimeout(stateSaveTimer)
+      stateSaveTimer = null
+    }
+    if (dimScoreTimer) {
+      clearTimeout(dimScoreTimer)
+      dimScoreTimer = null
+    }
+  }
+
   const loadStudentState = async () => {
     hydrateJoiningCourses.value = true
     let needsPushJoinedMigration = false
@@ -149,6 +160,7 @@ export function useStudentPersistState({
     persistStudentState,
     schedulePersistStudentState,
     scheduleRefreshDimensionScores,
-    loadDimensionScores
+    loadDimensionScores,
+    clearPendingTimers
   }
 }

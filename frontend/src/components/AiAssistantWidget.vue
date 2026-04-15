@@ -233,5 +233,5 @@ const send = async () => {
 }
 </style>
 <style>
-@import './student-portal.css';
+@import '@/styles/student/student-portal.css';
 </style>

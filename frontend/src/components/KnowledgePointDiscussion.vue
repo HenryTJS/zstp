@@ -7,7 +7,7 @@ import {
   deleteKnowledgePointDiscussionPost
 } from '../api/client'
 import KnowledgePointDiscussionNode from './KnowledgePointDiscussionNode.vue'
-import './student-portal.css'
+import '@/styles/student/student-portal.css'
 
 const props = defineProps({
   courseName: { type: String, default: '' },
@@ -370,5 +370,5 @@ const onDeletePost = async (postId) => {
 }
 </style>
 <style>
-@import './student-portal.css';
+@import '@/styles/student/student-portal.css';
 </style>

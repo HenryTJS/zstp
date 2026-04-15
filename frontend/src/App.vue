@@ -2,7 +2,7 @@
 import { computed, provide, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import DiscussionNotificationBell from './components/DiscussionNotificationBell.vue'
-import AdminPermissionRequestBell from './components/AdminPermissionRequestBell.vue'
+import AdminPermissionRequestBell from './modules/admin/components/AdminPermissionRequestBell.vue'
 import { listCourseCatalog, listTeachersForCourses } from './api/client'
 import { appShellKey } from './appShell'
 
@@ -71,7 +71,7 @@ const handleLogout = () => {
     /* ignore */
   }
   currentUser.value = null
-  // 整页进入登录页：避免 SPA 内 router-view 与地址栏偶发不同步（地址已是 /login 仍显示门户）
+  // 整页进入登录页，避免仅替换 router-view 导致地址栏与页面偶发不同步
   try {
     const { href } = router.resolve({ path: '/login' })
     window.location.assign(href)
@@ -94,36 +94,52 @@ provide(appShellKey, {
   updateUser: handleUpdateUser
 })
 
-const navCourseSearch = ref('')
+const navCourseSearchDraft = ref('')
+const navCourseSearchApplied = ref('')
 const navCourseCatalog = ref([])
 const navTeachersByCourse = ref({})
 const navSearchLoading = ref(false)
 const navSearchError = ref('')
 const isSearchOpen = computed(() =>
   ((isStudentUser.value && isOnStudentRoute.value) || (isTeacherUser.value && isOnTeacherRoute.value)) &&
-  String(navCourseSearch.value || '').trim().length > 0
+  String(navCourseSearchApplied.value || '').trim().length > 0
 )
 const showSearchResultsOnly = computed(() => isSearchOpen.value)
 
 const normalize = (s) => String(s || '').trim().toLowerCase()
-const scoreCourse = (query, c) => {
+const scoreCourse = (query, c, teachersByCourse) => {
   const q = normalize(query)
   const name = normalize(c?.courseName)
-  if (!q || !name) return 0
-  if (name === q) return 1000
-  if (name.startsWith(q)) return 800
-  const idx = name.indexOf(q)
-  if (idx >= 0) return 600 - Math.min(idx, 50)
-  let hit = 0
-  for (const ch of q) if (name.includes(ch)) hit += 1
-  return hit > 0 ? 200 + hit : 0
+  const rawTeacherList = teachersByCourse?.[String(c?.courseName || '').trim()]
+  const teacherText = Array.isArray(rawTeacherList)
+    ? rawTeacherList.map((t) => String(t?.username || '').trim()).filter(Boolean).join(' ')
+    : ''
+  const teachers = normalize(teacherText)
+
+  if (!q) return 0
+
+  const scoreField = (field) => {
+    if (!field) return 0
+    if (field === q) return 1000
+    if (field.startsWith(q)) return 800
+    const idx = field.indexOf(q)
+    if (idx >= 0) return 600 - Math.min(idx, 50)
+    let hit = 0
+    for (const ch of q) if (field.includes(ch)) hit += 1
+    return hit > 0 ? 200 + hit : 0
+  }
+
+  const nameScore = scoreField(name)
+  const teacherScore = scoreField(teachers)
+  // 课程名匹配优先，但教师匹配也可以命中
+  return Math.max(nameScore, Math.floor(teacherScore * 0.9))
 }
 
 const rankedSearchCourses = computed(() => {
-  const q = String(navCourseSearch.value || '').trim()
+  const q = String(navCourseSearchApplied.value || '').trim()
   if (!q) return []
   return (Array.isArray(navCourseCatalog.value) ? navCourseCatalog.value : [])
-    .map((c) => ({ ...c, _score: scoreCourse(q, c) }))
+    .map((c) => ({ ...c, _score: scoreCourse(q, c, navTeachersByCourse.value) }))
     .sort((a, b) => (b._score - a._score) || String(a.courseName || '').localeCompare(String(b.courseName || ''), 'zh-CN'))
 })
 
@@ -172,7 +188,7 @@ const openCourseFromSearch = async (course) => {
   const cn = String(course?.courseName || '').trim()
   if (!cn) return
   const role = currentUser.value?.role
-  // 先完成路由跳转再清空搜索词，避免「先卸载 router-view 再导航」导致仍停留在课程广场等旧页
+  // 先完成路由跳转再清空搜索词，避免先卸载视图造成页面停留异常
   try {
     if (role === 'student') {
       await router.push({ path: '/student/course-detail', query: { course: cn } })
@@ -180,7 +196,8 @@ const openCourseFromSearch = async (course) => {
       await router.push({ path: '/teacher/course-detail', query: { course: cn } })
     }
   } finally {
-    navCourseSearch.value = ''
+    navCourseSearchDraft.value = ''
+    navCourseSearchApplied.value = ''
   }
 }
 
@@ -190,7 +207,17 @@ const teachersTextForCourse = (courseName) => {
   return list.map((t) => String(t?.username || '').trim()).filter(Boolean).join('、') || '暂无授课教师信息'
 }
 
-/** 从 path 取首段，避免可选动态参数 /:page? 在部分环境下 params 为空导致导航高亮与内容错位 */
+const applyNavCourseSearch = async () => {
+  const q = String(navCourseSearchDraft.value || '').trim()
+  navCourseSearchApplied.value = q
+  if (!q) return
+  // 若用户尚未进入过门户或刚登录，尽量保证课程数据就绪
+  if (!Array.isArray(navCourseCatalog.value) || navCourseCatalog.value.length === 0) {
+    await refreshNavCourseCatalog()
+  }
+}
+
+/** 从 path 取首段，避免可选参数在部分环境下为空导致导航高亮错位 */
 const pathSegmentAfterPrefix = (fullPath, prefix) => {
   const p = String(fullPath || '')
   if (!p.startsWith(prefix)) return ''
@@ -240,7 +267,7 @@ const adminNavSegment = computed(() => {
               type="button"
               class="nav-btn section-nav-btn"
               :class="{ active: studentNavSegment === page.key }"
-              @click="() => { navCourseSearch = ''; router.push(`/student/${page.key}`) }">
+              @click="() => { navCourseSearchDraft = ''; navCourseSearchApplied = ''; router.push(`/student/${page.key}`) }">
               {{ page.label }}
             </button>
           </nav>
@@ -252,17 +279,26 @@ const adminNavSegment = computed(() => {
               type="button"
               class="nav-btn section-nav-btn"
               :class="{ active: teacherNavSegment === page.key }"
-              @click="() => { navCourseSearch = ''; router.push(`/teacher/${page.key}`) }">
+              @click="() => { navCourseSearchDraft = ''; navCourseSearchApplied = ''; router.push(`/teacher/${page.key}`) }">
               {{ page.label }}
             </button>
           </nav>
 
           <div v-if="(isStudentUser && isOnStudentRoute) || (isTeacherUser && isOnTeacherRoute)" class="nav-course-search">
             <input
-              v-model="navCourseSearch"
+              v-model="navCourseSearchDraft"
               class="match-height nav-course-search-input"
-              placeholder="搜索全部课程"
+              placeholder="搜索课程/授课教师"
+              @keydown.enter.prevent="applyNavCourseSearch"
             />
+            <button
+              type="button"
+              class="nav-btn nav-course-search-btn"
+              :disabled="!String(navCourseSearchDraft || '').trim()"
+              @click="applyNavCourseSearch"
+            >
+              搜索
+            </button>
           </div>
 
           <nav v-else-if="isAdminUser && isOnAdminRoute" class="section-nav section-nav-inline" aria-label="管理员页面导航">
@@ -314,7 +350,7 @@ const adminNavSegment = computed(() => {
 
     <div class="app-shell">
       <main class="panel-wrap app-main-with-search">
-        <!-- 登录/登出/改资料由 appShellKey provide 注入子组件；勿再用插槽包一层 component+v-bind，以免 activePage 错乱 -->
+        <!-- 登录/登出/资料更新由 appShellKey provide 注入；避免额外包裹导致 activePage 错乱 -->
         <router-view />
         <div
           v-if="showSearchResultsOnly"
@@ -322,14 +358,14 @@ const adminNavSegment = computed(() => {
           role="dialog"
           aria-modal="true"
           aria-label="课程搜索结果"
-          @click.self="navCourseSearch = ''"
+          @click.self="navCourseSearchApplied = ''"
         >
           <section class="result-card nav-search-page-block">
             <div class="nav-search-header">
               <h3>课程搜索结果</h3>
-              <p class="panel-subtitle">关键词：{{ navCourseSearch }}</p>
+              <p class="panel-subtitle">关键词：{{ navCourseSearchApplied }}</p>
             </div>
-            <p v-if="navSearchLoading" class="panel-subtitle">加载课程中...</p>
+            <p v-if="navSearchLoading" class="panel-subtitle">加载课程中…</p>
             <p v-else-if="navSearchError" class="error-text">{{ navSearchError }}</p>
             <template v-else>
               <p class="panel-subtitle nav-search-count">共 {{ rankedSearchCourses.length }} 门课程，按匹配度从高到低</p>
@@ -373,6 +409,23 @@ const adminNavSegment = computed(() => {
   backdrop-filter: blur(10px);
 }
 .nav-course-search { position: relative; }
+.nav-course-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-course-search-btn {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-card-border);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  color: #0f172a;
+}
+.nav-course-search-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .nav-search-page-block {
   margin-bottom: 14px;
   border-radius: var(--ui-card-radius);
@@ -447,3 +500,4 @@ const adminNavSegment = computed(() => {
   .nav-search-action { justify-self: start; }
 }
 </style>
+

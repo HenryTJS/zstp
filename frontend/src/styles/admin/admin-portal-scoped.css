@@ -1,0 +1,53 @@
+﻿.credit-rule-block {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.credit-major-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.credit-major-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 0.9rem;
+}
+.credit-chip-remove {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  font-size: 1.1rem;
+}
+.course-config-course-row {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+/* 勿与全局 .match-height 同用：会把 size>1 的 listbox 压成单行高度，专业多选框会「消失」 */
+.major-multi {
+  width: 100%;
+  min-height: 148px;
+  height: auto;
+  padding: 7px 10px;
+  box-sizing: border-box;
+  line-height: 1.35;
+}
+.grid-form.three-col {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 960px) {
+  .grid-form.three-col {
+    grid-template-columns: 1fr;
+  }
+}

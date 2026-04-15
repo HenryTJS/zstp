@@ -1,0 +1,45 @@
+/* Step 1: LMS-like shell layout for student portal */
+.student-lms-shell{
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:16px;
+}
+
+.student-lms-main{
+  min-width:0;
+}
+
+.student-lms-header{
+  background:linear-gradient(125deg,#312e81 0%,#4c1d95 48%,#5b21b6 100%);
+  color:#fff;
+  border-radius:var(--ui-card-radius);
+  padding:18px 22px;
+  margin-bottom:16px;
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow:0 12px 40px -10px rgba(76,29,149,.45),0 4px 16px rgba(15,23,42,.12);
+}
+
+.student-lms-header h2{
+  margin:0;
+  font-size:20px;
+}
+
+.student-lms-header .panel-subtitle{
+  color:rgba(255,255,255,.86);
+  margin:6px 0 0;
+}
+
+.student-lms-content{
+  display:grid;
+  gap:14px;
+}
+
+@media (max-width:1024px){
+  .student-lms-shell{grid-template-columns:1fr;}
+}
+
+@media (max-width:768px){
+  .student-lms-header{padding:14px 16px;margin-bottom:12px;}
+  .student-lms-header h2{font-size:18px;}
+}
+
