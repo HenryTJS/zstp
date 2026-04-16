@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { useStudentBranchGraph } from '../composables/useStudentBranchGraph'
+import { useStudentBranchGraph } from '../../composables/useStudentBranchGraph'
 
 const props = defineProps({
   graphData: { type: Object, required: true },

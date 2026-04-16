@@ -5,8 +5,5 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/**/*"],
-  "exclude": [
-    "src/modules/teacher/pages/TeacherCourseConfigsPage.vue"
-  ]
+  "include": ["src/**/*"]
 }

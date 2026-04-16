@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, watch } from 'vue'
 import StudentBranchGraph from './StudentBranchGraph.vue'
-import { useStudentForceGraph } from '../composables/useStudentForceGraph'
+import { useStudentForceGraph } from '../../composables/useStudentForceGraph'
 
 const props = defineProps({
   title: { type: String, default: '知识图谱' },
