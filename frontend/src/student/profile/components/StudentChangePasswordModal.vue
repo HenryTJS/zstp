@@ -1,0 +1,49 @@
+<script setup>
+import { ref } from 'vue'
+import AccountSecurityPanel from '../../../shared/components/AccountSecurityPanel.vue'
+
+const props = defineProps({
+  visible: { type: Boolean, required: true },
+  currentUser: { type: Object, required: true }
+})
+
+const emit = defineEmits(['close'])
+const passwordPanelRef = ref(null)
+const saving = ref(false)
+
+const handleSave = async () => {
+  if (saving.value) return
+  if (!passwordPanelRef.value || !passwordPanelRef.value.submitChange) return
+  saving.value = true
+  try {
+    const ok = await passwordPanelRef.value.submitChange()
+    if (ok) emit('close')
+  } finally {
+    saving.value = false
+  }
+}
+</script>
+
+<template>
+  <div v-if="visible" class="modal-mask" @click.self="emit('close')">
+    <div class="modal-wrapper">
+      <div class="modal-container">
+        <button type="button" class="modal-close" @click="emit('close')" aria-label="关闭">×</button>
+        <h3 class="portal-section-title portal-section-title--slate">修改密码</h3>
+        <div class="ui-mt-12">
+          <AccountSecurityPanel ref="passwordPanelRef" :current-user="currentUser" :embedded="true" />
+        </div>
+        <div class="ui-actions-row">
+          <button type="button" class="match-height match-button" :disabled="saving" @click="handleSave">保存</button>
+          <button type="button" class="match-height cancel-button" @click="emit('close')">取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style>
+@import '@/student/styles/student-portal-modal.css';
+@import '@/student/styles/student-portal.css';
+</style>
+

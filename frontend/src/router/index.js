@@ -1,9 +1,9 @@
-﻿import { createRouter, createWebHistory } from 'vue-router'
-import LoginPage from '../components/LoginPage.vue'
-import StudentPortal from '../modules/student/StudentPortal.vue'
-import TeacherPortal from '../modules/teacher/TeacherPortal.vue'
-import AdminPortal from '../modules/admin/AdminPortal.vue'
-import AccountSecurityPanel from '../components/AccountSecurityPanel.vue'
+import { createRouter, createWebHistory } from 'vue-router'
+import LoginPage from '../shared/components/LoginPage.vue'
+import StudentPortal from '../student/StudentPortal.vue'
+import TeacherPortal from '../teacher/TeacherPortal.vue'
+import AdminPortal from '../admin/AdminPortal.vue'
+import AccountSecurityPanel from '../shared/components/AccountSecurityPanel.vue'
 
 const routes = [
   {

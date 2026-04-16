@@ -1,8 +1,8 @@
 <script setup>
 import { computed, provide, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import DiscussionNotificationBell from './components/DiscussionNotificationBell.vue'
-import AdminPermissionRequestBell from './modules/admin/components/AdminPermissionRequestBell.vue'
+import DiscussionNotificationBell from './shared/components/DiscussionNotificationBell.vue'
+import AdminPermissionRequestBell from './admin/components/AdminPermissionRequestBell.vue'
 import { listCourseCatalog, listTeachersForCourses } from './api/client'
 import { appShellKey } from './appShell'
 
