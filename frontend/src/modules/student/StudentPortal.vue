@@ -1063,7 +1063,7 @@ const handleCourseDetailQuit = async () => {
 <template>
   <div class="student-lms-shell">
     <section class="student-lms-main">
-      <div class="student-lms-content">
+      <div class="student-lms-content" :class="{ 'student-page-flat': effectivePage !== 'home' }">
     <StudentHome
       v-if="effectivePage === 'home'"
       :user-initial="userInitial"
@@ -1291,4 +1291,12 @@ const handleCourseDetailQuit = async () => {
 
 <style>
 @import '@/styles/student/student-portal.css';
+
+.student-page-flat > .result-card,
+.student-page-flat > .panel-stack > .result-card {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
 </style>

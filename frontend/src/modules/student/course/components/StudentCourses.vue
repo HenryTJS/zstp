@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 const props = defineProps({
   joinedCourses: { type: Array, required: true },
@@ -40,6 +40,29 @@ const myCourses = computed(() => {
   return all.filter((c) => joined.has(String(c?.courseName || '').trim()))
 })
 
+const MY_COURSE_PAGE_SIZE = 6
+const currentPage = ref(1)
+
+const totalPages = computed(() => Math.max(1, Math.ceil(myCourses.value.length / MY_COURSE_PAGE_SIZE)))
+
+const pagedMyCourses = computed(() => {
+  const start = (currentPage.value - 1) * MY_COURSE_PAGE_SIZE
+  return myCourses.value.slice(start, start + MY_COURSE_PAGE_SIZE)
+})
+
+watch(
+  () => myCourses.value.length,
+  () => {
+    if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+  }
+)
+
+const goPage = (p) => {
+  const n = Number(p)
+  if (!Number.isFinite(n)) return
+  currentPage.value = Math.max(1, Math.min(totalPages.value, Math.trunc(n)))
+}
+
 const progressFor = (courseName) => {
   const cn = String(courseName || '').trim()
   if (!cn) return undefined
@@ -57,11 +80,11 @@ const progressFor = (courseName) => {
         </div>
       </div>
 
-      <div v-if="myCourses.length" class="course-market-grid">
+      <div v-if="myCourses.length" class="course-market-grid my-course-grid-fixed">
         <article
-          v-for="course in myCourses"
+          v-for="course in pagedMyCourses"
           :key="course.courseName"
-          class="course-market-card course-market-card--clickable"
+          class="course-market-card course-market-card--clickable my-course-card-fixed"
           :class="{ 'is-disabled': !stateHydrated }"
           role="button"
           :tabindex="stateHydrated ? 0 : -1"
@@ -113,6 +136,17 @@ const progressFor = (courseName) => {
             </div>
           </div>
         </article>
+      </div>
+      <div v-if="myCourses.length > MY_COURSE_PAGE_SIZE" class="course-market-pagination my-course-dot-pagination">
+        <button
+          v-for="p in totalPages"
+          :key="'student-my-course-page-' + p"
+          type="button"
+          class="my-course-page-dot"
+          :class="{ 'is-active': currentPage === p }"
+          :aria-label="'第 ' + p + ' 页'"
+          @click="goPage(p)"
+        />
       </div>
     </article>
   </section>
@@ -216,6 +250,38 @@ const progressFor = (courseName) => {
   cursor:not-allowed;
   opacity:.55;
   pointer-events:none;
+}
+.my-course-grid-fixed{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  min-height:auto;
+  align-content:start;
+}
+.my-course-dot-pagination{
+  margin-top:12px;
+  gap:10px;
+}
+.my-course-page-dot{
+  -webkit-appearance:none;
+  appearance:none;
+  display:inline-block;
+  width:10px;
+  height:10px;
+  min-width:10px;
+  min-height:10px;
+  border-radius:50%;
+  border:none;
+  padding:0;
+  background:#cbd5e1;
+  cursor:pointer;
+  line-height:0;
+  font-size:0;
+  box-shadow:none;
+}
+.my-course-page-dot.is-active{
+  background:#4f46e5;
+}
+.my-course-card-fixed{
+  height:auto;
 }
 .my-course-summary{
   margin:0;

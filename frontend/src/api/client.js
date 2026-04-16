@@ -20,12 +20,12 @@ export const createTeacherCoursePermissionRequest = (payload) =>
 export const decideTeacherCoursePermissionRequest = (payload) =>
   http.post('/teacher-course-permission-requests/decide', payload)
 
-// 课程配置：五维权重 + 专业学分
-export const listCourseConfigs = (adminUserId) => http.get('/course-configs', { params: { adminUserId } })
-export const getCourseConfig = (adminUserId, courseName) =>
-  http.get(`/course-configs/${encodeURIComponent(courseName)}`, { params: { adminUserId } })
-export const updateCourseConfig = (adminUserId, courseName, payload) =>
-  http.put(`/course-configs/${encodeURIComponent(courseName)}`, { adminUserId, courseName, ...payload })
+// 课程配置：五维权重
+export const listCourseConfigs = (params) => http.get('/course-configs', { params })
+export const getCourseConfig = (courseName, params) =>
+  http.get(`/course-configs/${encodeURIComponent(courseName)}`, { params })
+export const updateCourseConfig = (courseName, payload) =>
+  http.put(`/course-configs/${encodeURIComponent(courseName)}`, { courseName, ...payload })
 
 // 学生维度分（用于雷达图）
 export const fetchStudentDimensionScores = (userId, course) =>

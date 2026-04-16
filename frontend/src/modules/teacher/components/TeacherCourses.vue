@@ -1,5 +1,5 @@
 <script setup>
-import { reactive } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 const props = defineProps({
   myCourseCatalog: { type: Array, required: true },
@@ -33,6 +33,33 @@ const onCardClick = (courseName) => {
   if (!props.courseInitDone) return
   emit('enter-course', String(courseName || '').trim())
 }
+
+const MY_COURSE_PAGE_SIZE = 6
+const currentPage = ref(1)
+
+const totalPages = computed(() => {
+  const total = Array.isArray(props.myCourseCatalog) ? props.myCourseCatalog.length : 0
+  return Math.max(1, Math.ceil(total / MY_COURSE_PAGE_SIZE))
+})
+
+const pagedMyCourses = computed(() => {
+  const all = Array.isArray(props.myCourseCatalog) ? props.myCourseCatalog : []
+  const start = (currentPage.value - 1) * MY_COURSE_PAGE_SIZE
+  return all.slice(start, start + MY_COURSE_PAGE_SIZE)
+})
+
+watch(
+  () => props.myCourseCatalog.length,
+  () => {
+    if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+  }
+)
+
+const goPage = (p) => {
+  const n = Number(p)
+  if (!Number.isFinite(n)) return
+  currentPage.value = Math.max(1, Math.min(totalPages.value, Math.trunc(n)))
+}
 </script>
 
 <template>
@@ -44,11 +71,11 @@ const onCardClick = (courseName) => {
       </div>
     </div>
 
-    <div v-if="myCourseCatalog.length" class="course-market-grid">
+    <div v-if="myCourseCatalog.length" class="course-market-grid my-course-grid-fixed">
       <article
-        v-for="course in myCourseCatalog"
+        v-for="course in pagedMyCourses"
         :key="course.courseName"
-        class="course-market-card course-market-card--clickable"
+        class="course-market-card course-market-card--clickable my-course-card-fixed"
         :class="{ 'is-disabled': !courseInitDone }"
         role="button"
         :tabindex="courseInitDone ? 0 : -1"
@@ -77,6 +104,17 @@ const onCardClick = (courseName) => {
           </p>
         </div>
       </article>
+    </div>
+    <div v-if="myCourseCatalog.length > MY_COURSE_PAGE_SIZE" class="course-market-pagination my-course-dot-pagination">
+      <button
+        v-for="p in totalPages"
+        :key="'teacher-my-course-page-' + p"
+        type="button"
+        class="my-course-page-dot"
+        :class="{ 'is-active': currentPage === p }"
+        :aria-label="'第 ' + p + ' 页'"
+        @click="goPage(p)"
+      />
     </div>
 
     <p v-if="permissionRequestsError" class="error-text ui-mt-8" role="alert">{{ permissionRequestsError }}</p>
@@ -143,6 +181,38 @@ const onCardClick = (courseName) => {
   cursor:not-allowed;
   opacity:.55;
   pointer-events:none;
+}
+.my-course-grid-fixed{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  min-height:auto;
+  align-content:start;
+}
+.my-course-dot-pagination{
+  margin-top:12px;
+  gap:10px;
+}
+.my-course-page-dot{
+  -webkit-appearance:none;
+  appearance:none;
+  display:inline-block;
+  width:10px;
+  height:10px;
+  min-width:10px;
+  min-height:10px;
+  border-radius:50%;
+  border:none;
+  padding:0;
+  background:#cbd5e1;
+  cursor:pointer;
+  line-height:0;
+  font-size:0;
+  box-shadow:none;
+}
+.my-course-page-dot.is-active{
+  background:#4f46e5;
+}
+.my-course-card-fixed{
+  height:260px;
 }
 .my-course-summary{
   margin:0;

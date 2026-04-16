@@ -9,7 +9,7 @@
   border-radius:var(--ui-card-radius);
   background:#fff;
   box-shadow:0 2px 8px rgba(16,52,90,.05);
-  min-height:216px;
+  min-height:auto;
   transition:transform .18s ease, box-shadow .18s ease;
 }
 
@@ -76,7 +76,7 @@
   border-radius:var(--ui-card-radius);
   padding:16px 16px 14px;
   background:linear-gradient(165deg,#ffffff 0%,#fafaff 55%,#f5f3ff 100%);
-  min-height:240px;
+  min-height:auto;
   display:flex;
   flex-direction:column;
   min-width:0;

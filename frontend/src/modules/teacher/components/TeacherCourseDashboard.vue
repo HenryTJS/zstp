@@ -37,14 +37,11 @@ const kpiTiles = computed(() => {
   const p = progressOverview.value
   return [
     { theme: 'kpi--students', label: '在读学生', value: String(p?.studentCount ?? 0), unit: '人' },
-    { theme: 'kpi--points', label: '知识点（非根）', value: String(knowledgePointCount.value), unit: '个' },
+    { theme: 'kpi--points', label: '知识点', value: String(knowledgePointCount.value), unit: '个' },
     { theme: 'kpi--materials', label: '资料篇数', value: String(props.materialCount ?? 0), unit: '篇' },
     { theme: 'kpi--resources', label: '课程资源项', value: String(p?.totalResourceCount ?? 0), unit: '项' },
     { theme: 'kpi--progress', label: '平均完成度', value: String(avgResourcePercent.value), unit: '%' },
-    { theme: 'kpi--tests', label: '已发布测试', value: String(s?.publishedTestCount ?? 0), unit: '套' },
-    { theme: 'kpi--submits', label: '测试提交人次', value: String(s?.testSubmissionCount ?? 0), unit: '次' },
-    { theme: 'kpi--participants', label: '参与测试学生', value: String(s?.distinctSubmitters ?? 0), unit: '人' },
-    { theme: 'kpi--avgscore', label: '测试均分（全课）', value: String(s?.courseAvgScore ?? 0), unit: '分' }
+    { theme: 'kpi--tests', label: '已发布测试', value: String(s?.publishedTestCount ?? 0), unit: '套' }
   ]
 })
 
@@ -105,32 +102,6 @@ onMounted(() => {
           </p>
         </div>
       </div>
-
-      <div class="ui-mt-12">
-        <h3 class="portal-subsection-title portal-subsection-title--teal">各知识点已发布测试</h3>
-        <div v-if="summary?.tests && summary.tests.length" class="dashboard-table-wrap">
-          <table class="dashboard-table">
-            <thead>
-              <tr>
-                <th>知识点</th>
-                <th>标题</th>
-                <th>提交数</th>
-                <th>完成率</th>
-                <th>平均分</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in summary.tests" :key="row.testId">
-                <td>{{ row.pointName || '—' }}</td>
-                <td>{{ row.title || '—' }}</td>
-                <td>{{ row.submissions ?? 0 }}</td>
-                <td>{{ row.completionRate ?? 0 }}%</td>
-                <td>{{ row.avgScore ?? 0 }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
     </template>
   </article>
 </template>
@@ -138,7 +109,7 @@ onMounted(() => {
 <style scoped>
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -240,31 +211,4 @@ onMounted(() => {
   background: linear-gradient(145deg, #2563eb 0%, #3b82f6 50%, #1d4ed8 100%);
 }
 
-.dashboard-table-wrap {
-  overflow-x: auto;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 8px;
-}
-
-.dashboard-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-.dashboard-table th,
-.dashboard-table td {
-  padding: 10px 12px;
-  text-align: left;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.dashboard-table th {
-  font-weight: 600;
-  background: rgba(0, 0, 0, 0.03);
-}
-
-.dashboard-table tbody tr:last-child td {
-  border-bottom: none;
-}
 </style>

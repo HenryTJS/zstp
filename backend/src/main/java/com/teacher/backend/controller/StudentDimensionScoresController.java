@@ -116,13 +116,12 @@ public class StudentDimensionScoresController {
 
             CourseConfigDto config = courseConfigService.getOrDefaultConfig(c);
             CourseDimensionWeightsDto w = config.weights();
-            double credit = courseConfigService.resolveCreditForStudentMajor(c, majorCode);
 
-            double lrW = credit * w.logicReasoning();
-            double ncW = credit * w.numericCalculation();
-            double suW = credit * w.semanticUnderstanding();
-            double siW = credit * w.spatialImagination();
-            double mrW = credit * w.memoryRetrieval();
+            double lrW = w.logicReasoning();
+            double ncW = w.numericCalculation();
+            double suW = w.semanticUnderstanding();
+            double siW = w.spatialImagination();
+            double mrW = w.memoryRetrieval();
 
             lrNum += accuracy * lrW; lrDen += lrW;
             ncNum += accuracy * ncW; ncDen += ncW;
@@ -135,7 +134,6 @@ public class StudentDimensionScoresController {
                 "accuracy", round2(accuracy * 100),
                 "score", round2(scoreSum),
                 "full", round2(fullSum),
-                "credit", credit,
                 "weights", Map.of(
                     "logicReasoning", w.logicReasoning(),
                     "numericCalculation", w.numericCalculation(),

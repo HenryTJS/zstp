@@ -230,7 +230,7 @@ const {
     @close="viewMaterialsDialogVisible = false"
     @delete-material="handleDeleteMaterial"
   />
-    <section class="panel-stack teacher-theme">
+    <section class="panel-stack teacher-theme" :class="{ 'teacher-page-flat': currentPage !== 'profile' }">
     <TeacherProfilePage
       v-if="currentPage === 'profile'"
       :current-user="currentUser"
@@ -279,6 +279,7 @@ const {
       v-else-if="currentPage === 'manage'"
             :current-user="currentUser"
             :selected-course="selectedCourse"
+            :can-configure-course="Boolean(selectedCourse && teacherHasCoursePermission(selectedCourse))"
             :points="points"
       :materials-count="materials.length"
           :selected-point-ids="selectedPointIds"
@@ -303,6 +304,7 @@ const {
       @update:selected-point-ids="selectedPointIds = $event"
       @update:analytics-point-name="(v) => (analyticsPointName = v)"
     />
+
     </section>
     <TeacherPermissionRequestModal
       :visible="permissionRequestDialogVisible"
@@ -394,4 +396,11 @@ const {
 
 <style>
 @import '@/styles/teacher/teacher-portal.css';
+
+.teacher-page-flat > .result-card {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
 </style>

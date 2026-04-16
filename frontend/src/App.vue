@@ -25,7 +25,6 @@ const teacherPageList = [
 const adminPageList = [
   { key: 'user-stats', label: '用户与导入' },
   { key: 'announcements', label: '公告管理' },
-  { key: 'course-configs', label: '课程权重与学分' },
   { key: 'profile', label: '个人中心' }
 ]
 
@@ -207,6 +206,29 @@ const teachersTextForCourse = (courseName) => {
   return list.map((t) => String(t?.username || '').trim()).filter(Boolean).join('、') || '暂无授课教师信息'
 }
 
+const markdownToPlainText = (mdText) => {
+  const s = String(mdText || '')
+  return s
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/[*_~>]/g, '')
+    .replace(/\r?\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const courseSummaryExcerpt = (course) => {
+  const raw = String(course?.summary || '').trim() || String(course?.syllabus || '').trim()
+  const plain = markdownToPlainText(raw)
+  if (!plain) return '暂无课程简介'
+  return plain.length > 70 ? `${plain.slice(0, 70)}...` : plain
+}
+
 const applyNavCourseSearch = async () => {
   const q = String(navCourseSearchDraft.value || '').trim()
   navCourseSearchApplied.value = q
@@ -351,46 +373,44 @@ const adminNavSegment = computed(() => {
     <div class="app-shell">
       <main class="panel-wrap app-main-with-search">
         <!-- 登录/登出/资料更新由 appShellKey provide 注入；避免额外包裹导致 activePage 错乱 -->
-        <router-view />
-        <div
+        <router-view v-if="!showSearchResultsOnly" />
+        <section
           v-if="showSearchResultsOnly"
-          class="nav-search-overlay"
-          role="dialog"
-          aria-modal="true"
+          class="result-card nav-search-page-block"
+          role="region"
           aria-label="课程搜索结果"
-          @click.self="navCourseSearchApplied = ''"
         >
-          <section class="result-card nav-search-page-block">
-            <div class="nav-search-header">
-              <h3>课程搜索结果</h3>
-              <p class="panel-subtitle">关键词：{{ navCourseSearchApplied }}</p>
+          <div class="nav-search-header">
+            <h3>课程搜索结果</h3>
+            <p class="panel-subtitle">关键词：{{ navCourseSearchApplied }}</p>
+          </div>
+          <p v-if="navSearchLoading" class="panel-subtitle">加载课程中…</p>
+          <p v-else-if="navSearchError" class="error-text">{{ navSearchError }}</p>
+          <template v-else>
+            <div v-if="rankedSearchCourses.length" class="nav-search-list">
+              <button
+                v-for="c in rankedSearchCourses"
+                :key="c.courseName"
+                type="button"
+                class="nav-search-row"
+                @click.stop="openCourseFromSearch(c)"
+              >
+                <img :src="c.coverUrl" alt="" class="nav-search-cover" />
+                <span class="nav-search-main">
+                  <span class="nav-search-name">{{ c.courseName }}</span>
+                  <span class="nav-search-teachers">授课教师：{{ teachersTextForCourse(c.courseName) }}</span>
+                  <span class="nav-search-summary">{{ courseSummaryExcerpt(c) }}</span>
+                </span>
+                <span class="nav-search-action" :class="{ 'is-access': c.hasAccess }">课程介绍</span>
+              </button>
             </div>
-            <p v-if="navSearchLoading" class="panel-subtitle">加载课程中…</p>
-            <p v-else-if="navSearchError" class="error-text">{{ navSearchError }}</p>
-            <template v-else>
-              <p class="panel-subtitle nav-search-count">共 {{ rankedSearchCourses.length }} 门课程，按匹配度从高到低</p>
-              <div v-if="rankedSearchCourses.length" class="nav-search-list">
-                <button
-                  v-for="c in rankedSearchCourses"
-                  :key="c.courseName"
-                  type="button"
-                  class="nav-search-row"
-                  @click.stop="openCourseFromSearch(c)"
-                >
-                  <img :src="c.coverUrl" alt="" class="nav-search-cover" />
-                  <span class="nav-search-main">
-                    <span class="nav-search-name">{{ c.courseName }}</span>
-                    <span class="nav-search-teachers">授课教师：{{ teachersTextForCourse(c.courseName) }}</span>
-                    <span class="nav-search-summary">{{ c.summary || '暂无课程简介' }}</span>
-                  </span>
-                  <span class="nav-search-action" :class="{ 'is-access': c.hasAccess }">课程介绍</span>
-                </button>
-              </div>
-            </template>
-          </section>
-        </div>
+          </template>
+        </section>
       </main>
     </div>
+    <footer class="app-footer-bar" role="contentinfo">
+      <span>备案号：陕ICP备2026003727号</span>
+    </footer>
   </div>
 </template>
 
@@ -399,14 +419,15 @@ const adminNavSegment = computed(() => {
   position: relative;
   min-height: min(70vh, 720px);
 }
-.nav-search-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 40;
-  overflow: auto;
-  padding: 4px 0 20px;
-  background: rgba(248, 250, 252, 0.88);
-  backdrop-filter: blur(10px);
+.app-footer-bar {
+  margin-top: 18px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ui-card-border);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
 }
 .nav-course-search { position: relative; }
 .nav-course-search {
@@ -444,12 +465,13 @@ const adminNavSegment = computed(() => {
 .nav-search-list { display: grid; gap: 10px; }
 .nav-search-row {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: 236px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 12px;
   border: 1px solid var(--ui-card-border);
   border-radius: 12px;
-  padding: 10px;
+  min-height: 160px;
+  padding: 14px;
   background: #fff;
   text-align: left;
   cursor: pointer;
@@ -461,19 +483,25 @@ const adminNavSegment = computed(() => {
   box-shadow: var(--shadow-card-hover);
 }
 .nav-search-cover {
-  width: 96px;
-  height: 60px;
+  width: 236px;
+  aspect-ratio: 16 / 9;
+  height: auto;
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--ui-accent-100);
 }
 .nav-search-main { display: grid; gap: 4px; min-width: 0; }
-.nav-search-name { font-weight: 700; color: #0f172a; letter-spacing: -0.02em; }
-.nav-search-teachers { font-size: 12px; color: #64748b; }
+.nav-search-name { font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; }
+.nav-search-teachers { font-size: 15px; color: #64748b; }
 .nav-search-summary {
-  font-size: 13px;
+  font-size: 16px;
   color: #475569;
-  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
   word-break: break-word;
   line-height: 1.45;
 }
@@ -485,6 +513,7 @@ const adminNavSegment = computed(() => {
   border-radius: 999px;
   padding: 5px 10px;
   white-space: nowrap;
+  align-self: start;
 }
 .nav-search-action.is-access {
   background: #ecfdf3;
@@ -496,7 +525,7 @@ const adminNavSegment = computed(() => {
     grid-template-columns: 1fr;
     align-items: start;
   }
-  .nav-search-cover { width: 100%; height: 140px; }
+  .nav-search-cover { width: 100%; aspect-ratio: 16 / 9; height: auto; }
   .nav-search-action { justify-self: start; }
 }
 </style>

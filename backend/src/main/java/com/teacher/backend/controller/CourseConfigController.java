@@ -6,6 +6,8 @@ import java.util.Objects;
 
 import com.teacher.backend.dto.CourseConfigDto;
 import com.teacher.backend.dto.UpsertCourseConfigRequest;
+import com.teacher.backend.entity.TeacherCoursePermission;
+import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 import com.teacher.backend.repository.UserRepository;
 import com.teacher.backend.service.CourseConfigService;
 import org.springframework.http.HttpStatus;
@@ -25,42 +27,77 @@ import org.springframework.web.bind.annotation.RestController;
 public class CourseConfigController {
 
     private static final String ROLE_ADMIN = "admin";
+    private static final String ROLE_TEACHER = "teacher";
 
     private final UserRepository userRepository;
+    private final TeacherCoursePermissionRepository teacherCoursePermissionRepository;
     private final CourseConfigService courseConfigService;
 
-    public CourseConfigController(UserRepository userRepository, CourseConfigService courseConfigService) {
+    public CourseConfigController(
+        UserRepository userRepository,
+        TeacherCoursePermissionRepository teacherCoursePermissionRepository,
+        CourseConfigService courseConfigService
+    ) {
         this.userRepository = userRepository;
+        this.teacherCoursePermissionRepository = teacherCoursePermissionRepository;
         this.courseConfigService = courseConfigService;
     }
 
     @GetMapping
-    public ResponseEntity<?> list(@RequestParam(required = false) Long adminUserId) {
-        if (adminUserId == null) {
-            return error(HttpStatus.BAD_REQUEST, "adminUserId is required");
+    public ResponseEntity<?> list(
+        @RequestParam(required = false) Long adminUserId,
+        @RequestParam(required = false) Long teacherUserId
+    ) {
+        List<CourseConfigDto> list;
+        if (adminUserId != null) {
+            boolean isAdmin = userRepository.findByIdAndRole(adminUserId, ROLE_ADMIN).isPresent();
+            if (!isAdmin) {
+                return error(HttpStatus.FORBIDDEN, "only admin can list course configs");
+            }
+            list = courseConfigService.listAllConfigs();
+        } else if (teacherUserId != null) {
+            boolean isTeacher = userRepository.findByIdAndRole(teacherUserId, ROLE_TEACHER).isPresent();
+            if (!isTeacher) {
+                return error(HttpStatus.FORBIDDEN, "only teacher can list own course configs");
+            }
+            List<TeacherCoursePermission> rows = teacherCoursePermissionRepository.findByTeacherIdOrderByIdAsc(teacherUserId);
+            list = rows.stream()
+                .map(TeacherCoursePermission::getCourseName)
+                .filter(StringUtils::hasText)
+                .distinct()
+                .map(courseConfigService::getOrDefaultConfig)
+                .toList();
+        } else {
+            return error(HttpStatus.BAD_REQUEST, "adminUserId or teacherUserId is required");
         }
-        boolean isAdmin = userRepository.findByIdAndRole(adminUserId, ROLE_ADMIN).isPresent();
-        if (!isAdmin) {
-            return error(HttpStatus.FORBIDDEN, "only admin can list course configs");
-        }
-        List<CourseConfigDto> list = courseConfigService.listAllConfigs();
         return ResponseEntity.ok(Map.of("items", list));
     }
 
     @GetMapping("/{courseName}")
     public ResponseEntity<?> getOne(
         @PathVariable String courseName,
-        @RequestParam(required = false) Long adminUserId
+        @RequestParam(required = false) Long adminUserId,
+        @RequestParam(required = false) Long teacherUserId
     ) {
-        if (adminUserId == null) {
-            return error(HttpStatus.BAD_REQUEST, "adminUserId is required");
-        }
-        boolean isAdmin = userRepository.findByIdAndRole(adminUserId, ROLE_ADMIN).isPresent();
-        if (!isAdmin) {
-            return error(HttpStatus.FORBIDDEN, "only admin can read course configs");
-        }
         if (!StringUtils.hasText(courseName)) {
             return error(HttpStatus.BAD_REQUEST, "courseName is required");
+        }
+        if (adminUserId != null) {
+            boolean isAdmin = userRepository.findByIdAndRole(adminUserId, ROLE_ADMIN).isPresent();
+            if (!isAdmin) {
+                return error(HttpStatus.FORBIDDEN, "only admin can read course configs");
+            }
+        } else if (teacherUserId != null) {
+            boolean isTeacher = userRepository.findByIdAndRole(teacherUserId, ROLE_TEACHER).isPresent();
+            if (!isTeacher) {
+                return error(HttpStatus.FORBIDDEN, "only teacher can read own course configs");
+            }
+            boolean allowed = teacherCoursePermissionRepository.existsByTeacherIdAndCourseNameIgnoreCase(teacherUserId, courseName);
+            if (!allowed) {
+                return error(HttpStatus.FORBIDDEN, "teacher has no permission for this course");
+            }
+        } else {
+            return error(HttpStatus.BAD_REQUEST, "adminUserId or teacherUserId is required");
         }
         return ResponseEntity.ok(courseConfigService.getOrDefaultConfig(courseName));
     }
@@ -72,18 +109,28 @@ public class CourseConfigController {
             return error(HttpStatus.BAD_REQUEST, "courseName is required");
         }
         Long adminUserId = request == null ? null : request.adminUserId();
-        if (adminUserId == null) {
-            return error(HttpStatus.BAD_REQUEST, "adminUserId is required");
-        }
-        boolean isAdmin = userRepository.findByIdAndRole(adminUserId, ROLE_ADMIN).isPresent();
-        if (!isAdmin) {
-            return error(HttpStatus.FORBIDDEN, "only admin can update course configs");
+        Long teacherUserId = request == null ? null : request.teacherUserId();
+        if (adminUserId != null) {
+            boolean isAdmin = userRepository.findByIdAndRole(adminUserId, ROLE_ADMIN).isPresent();
+            if (!isAdmin) {
+                return error(HttpStatus.FORBIDDEN, "only admin can update course configs");
+            }
+        } else if (teacherUserId != null) {
+            boolean isTeacher = userRepository.findByIdAndRole(teacherUserId, ROLE_TEACHER).isPresent();
+            if (!isTeacher) {
+                return error(HttpStatus.FORBIDDEN, "only teacher can update own course configs");
+            }
+            boolean allowed = teacherCoursePermissionRepository.existsByTeacherIdAndCourseNameIgnoreCase(teacherUserId, courseName);
+            if (!allowed) {
+                return error(HttpStatus.FORBIDDEN, "teacher has no permission for this course");
+            }
+        } else {
+            return error(HttpStatus.BAD_REQUEST, "adminUserId or teacherUserId is required");
         }
         try {
             CourseConfigDto saved = courseConfigService.upsertConfig(
                 courseName,
-                request == null ? null : request.weights(),
-                request == null ? null : request.creditRules()
+                request == null ? null : request.weights()
             );
             return ResponseEntity.ok(saved);
         } catch (IllegalArgumentException ex) {
