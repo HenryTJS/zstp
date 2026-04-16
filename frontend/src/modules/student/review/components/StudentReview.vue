@@ -246,4 +246,20 @@ const optionMarks = (opt, item) => {
 .review-card-wrap{
   display:block;
 }
+@media (max-width:768px){
+  .wrong-drill-toolbar{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .wrong-drill-course-label,
+  .wrong-drill-select,
+  .wrong-drill-toolbar .match-button{
+    width:100%;
+  }
+  .data-table{
+    display:block;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+}
 </style>

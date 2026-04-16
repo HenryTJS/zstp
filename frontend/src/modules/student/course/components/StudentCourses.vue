@@ -293,5 +293,10 @@ const progressFor = (courseName) => {
   overflow:hidden;
   min-height:4.8em;
 }
+@media (max-width:768px){
+  .my-course-grid-fixed{
+    grid-template-columns:1fr;
+  }
+}
 </style>
 

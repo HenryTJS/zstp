@@ -420,8 +420,12 @@ const goCourses = () => emit('go-courses')
             </thead>
             <tbody>
               <tr v-for="(row, idx) in rows" :key="row.id">
-                <td>{{ idx + 1 }}</td>
-                <td>
+                <td data-label="#">
+                  <span class="spc-cell-label">#</span>
+                  <span>{{ idx + 1 }}</span>
+                </td>
+                <td data-label="题型">
+                  <span class="spc-cell-label">题型</span>
                   <select
                     v-model="row.typeKey"
                     class="match-height"
@@ -433,7 +437,8 @@ const goCourses = () => emit('go-courses')
                     </option>
                   </select>
                 </td>
-                <td>
+                <td data-label="知识点">
+                  <span class="spc-cell-label">知识点</span>
                   <select
                     v-model="row.pointName"
                     class="match-height"
@@ -444,7 +449,8 @@ const goCourses = () => emit('go-courses')
                     <option v-for="p in pointSelectOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
                   </select>
                 </td>
-                <td>
+                <td data-label="分值">
+                  <span class="spc-cell-label">分值</span>
                   <input
                     v-model.number="row.fullScore"
                     type="number"
@@ -455,7 +461,8 @@ const goCourses = () => emit('go-courses')
                     title="本题满分，1–100"
                   />
                 </td>
-                <td>
+                <td data-label="操作">
+                  <span class="spc-cell-label">操作</span>
                   <div class="spc-row-actions">
                     <button type="button" class="match-button" :disabled="row.loading" @click="generateRow(row)">
                       {{ row.loading ? '生成中…' : '生成本题' }}
@@ -577,6 +584,57 @@ const goCourses = () => emit('go-courses')
 @media (max-width:1200px){
   .spc-top-row{
     grid-template-columns:1fr 1fr;
+  }
+}
+@media (max-width:768px){
+  .spc-top-row{
+    grid-template-columns:1fr;
+  }
+  .spc-top-actions{
+    width:100%;
+    flex-wrap:wrap;
+  }
+  .spc-top-actions .cancel-button{
+    width:100%;
+  }
+  .spc-row-actions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .spc-row-actions > button{
+    width:100%;
+  }
+  .spc-cell-label{
+    display:block;
+    margin-bottom:6px;
+    color:#64748b;
+    font-size:12px;
+    line-height:1.2;
+  }
+  .data-table thead{
+    display:none;
+  }
+  .data-table,
+  .data-table tbody,
+  .data-table tr,
+  .data-table td{
+    display:block;
+    width:100%;
+  }
+  .data-table tr{
+    border:1px solid #e2e8f0;
+    border-radius:10px;
+    padding:10px;
+    margin-bottom:10px;
+    background:#fff;
+  }
+  .data-table td{
+    border:none;
+    padding:6px 0;
+  }
+  .data-table td[data-label="#"]{
+    font-weight:700;
+    padding-top:0;
   }
 }
 </style>

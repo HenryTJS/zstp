@@ -225,6 +225,19 @@
 @media (max-width:768px){
   .student-kp-hero{padding:14px 14px;gap:12px;}
   .student-kp-hero-title{font-size:1.12rem;}
+  .student-kp-hero-actions{
+    width:100%;
+    align-self:stretch;
+  }
+  .student-node-action-row{
+    flex-direction:column;
+    align-items:stretch;
+    width:100%;
+  }
+  .student-node-action-row .match-button,
+  .student-node-action-row .nav-btn{
+    width:100%;
+  }
   .student-kp-body{padding:12px 14px 16px;}
   .student-radar-box{height:260px;}
 }
