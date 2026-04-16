@@ -26,7 +26,9 @@ const props = defineProps({
   onOpenDiscussion: { type: Function, required: true },
   onOpenPointTest: { type: Function, required: true },
   canPublishPointTest: { type: Function, required: true },
-  onOpenAnalytics: { type: Function, required: false, default: null }
+  onOpenAnalytics: { type: Function, required: false, default: null },
+  /** 课程根：编辑课程维度权重 */
+  onOpenCourseWeightConfig: { type: Function, required: false, default: null }
 })
 
 const emit = defineEmits(['update:selectedPointIds'])
@@ -141,6 +143,14 @@ const onDeleteSelected = () => props.onDeleteSelectedPoints()
               }}<span v-if="isCourseRootPoint(item)" class="panel-subtitle" style="margin-left:6px">（课程根）</span>
             </td>
             <td>
+              <button
+                v-if="isCourseRootPoint(item)"
+                type="button"
+                class="match-button"
+                @click="onOpenCourseWeightConfig ? onOpenCourseWeightConfig(item) : null"
+              >
+                编辑
+              </button>
               <button
                 v-if="!isCourseRootPoint(item)"
                 type="button"

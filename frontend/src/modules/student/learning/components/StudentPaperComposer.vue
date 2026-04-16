@@ -6,7 +6,11 @@ const props = defineProps({
   joinedCourses: { type: Array, required: true },
   currentCourse: { type: String, default: '' },
   renderLatexText: { type: Function, required: true },
-  refreshSavedExams: { type: Function, required: true }
+  refreshSavedExams: { type: Function, required: true },
+  savedExams: { type: Array, default: () => [] },
+  examError: { type: String, default: '' },
+  confirmDeleteExam: { type: Function, default: null },
+  renderExamPdfs: { type: Function, default: null }
 })
 
 const emit = defineEmits(['go-courses'])
@@ -360,47 +364,48 @@ const goCourses = () => emit('go-courses')
 
 <template>
   <section class="panel-stack">
-    <article v-if="!joinedCourses.length" class="result-card">
-      <h3 class="portal-section-title portal-section-title--orange">组卷</h3>
-      <button type="button" class="match-button" @click="goCourses">去课程广场</button>
-    </article>
+    <div v-if="!joinedCourses.length" class="spc-card-wrap">
+      <article class="result-card">
+        <h3 class="portal-section-title portal-section-title--orange">组卷</h3>
+        <button type="button" class="match-button" @click="goCourses">去课程广场</button>
+      </article>
+    </div>
 
     <template v-else>
-      <article class="result-card">
-        <h3 class="portal-section-title portal-section-title--teal">自定义组卷</h3>
+      <div class="spc-card-wrap">
+        <article class="result-card">
+          <h3 class="portal-section-title portal-section-title--teal">自定义组卷</h3>
 
-        <div class="grid-form two-col ui-mt-12">
-          <label>
-            课程
-            <input
-              :value="paperCourse || '未进入课程'"
-              class="match-height"
-              readonly
-              disabled
-              title="组卷课程与当前进入课程保持一致"
-            />
-          </label>
-          <label>
-            难度
-            <select v-model="paperDifficulty" class="match-height">
-              <option>基础</option>
-              <option>中等</option>
-              <option>拔高</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="inline-form ui-mt-10">
-          <button type="button" class="cancel-button" :disabled="paperPointsLoading" @click="loadPaperPoints">
-            {{ paperPointsLoading ? '加载中…' : '刷新知识点' }}
-          </button>
-          <p v-if="paperPointsError" class="error-text" style="margin: 0">{{ paperPointsError }}</p>
-        </div>
-
-        <label class="ui-block ui-mt-12">
-          试卷标题（可选）
-          <input v-model="paperTitle" class="match-height" placeholder="默认使用「课程名 试卷」" />
-        </label>
+          <div class="spc-top-row ui-mt-12">
+            <label>
+              课程
+              <input
+                :value="paperCourse || '未进入课程'"
+                class="match-height"
+                readonly
+                disabled
+                title="组卷课程与当前进入课程保持一致"
+              />
+            </label>
+            <label>
+              难度
+              <select v-model="paperDifficulty" class="match-height">
+                <option>基础</option>
+                <option>中等</option>
+                <option>拔高</option>
+              </select>
+            </label>
+            <label>
+              试卷标题（可选）
+              <input v-model="paperTitle" class="match-height" placeholder="默认使用「课程名 试卷」" />
+            </label>
+            <div class="spc-top-actions">
+              <button type="button" class="cancel-button" :disabled="paperPointsLoading" @click="loadPaperPoints">
+                {{ paperPointsLoading ? '加载中…' : '刷新知识点' }}
+              </button>
+              <p v-if="paperPointsError" class="error-text" style="margin: 0">{{ paperPointsError }}</p>
+            </div>
+          </div>
 
         <div class="ui-mt-16 ui-overflow-x-auto">
           <table class="data-table">
@@ -476,23 +481,105 @@ const goCourses = () => emit('go-courses')
           </button>
         </div>
         <p v-if="paperError" class="error-text" style="margin-top: 8px">{{ paperError }}</p>
-      </article>
 
-      <article v-if="previewRows.length" class="result-card">
-        <h3 class="portal-section-title portal-section-title--violet">已生成题目预览</h3>
-        <div v-for="(pr, idx) in previewRows" :key="pr.id + '-pv'" class="ui-mt-14">
-          <h4>
-            第 {{ idx + 1 }} 题（{{ pr.question?.question_type || '—' }} · {{ clampFullScore(pr.fullScore) }} 分）
-          </h4>
-          <div class="latex-block" v-html="renderLatexText(pr.question.question)"></div>
-          <ul v-if="pr.question.options?.length" class="panel-subtitle" style="margin-top: 8px">
-            <li v-for="(opt, j) in pr.question.options" :key="j" v-html="renderLatexText(opt)"></li>
-          </ul>
-        </div>
-      </article>
+          <section v-if="previewRows.length" class="ui-mt-16">
+            <h3 class="portal-subsection-title">已生成题目预览</h3>
+            <div v-for="(pr, idx) in previewRows" :key="pr.id + '-pv'" class="ui-mt-14">
+              <h4>
+                第 {{ idx + 1 }} 题（{{ pr.question?.question_type || '—' }} · {{ clampFullScore(pr.fullScore) }} 分）
+              </h4>
+              <div class="latex-block" v-html="renderLatexText(pr.question.question)"></div>
+              <ul v-if="pr.question.options?.length" class="panel-subtitle" style="margin-top: 8px">
+                <li v-for="(opt, j) in pr.question.options" :key="j" v-html="renderLatexText(opt)"></li>
+              </ul>
+            </div>
+          </section>
+
+          <section class="ui-mt-16">
+            <h3 class="portal-subsection-title">已保存试卷</h3>
+            <table v-if="(savedExams || []).length" class="data-table ui-mt-10">
+              <thead>
+                <tr>
+                  <th>标题</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="e in savedExams" :key="e.id">
+                  <td>{{ e.title || ('试卷-' + e.id) }}</td>
+                  <td>
+                    <div class="ui-toolbar-row">
+                      <button
+                        type="button"
+                        class="match-button"
+                        :disabled="!e.mdPaper"
+                        @click="downloadExam(e.id, 'md_paper')"
+                        :title="e.mdPaper ? '下载原卷' : 'Markdown 未生成'"
+                      >
+                        下载原卷
+                      </button>
+                      <button
+                        v-if="!(e.mdPaper && e.mdAnswer)"
+                        type="button"
+                        class="match-button"
+                        :disabled="!renderExamPdfs"
+                        @click="renderExamPdfs ? renderExamPdfs(e.id) : null"
+                        title="生成 Markdown 文件"
+                      >
+                        生成 MD
+                      </button>
+                      <button
+                        type="button"
+                        class="match-button"
+                        :disabled="!e.mdAnswer"
+                        @click="downloadExam(e.id, 'md_answer')"
+                        :title="e.mdAnswer ? '下载答案' : 'Markdown 未生成'"
+                      >
+                        下载答案
+                      </button>
+                      <button
+                        type="button"
+                        class="cancel-button"
+                        :disabled="!confirmDeleteExam"
+                        @click="confirmDeleteExam ? confirmDeleteExam(e.id) : null"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-if="examError" class="error-text" style="margin-top: 8px">{{ examError }}</p>
+          </section>
+        </article>
+      </div>
     </template>
   </section>
 </template>
+
+<style scoped>
+.spc-card-wrap{
+  display:block;
+}
+.spc-top-row{
+  display:grid;
+  grid-template-columns:1fr 1fr 1.35fr auto;
+  gap:12px;
+  align-items:end;
+}
+.spc-top-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  white-space:nowrap;
+}
+@media (max-width:1200px){
+  .spc-top-row{
+    grid-template-columns:1fr 1fr;
+  }
+}
+</style>
 
 <style>
 @import '@/styles/student/student-portal.css';

@@ -599,12 +599,16 @@ const filteredWrongBook = computed(() => {
 })
 
 const filteredWrongBookForLearningPage = computed(() => {
-  // 错题本（错题与记录页）：统一按所有课程汇总
-  return wrongBook.value || []
+  const scopedCourse = String(route.query.course || '').trim()
+  const all = wrongBook.value || []
+  if (!scopedCourse) return all
+  return all.filter((item) => String(item?.course || '').trim() === scopedCourse)
 })
 const filteredLearningRecordsForLearningPage = computed(() => {
-  // 学习记录（错题与记录页）：统一按所有课程汇总
-  return learningRecords.value || []
+  const scopedCourse = String(route.query.course || '').trim()
+  const all = learningRecords.value || []
+  if (!scopedCourse) return all
+  return all.filter((item) => String(item?.course || '').trim() === scopedCourse)
 })
 
 /** 知识图谱掌握度：按当前「进入课程」的学习上下文统计，与个人中心统计课程无关 */
@@ -728,6 +732,19 @@ const {
   examErrorRef: examError,
   testFormRef: testForm
 })
+
+const enterReviewFromGraph = async () => {
+  const cn = String(learningContextCourse.value || '').trim()
+  currentPage.value = 'review'
+  if (cn && typeof setWrongDrillCourse === 'function') {
+    setWrongDrillCourse(cn)
+  }
+  try {
+    await router.push({ path: '/student/review', query: cn ? { course: cn } : {} })
+  } catch {
+    /* ignore */
+  }
+}
 
 const {
   myCourseCatalog,
@@ -1171,6 +1188,7 @@ const handleCourseDetailQuit = async () => {
           :practice-test-allowed="practiceTestAllowed"
           :enter-fixed-test-from-graph="enterFixedTestFromGraph"
           :enter-paper-from-graph="enterPaperFromGraph"
+          :enter-review-from-graph="enterReviewFromGraph"
           :enter-teacher-kp-test-from-graph="enterTeacherKpTestFromGraph"
           :is-resource-completed="isResourceCompleted"
           :resource-key-for-material="resourceKeyForMaterial"
@@ -1185,6 +1203,10 @@ const handleCourseDetailQuit = async () => {
       :current-course="learningContextCourse || selectedCourse"
       :render-latex-text="renderLatexText"
       :refresh-saved-exams="loadSavedExams"
+      :saved-exams="savedExams"
+      :exam-error="examError"
+      :confirm-delete-exam="confirmDeleteExam"
+      :render-exam-pdfs="renderExamPdfs"
       @go-courses="currentPage = 'courses'"
     />
 
@@ -1231,8 +1253,6 @@ const handleCourseDetailQuit = async () => {
       v-if="effectivePage === 'review'"
       :filtered-wrong-book-for-learning-page="filteredWrongBookForLearningPage"
       :filtered-learning-records-for-learning-page="filteredLearningRecordsForLearningPage"
-      :saved-exams="savedExams"
-      :exam-error="examError"
       :wrong-book-modal-item="wrongBookModalItem"
       :wrong-drill-course="wrongDrillCourse"
       :wrong-drill-course-options="wrongDrillCourseOptions"
@@ -1250,9 +1270,6 @@ const handleCourseDetailQuit = async () => {
       :wrong-book-question-preview="wrongBookQuestionPreview"
       :open-wrong-book-modal="openWrongBookModal"
       :close-wrong-book-modal="closeWrongBookModal"
-      :confirm-delete-exam="confirmDeleteExam"
-      :download-exam="downloadExam"
-      :render-exam-pdfs="renderExamPdfs"
       @go-courses="currentPage = 'courses'"
     />
 

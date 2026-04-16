@@ -378,7 +378,6 @@ const {
         <div class="modal-container" style="max-height: 88vh; overflow: auto">
           <button class="modal-close" type="button" aria-label="关闭" @click="closeDiscussionPoint">×</button>
           <h3 class="portal-section-title portal-section-title--sky">知识点交流区 — {{ discussionTarget.pointName }}</h3>
-          <p class="panel-subtitle" style="margin-top: 4px">课程：{{ discussionTarget.courseName }}</p>
           <KnowledgePointDiscussion
             :course-name="discussionTarget.courseName"
             :point-name="discussionTarget.pointName"
@@ -386,6 +385,8 @@ const {
             :user-role="currentUser?.role"
             :focus-post-id="discussionFocusPostId"
             :disabled="false"
+            :hide-title="true"
+            :embedded="true"
           />
         </div>
       </div>

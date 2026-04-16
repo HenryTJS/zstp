@@ -21,8 +21,6 @@ const emit = defineEmits(['close', 'delete-material'])
               <th>标题</th>
               <th>描述</th>
               <th>文件名</th>
-              <th>上传者</th>
-              <th>时间</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -31,8 +29,6 @@ const emit = defineEmits(['close', 'delete-material'])
               <td>{{ m.title }}</td>
               <td>{{ m.description || '-' }}</td>
               <td>{{ m.fileName || '-' }}</td>
-              <td>{{ m.teacherName || '-' }}</td>
-              <td>{{ m.createdAt ? new Date(m.createdAt).toLocaleString() : '-' }}</td>
               <td>
                 <button type="button" class="danger-btn" @click="emit('delete-material', m.id)">删除</button>
               </td>

@@ -37,6 +37,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:selected-point-ids', 'update:analytics-point-name'])
+const analyticsDialogVisible = ref(false)
+const weightDialogVisible = ref(false)
 
 const courseConfigLoading = ref(false)
 const courseConfigSaving = ref(false)
@@ -158,6 +160,24 @@ watch(
   () => { void loadCourseConfig() },
   { immediate: true }
 )
+watch(
+  () => props.selectedCourse,
+  () => {
+    analyticsDialogVisible.value = false
+    weightDialogVisible.value = false
+  }
+)
+
+const openAnalyticsDialog = (point) => {
+  props.openAnalyticsForPoint(point)
+  analyticsDialogVisible.value = true
+}
+
+const openWeightDialog = async () => {
+  if (!props.canConfigureCourse) return
+  await loadCourseConfig()
+  weightDialogVisible.value = true
+}
 </script>
 
 <template>
@@ -170,127 +190,138 @@ watch(
     />
   </div>
 
-  <TeacherKnowledge
-    class="ui-mt-12"
-    :points="points"
-    :selected-point-ids="selectedPointIds"
-    :point-message="pointMessage"
-    :point-error="pointError"
-    :md-import-loading="mdImportLoading"
-    :md-import-error="mdImportError"
-    :md-import-result="mdImportResult"
-    :get-point-number="getPointNumber"
-    @update:selected-point-ids="(v) => emit('update:selected-point-ids', v)"
-    :on-download-template="downloadKnowledgePointMdTemplate"
-    :on-open-md-import="openMdImport"
-    :on-open-add-point="openAddPoint"
-    :on-delete-selected-points="handleDeleteSelectedPoints"
-    :on-open-edit-point="openEditPoint"
-    :on-open-upload-modal="openUploadModal"
-    :on-open-view-materials="openViewMaterials"
-    :on-open-discussion="openDiscussionPoint"
-    :on-open-point-test="openPointTest"
-    :can-publish-point-test="canPublishPointTest"
-    :on-open-analytics="openAnalyticsForPoint"
-  />
+  <div id="teacher-knowledge-panel" class="ui-mt-12">
+    <TeacherKnowledge
+      :points="points"
+      :selected-point-ids="selectedPointIds"
+      :point-message="pointMessage"
+      :point-error="pointError"
+      :md-import-loading="mdImportLoading"
+      :md-import-error="mdImportError"
+      :md-import-result="mdImportResult"
+      :get-point-number="getPointNumber"
+      @update:selected-point-ids="(v) => emit('update:selected-point-ids', v)"
+      :on-download-template="downloadKnowledgePointMdTemplate"
+      :on-open-md-import="openMdImport"
+      :on-open-add-point="openAddPoint"
+      :on-delete-selected-points="handleDeleteSelectedPoints"
+      :on-open-edit-point="openEditPoint"
+      :on-open-upload-modal="openUploadModal"
+      :on-open-view-materials="openViewMaterials"
+      :on-open-discussion="openDiscussionPoint"
+      :on-open-point-test="openPointTest"
+      :can-publish-point-test="canPublishPointTest"
+      :on-open-analytics="openAnalyticsDialog"
+      :on-open-course-weight-config="openWeightDialog"
+    />
+  </div>
 
   <div id="teacher-course-progress-panel" class="ui-mt-12">
     <TeacherCourseProgress :current-user="currentUser" :selected-course="selectedCourse" />
   </div>
 
-  <section v-if="canConfigureCourse" class="result-card ui-mt-12">
-    <h3 class="portal-subsection-title">课程维度权重设置</h3>
-    <p class="panel-subtitle">仅设置五维权重，课程在雷达图计算中默认等权处理。</p>
-    <p v-if="courseConfigError" class="error-text">{{ courseConfigError }}</p>
-    <p v-if="courseConfigMessage" class="ok-text">{{ courseConfigMessage }}</p>
-    <div class="course-weight-row ui-mt-8">
-      <label>
-        逻辑推理
-        <input
-          :value="fmt2(weightForm.logicReasoning)"
-          type="number"
-          min="0.05"
-          max="0.8"
-          step="0.05"
-          class="match-height"
-          :disabled="courseConfigLoading || courseConfigSaving"
-          @input="setWeightFromInput('logicReasoning', $event.target.value)"
-          @change="normalizeSingleWeight('logicReasoning')"
-        />
-      </label>
-      <label>
-        数量计算
-        <input
-          :value="fmt2(weightForm.numericCalculation)"
-          type="number"
-          min="0.05"
-          max="0.8"
-          step="0.05"
-          class="match-height"
-          :disabled="courseConfigLoading || courseConfigSaving"
-          @input="setWeightFromInput('numericCalculation', $event.target.value)"
-          @change="normalizeSingleWeight('numericCalculation')"
-        />
-      </label>
-      <label>
-        语义理解
-        <input
-          :value="fmt2(weightForm.semanticUnderstanding)"
-          type="number"
-          min="0.05"
-          max="0.8"
-          step="0.05"
-          class="match-height"
-          :disabled="courseConfigLoading || courseConfigSaving"
-          @input="setWeightFromInput('semanticUnderstanding', $event.target.value)"
-          @change="normalizeSingleWeight('semanticUnderstanding')"
-        />
-      </label>
-      <label>
-        空间想象
-        <input
-          :value="fmt2(weightForm.spatialImagination)"
-          type="number"
-          min="0.05"
-          max="0.8"
-          step="0.05"
-          class="match-height"
-          :disabled="courseConfigLoading || courseConfigSaving"
-          @input="setWeightFromInput('spatialImagination', $event.target.value)"
-          @change="normalizeSingleWeight('spatialImagination')"
-        />
-      </label>
-      <label>
-        记忆检索
-        <input
-          :value="fmt2(weightForm.memoryRetrieval)"
-          type="number"
-          min="0.05"
-          max="0.8"
-          step="0.05"
-          class="match-height"
-          :disabled="courseConfigLoading || courseConfigSaving"
-          @input="setWeightFromInput('memoryRetrieval', $event.target.value)"
-          @change="normalizeSingleWeight('memoryRetrieval')"
-        />
-      </label>
+  <div v-if="weightDialogVisible" class="modal-mask" @click.self="weightDialogVisible = false">
+    <div class="modal-wrapper" style="max-width: 980px; width: 95vw">
+      <div class="modal-container">
+        <button class="modal-close" type="button" aria-label="关闭" @click="weightDialogVisible = false">×</button>
+        <h3 class="portal-section-title">课程维度权重设置</h3>
+        <p v-if="courseConfigError" class="error-text">{{ courseConfigError }}</p>
+        <p v-if="courseConfigMessage" class="ok-text">{{ courseConfigMessage }}</p>
+        <div class="course-weight-row ui-mt-8">
+          <label>
+            逻辑推理
+            <input
+              :value="fmt2(weightForm.logicReasoning)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              :disabled="courseConfigLoading || courseConfigSaving"
+              @input="setWeightFromInput('logicReasoning', $event.target.value)"
+              @change="normalizeSingleWeight('logicReasoning')"
+            />
+          </label>
+          <label>
+            数量计算
+            <input
+              :value="fmt2(weightForm.numericCalculation)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              :disabled="courseConfigLoading || courseConfigSaving"
+              @input="setWeightFromInput('numericCalculation', $event.target.value)"
+              @change="normalizeSingleWeight('numericCalculation')"
+            />
+          </label>
+          <label>
+            语义理解
+            <input
+              :value="fmt2(weightForm.semanticUnderstanding)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              :disabled="courseConfigLoading || courseConfigSaving"
+              @input="setWeightFromInput('semanticUnderstanding', $event.target.value)"
+              @change="normalizeSingleWeight('semanticUnderstanding')"
+            />
+          </label>
+          <label>
+            空间想象
+            <input
+              :value="fmt2(weightForm.spatialImagination)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              :disabled="courseConfigLoading || courseConfigSaving"
+              @input="setWeightFromInput('spatialImagination', $event.target.value)"
+              @change="normalizeSingleWeight('spatialImagination')"
+            />
+          </label>
+          <label>
+            记忆检索
+            <input
+              :value="fmt2(weightForm.memoryRetrieval)"
+              type="number"
+              min="0.05"
+              max="0.8"
+              step="0.05"
+              class="match-height"
+              :disabled="courseConfigLoading || courseConfigSaving"
+              @input="setWeightFromInput('memoryRetrieval', $event.target.value)"
+              @change="normalizeSingleWeight('memoryRetrieval')"
+            />
+          </label>
+        </div>
+        <div class="inline-form ui-mt-12">
+          <button type="button" class="match-button" :disabled="courseConfigLoading || courseConfigSaving || !weightSumOk" @click="saveCourseConfig">
+            {{ courseConfigSaving ? '保存中...' : '保存维度权重' }}
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="inline-form ui-mt-12">
-      <button type="button" class="match-button" :disabled="courseConfigLoading || courseConfigSaving || !weightSumOk" @click="saveCourseConfig">
-        {{ courseConfigSaving ? '保存中...' : '保存维度权重' }}
-      </button>
-    </div>
-  </section>
+  </div>
 
-  <div id="teacher-student-analytics-panel" class="ui-mt-12">
-    <TeacherStudentAnalytics
-      :current-user="currentUser"
-      :selected-course="selectedCourse"
-      :points="points"
-      :point-name="analyticsPointName"
-      :get-point-number="getPointNumber"
-      @update:point-name="(v) => emit('update:analytics-point-name', v)"
-    />
+  <div v-if="analyticsDialogVisible" class="modal-mask" @click.self="analyticsDialogVisible = false">
+    <div class="modal-wrapper" style="max-width: 980px; width: 95vw">
+      <div class="modal-container">
+        <button class="modal-close" type="button" aria-label="关闭" @click="analyticsDialogVisible = false">×</button>
+        <TeacherStudentAnalytics
+          :current-user="currentUser"
+          :selected-course="selectedCourse"
+          :points="points"
+          :point-name="analyticsPointName"
+          :get-point-number="getPointNumber"
+          @update:point-name="(v) => emit('update:analytics-point-name', v)"
+        />
+      </div>
+    </div>
   </div>
 </template>
 

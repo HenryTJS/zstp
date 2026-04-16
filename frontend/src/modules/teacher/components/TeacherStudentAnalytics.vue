@@ -127,15 +127,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <article class="result-card">
+  <div class="teacher-analytics-body">
     <h3 class="portal-section-title portal-section-title--violet">学生分析</h3>
-
-    <label class="ui-mt-12" style="display: block">
-      统计知识点
-      <select v-model="selectedPointName" class="match-height" style="width: 100%; box-sizing: border-box">
-        <option v-for="p in points" :key="p.id" :value="p.pointName">{{ pointSelectLabel(p) }}</option>
-      </select>
-    </label>
 
     <p v-if="loading" class="panel-subtitle ui-mt-10">加载中…</p>
     <p v-else-if="error" class="error-text ui-mt-10">{{ error }}</p>
@@ -166,7 +159,6 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="ui-mt-12">
-        <h3 class="portal-subsection-title portal-subsection-title--rose">高得分题 / 低得分题</h3>
         <div class="grid-form two-col">
           <div>
             <h4 class="portal-subsection-title portal-subsection-title--violet">高得分题</h4>
@@ -183,10 +175,16 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </template>
-  </article>
+  </div>
 </template>
 
 <style scoped>
+.profile-stat-list{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+}
+
 .teacher-analytics-chart {
   width: 100%;
   height: 320px;

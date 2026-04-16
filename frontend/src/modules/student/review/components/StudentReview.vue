@@ -4,8 +4,6 @@ import StudentWrongDrill from './StudentWrongDrill.vue'
 const props = defineProps({
   filteredWrongBookForLearningPage: { type: Array, required: true },
   filteredLearningRecordsForLearningPage: { type: Array, required: true },
-  savedExams: { type: Array, required: true },
-  examError: { type: String, required: false, default: '' },
 
   wrongBookModalItem: { type: Object, default: null },
   wrongDrillCourse: { type: String, default: '' },
@@ -24,10 +22,7 @@ const props = defineProps({
   wrongBookQuestionPreview: { type: Function, required: true },
 
   openWrongBookModal: { type: Function, required: true },
-  closeWrongBookModal: { type: Function, required: true },
-  confirmDeleteExam: { type: Function, required: true },
-  downloadExam: { type: Function, required: true },
-  renderExamPdfs: { type: Function, required: true }
+  closeWrongBookModal: { type: Function, required: true }
 })
 
 defineEmits(['go-courses'])
@@ -56,134 +51,92 @@ const optionMarks = (opt, item) => {
 </script>
 
 <template>
-  <section class="panel-stack">
-    <article v-if="!wrongDrillSession" class="result-card">
-      <h3 class="portal-section-title portal-section-title--rose">错题巩固测试</h3>
-      <div v-if="wrongDrillCourseOptions.length" class="inline-form wrong-drill-toolbar">
-        <label class="wrong-drill-course-label">
-          课程
-          <select
-            class="wrong-drill-select"
-            :value="wrongDrillCourse"
-            @change="setWrongDrillCourse($event.target.value)"
-          >
-            <option v-for="o in wrongDrillCourseOptions" :key="'wd-' + o.course" :value="o.course">
-              {{ o.course }}（{{ o.count }} 题可测）
-            </option>
-          </select>
-        </label>
-        <button type="button" class="match-button" @click="startWrongDrill">开始随机测试</button>
-      </div>
-      <p v-if="wrongDrillError && !wrongDrillSession" class="error-text">{{ wrongDrillError }}</p>
-    </article>
+  <section class="panel-stack review-stack">
+    <div v-if="!wrongDrillSession" class="review-card-wrap">
+      <article class="result-card">
+        <h3 class="portal-section-title portal-section-title--rose">错题巩固测试</h3>
+        <div v-if="wrongDrillCourseOptions.length" class="inline-form wrong-drill-toolbar">
+          <label class="wrong-drill-course-label">
+            课程
+            <select
+              class="wrong-drill-select"
+              :value="wrongDrillCourse"
+              @change="setWrongDrillCourse($event.target.value)"
+            >
+              <option v-for="o in wrongDrillCourseOptions" :key="'wd-' + o.course" :value="o.course">
+                {{ o.course }}（{{ o.count }} 题可测）
+              </option>
+            </select>
+          </label>
+          <button type="button" class="match-button" @click="startWrongDrill">开始随机测试</button>
+        </div>
+        <p v-else class="panel-subtitle">当前课程暂无可用于巩固测试的错题记录。</p>
+        <p v-if="wrongDrillError && !wrongDrillSession" class="error-text">{{ wrongDrillError }}</p>
+      </article>
+    </div>
 
-    <StudentWrongDrill
-      v-if="wrongDrillSession"
-      :session="wrongDrillSession"
-      :submitting="wrongDrillSubmitting"
-      :error="wrongDrillError"
-      :render-latex-text="renderLatexText"
-      :parse-option-letter="parseOptionLetter"
-      :parse-option-text="parseOptionText"
-      :infer-question-type="inferWrongBookQuestionType"
-      @cancel="cancelWrongDrill"
-      @submit="submitWrongDrill"
-    />
+    <div v-if="wrongDrillSession" class="review-card-wrap">
+      <StudentWrongDrill
+        :session="wrongDrillSession"
+        :submitting="wrongDrillSubmitting"
+        :error="wrongDrillError"
+        :render-latex-text="renderLatexText"
+        :parse-option-letter="parseOptionLetter"
+        :parse-option-text="parseOptionText"
+        :infer-question-type="inferWrongBookQuestionType"
+        @cancel="cancelWrongDrill"
+        @submit="submitWrongDrill"
+      />
+    </div>
 
-    <article class="result-card">
-      <h3 class="portal-section-title portal-section-title--violet">错题本</h3>
-      <div v-if="(filteredWrongBookForLearningPage || []).length" class="wrong-book-grid">
-        <article v-for="item in filteredWrongBookForLearningPage" :key="item.id" class="wrong-book-card">
-          <div class="wrong-book-card-top">
-            <strong class="wrong-book-title">{{ item.course }} · {{ item.knowledgePoint }}</strong>
-            <div class="wrong-book-meta-line">
-              <span>{{ item.score }} / {{ item.fullScore }} 分</span>
-              <span class="wrong-book-time">{{ item.collectedAt }}</span>
-            </div>
-          </div>
-          <p class="wrong-book-preview">{{ wrongBookQuestionPreview(item.question) }}</p>
-          <div class="wrong-book-card-actions">
-            <button type="button" class="match-button wrong-book-toggle" @click.stop="openWrongBookModal(item)">
-              查看题目与解析
-            </button>
-          </div>
-        </article>
-      </div>
-    </article>
-
-    <article class="result-card">
-      <h3 class="portal-section-title portal-section-title--teal">学习记录</h3>
-      <table v-if="(filteredLearningRecordsForLearningPage || []).length" class="data-table">
-        <thead>
-          <tr>
-            <th>时间</th>
-            <th>课程</th>
-            <th>记录</th>
-            <th>得分</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="item in filteredLearningRecordsForLearningPage" :key="item.id">
-            <td>{{ item.time }}</td>
-            <td>{{ item.course }}</td>
-            <td>{{ item.knowledgePoint }}</td>
-            <td>{{ item.score }} / {{ item.fullScore }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </article>
-
-    <article class="result-card">
-      <h3 class="portal-section-title portal-section-title--amber">已保存试卷</h3>
-      <table v-if="(savedExams || []).length" class="data-table">
-        <thead>
-          <tr>
-            <th>标题</th>
-            <th>创建时间</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="e in savedExams" :key="e.id">
-            <td>{{ e.title || ('试卷-' + e.id) }}</td>
-            <td>{{ e.createdAt ? new Date(e.createdAt).toLocaleString() : '-' }}</td>
-            <td>
-              <div class="ui-toolbar-row">
-                <button
-                  type="button"
-                  class="match-button"
-                  :disabled="!e.mdPaper"
-                  @click="downloadExam(e.id, 'md_paper')"
-                  :title="e.mdPaper ? '下载原卷' : 'Markdown 未生成'"
-                >
-                  下载原卷
-                </button>
-                <button
-                  v-if="!(e.mdPaper && e.mdAnswer)"
-                  type="button"
-                  class="match-button"
-                  @click="renderExamPdfs(e.id)"
-                  title="生成 Markdown 文件"
-                >
-                  生成 MD
-                </button>
-                <button
-                  type="button"
-                  class="match-button"
-                  :disabled="!e.mdAnswer"
-                  @click="downloadExam(e.id, 'md_answer')"
-                  :title="e.mdAnswer ? '下载答案' : 'Markdown 未生成'"
-                >
-                  下载答案
-                </button>
-                <button type="button" class="cancel-button" @click="confirmDeleteExam(e.id)">删除</button>
+    <div class="review-card-wrap">
+      <article class="result-card">
+        <h3 class="portal-section-title portal-section-title--violet">错题本</h3>
+        <div v-if="(filteredWrongBookForLearningPage || []).length" class="wrong-book-grid">
+          <article v-for="item in filteredWrongBookForLearningPage" :key="item.id" class="wrong-book-card">
+            <div class="wrong-book-card-top">
+              <strong class="wrong-book-title">{{ item.course }} · {{ item.knowledgePoint }}</strong>
+              <div class="wrong-book-meta-line">
+                <span>{{ item.score }} / {{ item.fullScore }} 分</span>
+                <span class="wrong-book-time">{{ item.collectedAt }}</span>
               </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-if="examError" class="error-text" style="margin-top:8px">{{ examError }}</p>
-    </article>
+            </div>
+            <p class="wrong-book-preview">{{ wrongBookQuestionPreview(item.question) }}</p>
+            <div class="wrong-book-card-actions">
+              <button type="button" class="match-button wrong-book-toggle" @click.stop="openWrongBookModal(item)">
+                查看题目与解析
+              </button>
+            </div>
+          </article>
+        </div>
+        <p v-else class="panel-subtitle">该课程暂无错题记录。</p>
+      </article>
+    </div>
+
+    <div class="review-card-wrap">
+      <article class="result-card">
+        <h3 class="portal-section-title portal-section-title--teal">学习记录</h3>
+        <table v-if="(filteredLearningRecordsForLearningPage || []).length" class="data-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>课程</th>
+              <th>记录</th>
+              <th>得分</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in filteredLearningRecordsForLearningPage" :key="item.id">
+              <td>{{ item.time }}</td>
+              <td>{{ item.course }}</td>
+              <td>{{ item.knowledgePoint }}</td>
+              <td>{{ item.score }} / {{ item.fullScore }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-else class="panel-subtitle">该课程暂无学习记录。</p>
+      </article>
+    </div>
 
     <Teleport to="body">
       <div v-if="wrongBookModalItem" class="modal-mask" @click.self="closeWrongBookModal">
@@ -285,6 +238,12 @@ const optionMarks = (opt, item) => {
   </section>
 </template>
 
-<style>
+<style scoped>
 @import '@/styles/student/student-portal.css';
+.review-stack{
+  gap:12px;
+}
+.review-card-wrap{
+  display:block;
+}
 </style>
