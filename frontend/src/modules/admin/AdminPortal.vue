@@ -425,7 +425,7 @@ const handlePasswordSave = async () => {
       </div>
     </section>
 
-    <section v-else-if="currentPage === 'user-stats'" class="panel-stack admin-theme admin-page-flat">
+    <section v-else-if="currentPage === 'user-stats'" class="panel-stack admin-theme">
       <article class="result-card">
         <h3 class="portal-section-title portal-section-title--teal">用户统计与批量导入</h3>
         <div class="inline-form admin-import-actions" style="margin-top:12px;flex-wrap:wrap;gap:10px;align-items:center">
@@ -582,7 +582,7 @@ const handlePasswordSave = async () => {
       </article>
     </section>
 
-    <section v-else-if="currentPage === 'announcements'" class="panel-stack admin-theme admin-page-flat">
+    <section v-else-if="currentPage === 'announcements'" class="panel-stack admin-theme">
       <article class="result-card">
         <h3 class="portal-section-title portal-section-title--violet">发布公告</h3>
         <p v-if="annError" class="error-text">{{ annError }}</p>
