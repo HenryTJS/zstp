@@ -11,6 +11,7 @@ export function useStudentPersistState({
   learningRecords,
   wrongBook,
   joinedCourses,
+  totalLearningSeconds,
   selectedCourse,
   learningContextCourse,
   selectedMajor1,
@@ -67,7 +68,8 @@ export function useStudentPersistState({
         courseName: learningContextCourse.value || selectedCourse.value,
         learningRecords: learningRecords.value,
         wrongBook: wrongBook.value,
-        joinedCourses: joinedCourses.value
+        joinedCourses: joinedCourses.value,
+        totalLearningSeconds: Math.max(0, Number(totalLearningSeconds.value || 0))
       })
       if (showMessage) {
         profileMessage.value = '个人信息已保存到服务器。'
@@ -143,6 +145,7 @@ export function useStudentPersistState({
 
       learningRecords.value = Array.isArray(data.learningRecords) ? data.learningRecords : []
       wrongBook.value = Array.isArray(data.wrongBook) ? data.wrongBook : []
+      totalLearningSeconds.value = Math.max(0, Number(data?.totalLearningSeconds || 0))
       void loadDimensionScores()
     } catch {
       profileMessage.value = '未读取到历史学习状态，已使用默认配置。'

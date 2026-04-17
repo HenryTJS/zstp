@@ -63,7 +63,8 @@ public class StudentStateController {
                 "learningRecords", List.of(),
                 "wrongBook", List.of(),
                 "joinedCourses", List.of(),
-                "completedResourceKeys", List.of()
+                "completedResourceKeys", List.of(),
+                "totalLearningSeconds", 0
             ));
         }
 
@@ -77,7 +78,8 @@ public class StudentStateController {
             "learningRecords", parseJsonArray(state.getLearningRecordsJson()),
             "wrongBook", parseJsonArray(state.getWrongBookJson()),
             "joinedCourses", normalizeJoinedCourseNames(parseJsonStringList(state.getJoinedCoursesJson())),
-            "completedResourceKeys", parseJsonStringList(state.getCompletedResourceKeysJson())
+            "completedResourceKeys", parseJsonStringList(state.getCompletedResourceKeysJson()),
+            "totalLearningSeconds", state.getTotalLearningSeconds() == null ? 0 : state.getTotalLearningSeconds()
         ));
     }
 
@@ -115,6 +117,8 @@ public class StudentStateController {
         } else if (state.getId() == null) {
             state.setCompletedResourceKeysJson("[]");
         }
+        Long totalSeconds = request == null ? null : request.totalLearningSeconds();
+        state.setTotalLearningSeconds(totalSeconds == null ? 0L : Math.max(0L, totalSeconds));
         studentStateRepository.save(state);
 
         return ResponseEntity.ok(Map.of("message", "saved"));

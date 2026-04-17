@@ -15,6 +15,7 @@
 - 组卷、试卷保存与下载（Markdown）
 - 错题本、错题重练、学习记录
 - 个人资料编辑、修改密码、学习画像（五维能力）
+- 个人中心统计项：加入课程数、总学习时长、发布评论数
 - 知识点交流区（发帖/回复/点赞）与通知铃铛
 
 ### 教师端
@@ -39,7 +40,7 @@
 - 课程与目录：`/api/courses*`
 - 知识点与资料：`/api/knowledge-points*`、`/api/materials*`、`/api/resources*`
 - AI 能力：`/api/knowledge-graph`、`/api/learning-suggestions`、`/api/major-relevance`、`/api/agent-chat`、`/api/generate-*`、`/api/grade-answer`
-- 交流区与通知：`/api/knowledge-point-discussions*`、`/api/notifications*`
+- 交流区与通知：`/api/knowledge-point-discussions*`（含 `/count-by-user`）、`/api/notifications*`
 - 教师权限：`/api/teacher-course-permissions*`、`/api/teacher-course-permission-requests*`
 - 公告与健康检查：`/api/announcements*`、`/api/health`
 
@@ -156,10 +157,18 @@ npm run dev
 - 宿主机 Nginx 参考：`deploy/host-nginx.example.conf`
 - 详细流程：`deploy/DEPLOY-MAINLAND.md`
 
+## 数据库迁移治理（当前策略）
+
+- 迁移脚本统一放在 `backend/db/migration`，脚本要求 PostgreSQL 兼容并尽量幂等（`IF NOT EXISTS`）。
+- 新增字段迁移示例：`V7__add_total_learning_seconds_to_student_states.sql`。
+- 后端启动时有兜底保护：`StudentStateSchemaGuard` 会自动补齐 `student_states.total_learning_seconds`，避免旧库缺列导致登录阶段报错。
+- 建议流程：先执行迁移脚本，再发布应用；启动兜底仅作为“防故障”而不是日常替代方案。
+
 ## 现状说明
 
 - 前端 `package.json` 当前仅提供 `dev/build/preview`，未内置 lint/test 脚本。
 - 后端仓库当前未包含测试用例目录。
+- 学生端“总学习时长”当前为会话内计时累计（离开学生端页面后停止），尚未做跨会话持久化与多端合并。
 
 ## 许可证
 

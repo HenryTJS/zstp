@@ -10,6 +10,7 @@ public record SaveStudentStateRequest(
     List<Map<String, Object>> learningRecords,
     List<Map<String, Object>> wrongBook,
     List<String> joinedCourses,
-    List<String> completedResourceKeys
+    List<String> completedResourceKeys,
+    Long totalLearningSeconds
 ) {
 }

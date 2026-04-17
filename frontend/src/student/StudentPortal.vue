@@ -320,6 +320,7 @@ const {
   learningRecords,
   wrongBook,
   joinedCourses,
+  totalLearningSeconds,
   selectedCourse,
   learningContextCourse,
   selectedMajor1,

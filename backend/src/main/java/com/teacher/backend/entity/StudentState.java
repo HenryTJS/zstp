@@ -45,6 +45,9 @@ public class StudentState {
     @Column(name = "completed_resource_keys_json", columnDefinition = "TEXT")
     private String completedResourceKeysJson = "[]";
 
+    @Column(name = "total_learning_seconds", nullable = false)
+    private Long totalLearningSeconds = 0L;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -76,6 +79,9 @@ public class StudentState {
         if (courseName == null) {
             courseName = "";
         }
+        if (totalLearningSeconds == null) {
+            totalLearningSeconds = 0L;
+        }
     }
 
     @PreUpdate
@@ -86,6 +92,9 @@ public class StudentState {
         }
         if (courseName == null) {
             courseName = "";
+        }
+        if (totalLearningSeconds == null) {
+            totalLearningSeconds = 0L;
         }
     }
 
@@ -167,6 +176,14 @@ public class StudentState {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getTotalLearningSeconds() {
+        return totalLearningSeconds;
+    }
+
+    public void setTotalLearningSeconds(Long totalLearningSeconds) {
+        this.totalLearningSeconds = totalLearningSeconds;
     }
 
 }
