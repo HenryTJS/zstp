@@ -168,7 +168,7 @@ npm run dev
 
 - 前端 `package.json` 当前仅提供 `dev/build/preview`，未内置 lint/test 脚本。
 - 后端仓库当前未包含测试用例目录。
-- 学生端“总学习时长”当前为会话内计时累计（离开学生端页面后停止），尚未做跨会话持久化与多端合并。
+- 学生端“总学习时长”已支持**持久化**：前端会话内计时累计，并通过 `POST /api/student-state` 的 `totalLearningSeconds` 写入数据库字段 `student_states.total_learning_seconds`；跨会话可恢复。当前仍未做“多端并发/多标签页合并”的严格去重。
 
 ## 许可证
 
