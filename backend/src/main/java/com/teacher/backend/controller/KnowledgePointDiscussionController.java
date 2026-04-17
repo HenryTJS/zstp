@@ -116,6 +116,16 @@ public class KnowledgePointDiscussionController {
         return ResponseEntity.ok(out);
     }
 
+    @GetMapping("/count-by-user")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> countByUser(@RequestParam Long userId) {
+        if (userId == null) {
+            return error(HttpStatus.BAD_REQUEST, "userId 必填");
+        }
+        long count = postRepository.countByAuthor_Id(userId);
+        return ResponseEntity.ok(Map.of("count", count));
+    }
+
     private Map<String, Object> toNode(
         KnowledgePointDiscussionPost p,
         Map<Long, List<KnowledgePointDiscussionPost>> byParent,

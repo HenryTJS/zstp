@@ -28,7 +28,8 @@ const radarRef = ref(null)
 let radarChart = null
 
 const buildRadarOption = () => {
-  const dim = props.dimensionScores?.dimensionScores || {}
+  const hasTestRecord = Boolean(props.learningStats?.hasTestRecord)
+  const dim = hasTestRecord ? (props.dimensionScores?.dimensionScores || {}) : {}
   const values = [
     Number(dim.logicReasoning || 0),
     Number(dim.numericCalculation || 0),
@@ -118,16 +119,16 @@ watch(
         <h3 class="portal-section-title">学习画像</h3>
         <div class="profile-stat-list">
           <div>
-            <span>累计练习</span>
-            <strong>{{ learningStats.total }}</strong>
+            <span>加入课程数</span>
+            <strong>{{ learningStats.joinedCoursesCount }}</strong>
           </div>
           <div>
-            <span>掌握程度</span>
-            <strong>{{ learningStats.mastery }}%</strong>
+            <span>总学习时长</span>
+            <strong>{{ learningStats.totalLearningDurationText }}</strong>
           </div>
           <div>
-            <span>错题收藏</span>
-            <strong>{{ filteredWrongBookCount }}</strong>
+            <span>发布评论数</span>
+            <strong>{{ learningStats.publishedCommentCount }}</strong>
           </div>
         </div>
 
@@ -138,7 +139,7 @@ watch(
           <div
             ref="radarRef"
             class="student-radar-box"
-            v-show="!dimensionScoresLoading && !dimensionScoresError && !!dimensionScores?.usedCourses?.length"
+            v-show="!dimensionScoresLoading && !dimensionScoresError"
           ></div>
         </div>
       </article>

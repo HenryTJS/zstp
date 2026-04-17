@@ -168,4 +168,5 @@ public class StudentState {
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
+
 }

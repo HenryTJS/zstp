@@ -80,6 +80,8 @@ export const saveStudentState = (payload) => http.post('/student-state', payload
 /** 知识点交流区：发帖、列表、点赞（courseName + pointName 定位知识点） */
 export const listKnowledgePointDiscussions = (params) =>
   http.get('/knowledge-point-discussions', { params })
+export const countKnowledgePointDiscussionsByUser = (userId) =>
+  http.get('/knowledge-point-discussions/count-by-user', { params: { userId } })
 export const createKnowledgePointDiscussionPost = (payload) =>
   http.post('/knowledge-point-discussions', payload)
 export const toggleKnowledgePointDiscussionLike = (postId, payload) =>

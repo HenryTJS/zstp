@@ -13,4 +13,6 @@ public interface KnowledgePointDiscussionPostRepository extends JpaRepository<Kn
     List<KnowledgePointDiscussionPost> findByKnowledgePoint_IdOrderByCreatedAtAsc(Long knowledgePointId);
 
     List<KnowledgePointDiscussionPost> findByParent_Id(Long parentId);
+
+    long countByAuthor_Id(Long authorId);
 }

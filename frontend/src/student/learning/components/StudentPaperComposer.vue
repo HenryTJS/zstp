@@ -421,11 +421,9 @@ const goCourses = () => emit('go-courses')
             <tbody>
               <tr v-for="(row, idx) in rows" :key="row.id">
                 <td data-label="#">
-                  <span class="spc-cell-label">#</span>
                   <span>{{ idx + 1 }}</span>
                 </td>
                 <td data-label="题型">
-                  <span class="spc-cell-label">题型</span>
                   <select
                     v-model="row.typeKey"
                     class="match-height"
@@ -438,7 +436,6 @@ const goCourses = () => emit('go-courses')
                   </select>
                 </td>
                 <td data-label="知识点">
-                  <span class="spc-cell-label">知识点</span>
                   <select
                     v-model="row.pointName"
                     class="match-height"
@@ -450,7 +447,6 @@ const goCourses = () => emit('go-courses')
                   </select>
                 </td>
                 <td data-label="分值">
-                  <span class="spc-cell-label">分值</span>
                   <input
                     v-model.number="row.fullScore"
                     type="number"
@@ -462,7 +458,6 @@ const goCourses = () => emit('go-courses')
                   />
                 </td>
                 <td data-label="操作">
-                  <span class="spc-cell-label">操作</span>
                   <div class="spc-row-actions">
                     <button type="button" class="match-button" :disabled="row.loading" @click="generateRow(row)">
                       {{ row.loading ? '生成中…' : '生成本题' }}

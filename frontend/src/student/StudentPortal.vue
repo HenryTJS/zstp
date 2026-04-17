@@ -109,11 +109,13 @@ watch(
 )
 const learningRecords = ref([])
 const wrongBook = ref([])
+const totalLearningSeconds = ref(0)
 /** 从服务器恢复学生状态期间：不因 availableCourses 尚未就绪而裁剪 joinedCourses */
 const hydrateJoiningCourses = ref(false)
 const dimensionScores = ref(null)
 const dimensionScoresLoading = ref(false)
 const dimensionScoresError = ref('')
+const discussionPostCount = ref(0)
 const activeQuestionType = computed(() => generatedQuestion.value?.question_type || questionForm.value.questionType)
 const userInitial = computed(() => props.currentUser?.username?.charAt(0) || '')
 const selectedNode = computed(() => {
@@ -132,6 +134,7 @@ import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AiAssistantWidget from '../shared/components/AiAssistantWidget.vue'
 import {
+  countKnowledgePointDiscussionsByUser,
   fetchKnowledgeGraph,
   fetchResourcesByKnowledgePoint,
   fetchResourceProgress,
@@ -660,26 +663,78 @@ const graphNodeMastery = computed(() => {
 
 const graphNetworkData = computed(() => buildGraphNetworkData(graphData.value))
 
-const learningStats = computed(() => {
-  if (!filteredLearningRecords.value.length) {
-    return {
-      total: 0,
-      average: 0,
-      mastery: 0
-    }
+const formatSecondsToDuration = (seconds) => {
+  const s = Math.max(0, Number(seconds || 0))
+  if (!Number.isFinite(s) || s <= 0) return '0分钟'
+  const totalMinutes = Math.floor(s / 60)
+  const h = Math.floor(totalMinutes / 60)
+  const rest = totalMinutes % 60
+  if (h <= 0) return `${rest}分钟`
+  if (rest === 0) return `${h}小时`
+  return `${h}小时${rest}分钟`
+}
+
+const learningTimerStartedAtMs = ref(0)
+const learningTimerDisplayNowMs = ref(Date.now())
+let learningTimerInterval = null
+
+const isLearningTimerPage = computed(() => effectivePage.value !== 'home')
+const liveLearningSeconds = computed(() => {
+  const base = Math.max(0, Number(totalLearningSeconds.value || 0))
+  if (!learningTimerStartedAtMs.value) return base
+  const deltaSec = Math.max(0, Math.floor((learningTimerDisplayNowMs.value - learningTimerStartedAtMs.value) / 1000))
+  return base + deltaSec
+})
+
+const startLearningTimer = () => {
+  if (learningTimerStartedAtMs.value) return
+  learningTimerStartedAtMs.value = Date.now()
+  learningTimerDisplayNowMs.value = Date.now()
+  if (!learningTimerInterval) {
+    learningTimerInterval = window.setInterval(() => {
+      learningTimerDisplayNowMs.value = Date.now()
+    }, 1000)
   }
+}
 
-  const totalScore = filteredLearningRecords.value.reduce((sum, item) => sum + item.score, 0)
-  const totalFull = filteredLearningRecords.value.reduce((sum, item) => sum + item.fullScore, 0)
-  const average = Math.round((totalScore / filteredLearningRecords.value.length) * 10) / 10
-  const mastery = totalFull > 0 ? Math.round((totalScore / totalFull) * 100) : 0
+const stopLearningTimerAndAccumulate = (persist = true) => {
+  if (!learningTimerStartedAtMs.value) return
+  const elapsedSec = Math.max(0, Math.floor((Date.now() - learningTimerStartedAtMs.value) / 1000))
+  learningTimerStartedAtMs.value = 0
+  learningTimerDisplayNowMs.value = Date.now()
+  if (elapsedSec > 0) {
+    totalLearningSeconds.value = Math.max(0, Number(totalLearningSeconds.value || 0)) + elapsedSec
+    if (persist) schedulePersistStudentState()
+  }
+  if (learningTimerInterval) {
+    window.clearInterval(learningTimerInterval)
+    learningTimerInterval = null
+  }
+}
 
+const learningStats = computed(() => {
+  const records = filteredLearningRecords.value || []
   return {
-    total: filteredLearningRecords.value.length,
-    average,
-    mastery
+    joinedCoursesCount: (joinedCourses.value || []).length,
+    totalLearningDurationText: formatSecondsToDuration(liveLearningSeconds.value),
+    publishedCommentCount: Number(discussionPostCount.value || 0),
+    hasTestRecord: records.length > 0
   }
 })
+
+const loadDiscussionPostCount = async () => {
+  const uid = props.currentUser?.id
+  if (!uid) {
+    discussionPostCount.value = 0
+    return
+  }
+  try {
+    const { data } = await countKnowledgePointDiscussionsByUser(uid)
+    discussionPostCount.value = Number(data?.count || 0)
+  } catch {
+    discussionPostCount.value = 0
+  }
+}
 
 const composeTopic = (knowledgePoint) => {
   return `${learningContextCourse.value} ${knowledgePoint}`.trim()
@@ -1049,8 +1104,31 @@ useStudentPortalOrchestration({
 })
 
 onBeforeUnmount(() => {
+  stopLearningTimerAndAccumulate(false)
+  if (learningTimerInterval) {
+    window.clearInterval(learningTimerInterval)
+    learningTimerInterval = null
+  }
   clearPendingTimers()
 })
+
+watch(
+  () => props.currentUser?.id,
+  () => {
+    void loadDiscussionPostCount()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => [effectivePage.value, stateHydrated.value],
+  () => {
+    if (!stateHydrated.value) return
+    if (isLearningTimerPage.value) startLearningTimer()
+    else stopLearningTimerAndAccumulate(true)
+  },
+  { immediate: true }
+)
 
 const handleCourseDetailJoin = async () => {
   const cn = String(courseDetail.value?.courseName || '').trim()
