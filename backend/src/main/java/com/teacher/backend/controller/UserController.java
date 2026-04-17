@@ -75,22 +75,43 @@ public class UserController {
         Long userId = request == null ? null : request.userId();
         String currentPassword = request == null || request.currentPassword() == null ? "" : request.currentPassword();
         String newPassword = request == null || request.newPassword() == null ? "" : request.newPassword().trim();
+        String username = request == null || request.username() == null ? "" : request.username().trim();
+        String workId = request == null || request.workId() == null ? "" : request.workId().trim();
 
-        if (userId == null || !StringUtils.hasText(currentPassword) || newPassword.length() < 6) {
-            return error(HttpStatus.BAD_REQUEST, "userId/currentPassword/newPassword(>=6) are required");
+        if (newPassword.length() < 6) {
+            return error(HttpStatus.BAD_REQUEST, "newPassword(>=6) is required");
         }
 
-        return userRepository.findById(userId)
-            .filter(user -> passwordService.matches(currentPassword, user.getPasswordHash()))
-            .<ResponseEntity<?>>map(user -> {
-                user.setPasswordHash(passwordService.hashPassword(newPassword));
-                User savedUser = userRepository.save(user);
-                return ResponseEntity.ok(Map.of(
-                    "message", "password updated",
-                    "user", responseMapper.toUserMap(savedUser)
-                ));
-            })
-            .orElseGet(() -> error(HttpStatus.UNAUTHORIZED, "current password is incorrect"));
+        // 已登录改密：userId + currentPassword + newPassword
+        if (userId != null) {
+            if (!StringUtils.hasText(currentPassword)) {
+                return error(HttpStatus.BAD_REQUEST, "currentPassword is required when userId is provided");
+            }
+            return userRepository.findById(userId)
+                .filter(user -> passwordService.matches(currentPassword, user.getPasswordHash()))
+                .<ResponseEntity<?>>map(user -> {
+                    user.setPasswordHash(passwordService.hashPassword(newPassword));
+                    User savedUser = userRepository.save(user);
+                    return ResponseEntity.ok(Map.of(
+                        "message", "password updated",
+                        "user", responseMapper.toUserMap(savedUser)
+                    ));
+                })
+                .orElseGet(() -> error(HttpStatus.UNAUTHORIZED, "current password is incorrect"));
+        }
+
+        // 忘记密码重置：username + workId + newPassword
+        if (StringUtils.hasText(username) && StringUtils.hasText(workId)) {
+            return userRepository.findByUsernameIgnoreCaseAndWorkIdIgnoreCase(username, workId)
+                .<ResponseEntity<?>>map(user -> {
+                    user.setPasswordHash(passwordService.hashPassword(newPassword));
+                    userRepository.save(user);
+                    return ResponseEntity.ok(Map.of("message", "password reset success"));
+                })
+                .orElseGet(() -> error(HttpStatus.NOT_FOUND, "姓名与学工号不匹配"));
+        }
+
+        return error(HttpStatus.BAD_REQUEST, "provide either (userId + currentPassword) or (username + workId), plus newPassword");
     }
 
     @GetMapping
