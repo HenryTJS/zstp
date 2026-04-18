@@ -2,7 +2,7 @@
 
 面向学生自学与教师教学管理的 AI 辅助平台，包含前端（学生端/教师端/管理员端）与 Spring Boot 后端。
 
-## 当前项目能力（按代码核对）
+## 当前项目能力
 
 ### 学生端
 
@@ -156,13 +156,6 @@ npm run dev
 - 环境变量模板：`deploy/.env.example`
 - 宿主机 Nginx 参考：`deploy/host-nginx.example.conf`
 - 详细流程：`deploy/DEPLOY-MAINLAND.md`
-
-## 数据库迁移治理（当前策略）
-
-- 迁移脚本统一放在 `backend/db/migration`，脚本要求 PostgreSQL 兼容并尽量幂等（`IF NOT EXISTS`）。
-- 新增字段迁移示例：`V7__add_total_learning_seconds_to_student_states.sql`。
-- 后端启动时有兜底保护：`StudentStateSchemaGuard` 会自动补齐 `student_states.total_learning_seconds`，避免旧库缺列导致登录阶段报错。
-- 建议流程：先执行迁移脚本，再发布应用；启动兜底仅作为“防故障”而不是日常替代方案。
 
 ## 现状说明
 

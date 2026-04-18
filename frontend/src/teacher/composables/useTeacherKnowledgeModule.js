@@ -880,7 +880,7 @@ const handleDeleteSelectedPoints = async () => {
   if (!ok) return
 
   try {
-    // 顺序删除：避免并发触发“父子前置关系”清理时的竞态
+    // 顺序删除，避免并发请求叠加造成列表状态错乱
     for (const id of ids) {
       // 课程根理论上不会出现在 selectedPointIds，但这里仍做兜底
       const item = points.value.find((p) => p.id === id)

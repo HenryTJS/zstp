@@ -17,7 +17,6 @@ export function useStudentBranchGraph({ graphDataRef, disabledRef, emitNodeClick
     const byId = new Map(nodes.map((n) => [String(n.id), n]))
     const childMap = new Map()
     for (const e of edges) {
-      if ((e?.label || '').toString().includes('前置')) continue
       const s = String(e?.source ?? '')
       const t = String(e?.target ?? '')
       if (!s || !t) continue

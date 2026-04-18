@@ -41,7 +41,6 @@ public class AiService {
     private final String baseUrl;
     private final String model;
     private final CourseKnowledgePointRepository courseKnowledgePointRepository;
-    private final com.teacher.backend.repository.CourseKnowledgePointPrereqRepository courseKnowledgePointPrereqRepository;
     private final CourseCatalogService courseCatalogService;
     private final com.teacher.backend.repository.GeneratedExamRepository generatedExamRepository;
     // Used for small-batch parallel question generation (e.g. 1-2 questions per request).
@@ -49,7 +48,6 @@ public class AiService {
 
     public AiService(
         CourseKnowledgePointRepository courseKnowledgePointRepository,
-        com.teacher.backend.repository.CourseKnowledgePointPrereqRepository courseKnowledgePointPrereqRepository,
         CourseCatalogService courseCatalogService,
         com.teacher.backend.repository.GeneratedExamRepository generatedExamRepository,
         @Value("${OPENAI_API_KEY:}") String apiKey,
@@ -57,7 +55,6 @@ public class AiService {
         @Value("${OPENAI_MODEL:gpt-4o-mini}") String model
     ) {
         this.courseKnowledgePointRepository = courseKnowledgePointRepository;
-        this.courseKnowledgePointPrereqRepository = courseKnowledgePointPrereqRepository;
         this.courseCatalogService = courseCatalogService;
         this.generatedExamRepository = generatedExamRepository;
         this.apiKey = apiKey == null ? "" : apiKey.trim();
@@ -342,22 +339,6 @@ public class AiService {
             }
         }
 
-        // 加入前置关系边，从 prereq -> point（仅在对应节点存在于图中时）
-        try {
-            var prereqs = courseKnowledgePointPrereqRepository.findByCourseName(courseName);
-            for (var pr : prereqs) {
-                Long pointDbId = pr.getPointId();
-                Long prereqDbId = pr.getPrereqPointId();
-                String from = idByDbId.get(prereqDbId);
-                String to = idByDbId.get(pointDbId);
-                if (from != null && to != null) {
-                    edges.add(edge(from, to, "前置"));
-                }
-            }
-        } catch (Exception ex) {
-            log.debug("Failed to load prereqs for course {}: {}", courseName, ex.getMessage());
-        }
-
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("courseName", courseName);
         response.put("title", courseName + "知识图谱");
@@ -365,7 +346,7 @@ public class AiService {
         response.put("edges", edges);
         response.put("suggestions", List.of(
             "先梳理一级知识点，再进入分支知识点练习。",
-            "优先围绕前置关系安排讲解顺序。",
+            "按章节树由浅入深，先掌握父节点再学叶子知识点。",
             "将薄弱知识点加入错题复盘清单。"
         ));
         return response;

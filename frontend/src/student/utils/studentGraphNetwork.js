@@ -3,8 +3,7 @@
  */
 export const buildGraphNetworkData = (graphData) => {
   const nodes = graphData?.nodes || []
-  const rawEdges = graphData?.edges || []
-  const edges = rawEdges.filter((edge) => !((edge.label || '').toString().includes('前置')))
+  const edges = graphData?.edges || []
   if (!nodes.length) {
     return null
   }

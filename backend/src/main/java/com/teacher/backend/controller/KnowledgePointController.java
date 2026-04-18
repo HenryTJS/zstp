@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.Set;
 
 import com.teacher.backend.dto.UpsertKnowledgePointRequest;
-import com.teacher.backend.repository.CourseKnowledgePointPrereqRepository;
 import com.teacher.backend.entity.CourseKnowledgePoint;
 import com.teacher.backend.repository.CourseKnowledgePointRepository;
 import com.teacher.backend.repository.TeacherCoursePermissionRepository;
@@ -46,10 +45,6 @@ public class KnowledgePointController {
         }
         try {
             Set<Long> idsToDelete = collectSubtreeIds(toDelete);
-            for (Long pid : idsToDelete) {
-                prereqRepository.deleteByPointId(pid);
-                prereqRepository.deleteByPrereqPointId(pid);
-            }
             courseKnowledgePointRepository.deleteAllById(idsToDelete);
             return ResponseEntity.ok(Map.of("message", "已删除", "deletedCount", idsToDelete.size()));
         } catch (Exception ex) {
@@ -96,7 +91,6 @@ public class KnowledgePointController {
         Long parentId = request == null ? null : request.parentId();
         String parentPoint = request == null || request.parentPoint() == null ? "" : request.parentPoint().trim();
         Integer sortOrder = request == null || request.sortOrder() == null ? 0 : request.sortOrder();
-        java.util.List<Long> prereqIds = request == null || request.prereqIds() == null ? java.util.List.of() : request.prereqIds();
         if (!StringUtils.hasText(pointName)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "pointName is required"));
         }
@@ -131,44 +125,20 @@ public class KnowledgePointController {
         entity.setSortOrder(Math.max(0, sortOrder));
         CourseKnowledgePoint saved = courseKnowledgePointRepository.save(entity);
 
-        // 更新并校验前置关系：只允许与同一父节点下的其它点建立前置
-        if (saved.getId() != null) {
-            prereqRepository.deleteByPointId(saved.getId());
-            for (Long pid : prereqIds) {
-                if (pid == null || pid.equals(saved.getId())) continue;
-                var opt = courseKnowledgePointRepository.findById(pid);
-                if (opt.isPresent()) {
-                    var candidate = opt.get();
-                    Long candidateParent = candidate.getParentId();
-                    Long savedParent = saved.getParentId();
-                    if ((candidateParent == null && savedParent == null) || (candidateParent != null && candidateParent.equals(savedParent))) {
-                        com.teacher.backend.entity.CourseKnowledgePointPrereq pr = new com.teacher.backend.entity.CourseKnowledgePointPrereq();
-                        pr.setCourseName(saved.getCourseName());
-                        pr.setPointId(saved.getId());
-                        pr.setPrereqPointId(pid);
-                        prereqRepository.save(pr);
-                    }
-                }
-            }
-        }
-
         return ResponseEntity.ok(Map.of("message", "已更新", "point", toPointMap(saved)));
     }
 
     private final CourseKnowledgePointRepository courseKnowledgePointRepository;
     private final CourseCatalogService courseCatalogService;
-    private final CourseKnowledgePointPrereqRepository prereqRepository;
     private final TeacherCoursePermissionRepository teacherCoursePermissionRepository;
 
     public KnowledgePointController(
         CourseKnowledgePointRepository courseKnowledgePointRepository,
         CourseCatalogService courseCatalogService,
-        CourseKnowledgePointPrereqRepository prereqRepository,
         TeacherCoursePermissionRepository teacherCoursePermissionRepository
     ) {
         this.courseKnowledgePointRepository = courseKnowledgePointRepository;
         this.courseCatalogService = courseCatalogService;
-        this.prereqRepository = prereqRepository;
         this.teacherCoursePermissionRepository = teacherCoursePermissionRepository;
     }
 
@@ -222,7 +192,6 @@ public class KnowledgePointController {
         Long parentId = request == null ? null : request.parentId();
         String parentPoint = request == null || request.parentPoint() == null ? "" : request.parentPoint().trim();
         Integer sortOrder = request == null || request.sortOrder() == null ? 0 : request.sortOrder();
-        java.util.List<Long> prereqIds = request == null || request.prereqIds() == null ? java.util.List.of() : request.prereqIds();
 
         if (!StringUtils.hasText(pointName)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "pointName is required"));
@@ -273,34 +242,6 @@ public class KnowledgePointController {
             ));
         }
 
-        try {
-            // 保存前置关系（只允许同父节点）
-            if (saved.getId() != null) {
-                prereqRepository.deleteByPointId(saved.getId());
-                for (Long pid : prereqIds) {
-                    if (pid == null || pid.equals(saved.getId())) continue;
-                    var opt = courseKnowledgePointRepository.findById(pid);
-                    if (opt.isPresent()) {
-                        var candidate = opt.get();
-                        Long candidateParent = candidate.getParentId();
-                        Long savedParent = saved.getParentId();
-                        if ((candidateParent == null && savedParent == null) || (candidateParent != null && candidateParent.equals(savedParent))) {
-                            com.teacher.backend.entity.CourseKnowledgePointPrereq pr = new com.teacher.backend.entity.CourseKnowledgePointPrereq();
-                            pr.setCourseName(saved.getCourseName());
-                            pr.setPointId(saved.getId());
-                            pr.setPrereqPointId(pid);
-                            prereqRepository.save(pr);
-                        }
-                    }
-                }
-            }
-        } catch (Exception ex) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "message", "知识点前置关系保存失败。",
-                "error", ex.getMessage()
-            ));
-        }
-
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
             "message", "saved",
             "point", toPointMap(saved)
@@ -316,10 +257,6 @@ public class KnowledgePointController {
         response.put("parentPoint", point.getParentPoint());
         response.put("sortOrder", point.getSortOrder());
         response.put("createdAt", point.getCreatedAt() == null ? null : point.getCreatedAt().toString());
-        // 加入前置 id 列表
-        java.util.List<com.teacher.backend.entity.CourseKnowledgePointPrereq> prs = prereqRepository.findByPointId(point.getId());
-        java.util.List<Long> prereqIds = prs == null ? java.util.List.of() : prs.stream().map(com.teacher.backend.entity.CourseKnowledgePointPrereq::getPrereqPointId).toList();
-        response.put("prereqIds", prereqIds);
         response.put("courseRoot", isCourseRootPoint(point));
         return response;
     }

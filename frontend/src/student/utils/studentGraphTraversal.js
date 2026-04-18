@@ -1,6 +1,6 @@
 /**
  * 知识图谱遍历（纯函数）
- * 按「包含」边（不含前置）从某节点向下遍历，得到该节点及所有下级节点对应的 label 集合。
+ * 按「包含」类父子边从某节点向下遍历，得到该节点及所有下级节点对应的 label 集合。
  */
 export const collectDescendantLabelsFromGraph = (nodes, rawEdges, startId) => {
   const nodeList = nodes || []
@@ -8,7 +8,6 @@ export const collectDescendantLabelsFromGraph = (nodes, rawEdges, startId) => {
   const byId = new Map(nodeList.map((n) => [n.id, n]))
   const childMap = new Map()
   for (const edge of edges) {
-    if ((edge.label || '').toString().includes('前置')) continue
     if (!childMap.has(edge.source)) childMap.set(edge.source, [])
     childMap.get(edge.source).push(edge.target)
   }
@@ -51,7 +50,6 @@ export const pickRandomSubpointLabelForKnowledgePoint = (nodes, edges, label) =>
 
   const childMap = new Map()
   for (const edge of edgeList) {
-    if ((edge.label || '').toString().includes('前置')) continue
     if (!childMap.has(edge.source)) childMap.set(edge.source, [])
     childMap.get(edge.source).push(edge.target)
   }
