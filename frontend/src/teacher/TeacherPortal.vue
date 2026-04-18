@@ -156,6 +156,7 @@ const {
   openEditPoint,
   openAddPoint,
   downloadKnowledgePointMdTemplate,
+  openMdImport,
   onMdFileChange,
   submitMdImport,
   handleUpdatePoint,

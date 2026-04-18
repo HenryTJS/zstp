@@ -975,6 +975,7 @@ const handleDeleteMaterial = async (id) => {
     openEditPoint,
     openAddPoint,
     downloadKnowledgePointMdTemplate,
+    openMdImport,
     onMdFileChange,
     submitMdImport,
     handleUpdatePoint,

@@ -1,0 +1,26 @@
+%% 课程平台核心 E-R（与当前 JPA 实体 / 表名一致；不含已废弃的先修表）
+%% 渲染：在 diagrams 目录执行 ./render-er.ps1 或 ./render-er.sh
+
+erDiagram
+    users ||--o{ materials : uploads
+    users ||--|| student_states : owns
+    users ||--o{ kp_discussion_posts : writes
+    users ||--o{ kp_discussion_likes : likes
+    users ||--o{ user_notifications : receives
+    users ||--o{ teacher_course_permissions : granted
+    users ||--o{ teacher_course_permission_requests : submits
+
+    course_catalog ||--o{ course_knowledge_points : outlines
+    course_knowledge_points ||--o| course_knowledge_points : parent_child
+    course_knowledge_points ||--o{ kp_discussion_posts : discusses
+    course_knowledge_points ||--o{ kp_published_tests : tests
+
+    kp_published_tests ||--o{ kp_test_submissions : receives
+
+    kp_discussion_posts ||--o{ kp_discussion_posts : replies
+    kp_discussion_posts ||--o{ kp_discussion_likes : liked_by
+
+    majors ||--o{ majors : hierarchy
+
+    %% publisher_id 可空：图示简化为「用户可发布多条公告」
+    users ||--o{ announcements : publishes
