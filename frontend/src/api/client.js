@@ -20,8 +20,7 @@ export const createTeacherCoursePermissionRequest = (payload) =>
 export const decideTeacherCoursePermissionRequest = (payload) =>
   http.post('/teacher-course-permission-requests/decide', payload)
 
-// 课程配置：五维权重
-export const listCourseConfigs = (params) => http.get('/course-configs', { params })
+// 课程配置：五维权重（按课程名读写）
 export const getCourseConfig = (courseName, params) =>
   http.get(`/course-configs/${encodeURIComponent(courseName)}`, { params })
 export const updateCourseConfig = (courseName, payload) =>

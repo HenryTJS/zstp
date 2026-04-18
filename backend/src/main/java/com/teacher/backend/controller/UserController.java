@@ -47,11 +47,6 @@ public class UserController {
         this.responseMapper = responseMapper;
     }
 
-    @PostMapping("/register")
-    public ResponseEntity<?> register() {
-        return error(HttpStatus.FORBIDDEN, "registration is disabled; please use a preconfigured account");
-    }
-
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody(required = false) LoginRequest request) {
         String identity = normalize(request == null ? null : request.identity()).toLowerCase(Locale.ROOT);

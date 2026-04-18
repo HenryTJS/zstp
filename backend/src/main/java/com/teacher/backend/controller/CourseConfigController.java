@@ -1,12 +1,10 @@
 package com.teacher.backend.controller;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 import com.teacher.backend.dto.CourseConfigDto;
 import com.teacher.backend.dto.UpsertCourseConfigRequest;
-import com.teacher.backend.entity.TeacherCoursePermission;
 import com.teacher.backend.repository.TeacherCoursePermissionRepository;
 import com.teacher.backend.repository.UserRepository;
 import com.teacher.backend.service.CourseConfigService;
@@ -41,36 +39,6 @@ public class CourseConfigController {
         this.userRepository = userRepository;
         this.teacherCoursePermissionRepository = teacherCoursePermissionRepository;
         this.courseConfigService = courseConfigService;
-    }
-
-    @GetMapping
-    public ResponseEntity<?> list(
-        @RequestParam(required = false) Long adminUserId,
-        @RequestParam(required = false) Long teacherUserId
-    ) {
-        List<CourseConfigDto> list;
-        if (adminUserId != null) {
-            boolean isAdmin = userRepository.findByIdAndRole(adminUserId, ROLE_ADMIN).isPresent();
-            if (!isAdmin) {
-                return error(HttpStatus.FORBIDDEN, "only admin can list course configs");
-            }
-            list = courseConfigService.listAllConfigs();
-        } else if (teacherUserId != null) {
-            boolean isTeacher = userRepository.findByIdAndRole(teacherUserId, ROLE_TEACHER).isPresent();
-            if (!isTeacher) {
-                return error(HttpStatus.FORBIDDEN, "only teacher can list own course configs");
-            }
-            List<TeacherCoursePermission> rows = teacherCoursePermissionRepository.findByTeacherIdOrderByIdAsc(teacherUserId);
-            list = rows.stream()
-                .map(TeacherCoursePermission::getCourseName)
-                .filter(StringUtils::hasText)
-                .distinct()
-                .map(courseConfigService::getOrDefaultConfig)
-                .toList();
-        } else {
-            return error(HttpStatus.BAD_REQUEST, "adminUserId or teacherUserId is required");
-        }
-        return ResponseEntity.ok(Map.of("items", list));
     }
 
     @GetMapping("/{courseName}")

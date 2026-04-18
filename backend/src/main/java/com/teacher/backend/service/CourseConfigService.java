@@ -1,8 +1,5 @@
 package com.teacher.backend.service;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.teacher.backend.dto.CourseConfigDto;
 import com.teacher.backend.dto.CourseDimensionWeightsDto;
 import com.teacher.backend.entity.CourseDimensionWeights;
@@ -32,15 +29,6 @@ public class CourseConfigService {
         String courseName = courseCatalogService.normalizeCourseName(rawCourseName);
         CourseDimensionWeights w = ensureDefaultWeights(courseName);
         return toDto(courseName, w);
-    }
-
-    public List<CourseConfigDto> listAllConfigs() {
-        List<String> courses = courseCatalogService.allCourses();
-        List<CourseConfigDto> out = new ArrayList<>();
-        for (String c : courses) {
-            out.add(getOrDefaultConfig(c));
-        }
-        return out;
     }
 
     @Transactional
