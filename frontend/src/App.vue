@@ -40,6 +40,7 @@ const isTeacherUser = computed(() => currentUser.value?.role === 'teacher')
 const isOnTeacherRoute = computed(() => route.path.startsWith('/teacher'))
 const isAdminUser = computed(() => currentUser.value?.role === 'admin')
 const isOnAdminRoute = computed(() => route.path.startsWith('/admin'))
+const isLoginRoute = computed(() => route.path === '/login')
 
 const handleLoginSuccess = (user) => {
   if (user?.role !== 'student' && user?.role !== 'teacher' && user?.role !== 'admin') {
@@ -265,7 +266,7 @@ const adminNavSegment = computed(() => {
 </script>
 
 <template>
-  <div class="app-page">
+  <div class="app-page" :class="{ 'app-page--login': isLoginRoute }">
     <header class="top-nav">
       <div class="top-nav-shell">
         <div
@@ -369,7 +370,7 @@ const adminNavSegment = computed(() => {
       </div>
     </header>
 
-    <div class="app-shell">
+    <div class="app-shell" :class="{ 'app-shell--login': isLoginRoute }">
       <main class="panel-wrap app-main-with-search">
         <!-- 登录/登出/资料更新由 appShellKey provide 注入；避免额外包裹导致 activePage 错乱 -->
         <router-view v-if="!showSearchResultsOnly" />
@@ -407,7 +408,7 @@ const adminNavSegment = computed(() => {
         </section>
       </main>
     </div>
-    <footer class="app-footer-bar" role="contentinfo">
+    <footer v-if="!isLoginRoute" class="app-footer-bar" role="contentinfo">
       <span>备案号：陕ICP备2026003727号</span>
     </footer>
   </div>
@@ -417,6 +418,10 @@ const adminNavSegment = computed(() => {
 .app-main-with-search {
   position: relative;
   min-height: min(70vh, 720px);
+}
+
+.app-page.app-page--login .app-main-with-search {
+  min-height: 0;
 }
 .app-footer-bar {
   margin-top: 18px;

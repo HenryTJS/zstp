@@ -109,6 +109,45 @@ h3 {
   padding: 22px 18px 40px;
 }
 
+/* 登录路由：主区域全宽，避免彩色底被 max-width + overflow 裁成中间一条 */
+.app-shell.app-shell--login {
+  max-width: none;
+  width: 100%;
+  padding: 0;
+}
+
+.app-shell.app-shell--login .app-main-with-search {
+  margin-top: 0;
+}
+
+.app-page.app-page--login {
+  overflow-x: visible;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-page.app-page--login .app-shell.app-shell--login {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-page.app-page--login .app-shell.app-shell--login main.panel-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.app-page.app-page--login .app-shell.app-shell--login main.panel-wrap > * {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .top-nav {
   width: 100%;
   background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important;
