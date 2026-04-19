@@ -10,7 +10,8 @@ export const escapeHtml = (text) => {
 }
 
 export const renderLatexText = (text) => {
-  const source = String(text || '')
+  // 去掉末尾空白与换行，避免转成大量 <br/> 在题面/解析下方留出大块空白
+  const source = String(text || '').trimEnd()
   if (!source.trim()) {
     return ''
   }

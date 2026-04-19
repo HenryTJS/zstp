@@ -110,3 +110,11 @@ export const getMyKnowledgePointPublishedTestSubmission = (params) =>
   http.get('/knowledge-point-published-tests/my-submission', { params })
 export const countPublishedTestsByTeacherCourses = (teacherUserId) =>
   http.get('/knowledge-point-published-tests/count-by-teacher-courses', { params: { teacherUserId } })
+
+/** 教师端：某次知识点测试的学生逐题作答明细 */
+export const getKnowledgePointPublishedTestSubmissionsDetail = (params) =>
+  http.get('/knowledge-point-published-tests/submissions-detail', { params })
+
+/** 教师端：学情分析报告（Markdown + 结构化数据，含 AI 教学建议） */
+export const getKnowledgePointPublishedTestLearningReport = (params) =>
+  http.get('/knowledge-point-published-tests/learning-report', { params })

@@ -1,6 +1,8 @@
 package com.teacher.backend.controller;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -504,6 +507,509 @@ public class KnowledgePointPublishedTestController {
         out.put("highScoreQuestions", high);
         out.put("lowScoreQuestions", low);
         return ResponseEntity.ok(out);
+    }
+
+    /**
+     * 教师端：某次测试（课程+知识点锚点）下每位学生的作答明细（含每题选了什么/填了什么）。
+     */
+    @GetMapping("/submissions-detail")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> submissionsDetail(
+            @RequestParam String courseName,
+            @RequestParam String pointName,
+            @RequestParam Long teacherUserId
+    ) {
+        if (teacherUserId == null) {
+            return error(HttpStatus.BAD_REQUEST, "teacherUserId 必填");
+        }
+        User teacher = userRepository.findById(teacherUserId).orElse(null);
+        if (teacher == null || (!"teacher".equals(teacher.getRole()) && !"admin".equals(teacher.getRole()))) {
+            return error(HttpStatus.FORBIDDEN, "仅教师或管理员");
+        }
+        String cn = courseCatalogService.normalizeCourseName(courseName);
+        String pn = String.valueOf(pointName == null ? "" : pointName).trim();
+        if (!StringUtils.hasText(cn) || !StringUtils.hasText(pn)) {
+            return error(HttpStatus.BAD_REQUEST, "courseName 与 pointName 不能为空");
+        }
+        if (!"admin".equals(teacher.getRole())
+                && !permissionRepository.existsByTeacherIdAndCourseName(teacherUserId, cn)) {
+            return error(HttpStatus.FORBIDDEN, "无该课程权限");
+        }
+
+        KnowledgePointPublishedTest t = testRepository.findByCourseNameAndPointName(cn, pn).orElse(null);
+        Map<String, Object> empty = new LinkedHashMap<>();
+        empty.put("testId", null);
+        empty.put("title", null);
+        empty.put("courseName", cn);
+        empty.put("pointName", pn);
+        empty.put("questionCount", 0);
+        empty.put("submissions", List.of());
+        if (t == null) {
+            return ResponseEntity.ok(empty);
+        }
+
+        List<Map<String, Object>> questions = parseQuestions(t.getQuestionsJson());
+        int qCount = questions.size();
+        List<KnowledgePointTestSubmission> subs = submissionRepository.findByTestId(t.getId());
+        if (subs == null) {
+            subs = List.of();
+        }
+
+        List<Long> userIds = subs.stream().map(KnowledgePointTestSubmission::getStudentUserId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, User> userMap = new HashMap<>();
+        if (!userIds.isEmpty()) {
+            for (User u : userRepository.findAllById(userIds)) {
+                if (u != null && u.getId() != null) {
+                    userMap.put(u.getId(), u);
+                }
+            }
+        }
+
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (KnowledgePointTestSubmission s : subs) {
+            List<Map<String, Object>> per;
+            try {
+                per = objectMapper.readValue(s.getPerQuestionJson() == null ? "[]" : s.getPerQuestionJson(), new TypeReference<>() {});
+            } catch (Exception ex) {
+                per = List.of();
+            }
+            if (per == null) {
+                per = List.of();
+            }
+            List<String> answersByIndex = new ArrayList<>();
+            for (int i = 0; i < qCount; i++) {
+                answersByIndex.add("");
+            }
+            for (Map<String, Object> cell : per) {
+                int idx0 = toInt(cell.get("index")) - 1;
+                if (idx0 >= 0 && idx0 < qCount) {
+                    Object sa = cell.get("studentAnswer");
+                    answersByIndex.set(idx0, sa == null ? "" : String.valueOf(sa));
+                }
+            }
+            User u = userMap.get(s.getStudentUserId());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("studentUserId", s.getStudentUserId());
+            row.put("username", u == null ? ("user#" + s.getStudentUserId()) : u.getUsername());
+            row.put("workId", u == null || u.getWorkId() == null ? "" : u.getWorkId());
+            row.put("totalScore", s.getTotalScore());
+            row.put("fullScore", s.getFullScore());
+            row.put("submittedAt", s.getSubmittedAt() == null ? null : s.getSubmittedAt().toString());
+            row.put("answersByIndex", answersByIndex);
+            row.put("perQuestion", per);
+            rows.add(row);
+        }
+        rows.sort(Comparator.comparing(r -> String.valueOf(r.getOrDefault("username", "")), String.CASE_INSENSITIVE_ORDER));
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("testId", t.getId());
+        out.put("title", t.getTitle());
+        out.put("courseName", cn);
+        out.put("pointName", pn);
+        out.put("questionCount", qCount);
+        out.put("submissions", rows);
+        return ResponseEntity.ok(out);
+    }
+
+    /**
+     * 教师端：学情分析报告（Markdown + 结构化摘要），含逐题得分率、选择题高频错选与 AI 教学建议。
+     */
+    @GetMapping("/learning-report")
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> learningReport(
+            @RequestParam String courseName,
+            @RequestParam String pointName,
+            @RequestParam Long teacherUserId
+    ) {
+        if (teacherUserId == null) {
+            return error(HttpStatus.BAD_REQUEST, "teacherUserId 必填");
+        }
+        User teacher = userRepository.findById(teacherUserId).orElse(null);
+        if (teacher == null || (!"teacher".equals(teacher.getRole()) && !"admin".equals(teacher.getRole()))) {
+            return error(HttpStatus.FORBIDDEN, "仅教师或管理员");
+        }
+        String cn = courseCatalogService.normalizeCourseName(courseName);
+        String pn = String.valueOf(pointName == null ? "" : pointName).trim();
+        if (!StringUtils.hasText(cn) || !StringUtils.hasText(pn)) {
+            return error(HttpStatus.BAD_REQUEST, "courseName 与 pointName 不能为空");
+        }
+        if (!"admin".equals(teacher.getRole())
+                && !permissionRepository.existsByTeacherIdAndCourseName(teacherUserId, cn)) {
+            return error(HttpStatus.FORBIDDEN, "无该课程权限");
+        }
+
+        String generatedAt = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Shanghai")).toString();
+        KnowledgePointPublishedTest t = testRepository.findByCourseNameAndPointName(cn, pn).orElse(null);
+
+        Map<String, Object> bare = new LinkedHashMap<>();
+        bare.put("testId", null);
+        bare.put("title", null);
+        bare.put("courseName", cn);
+        bare.put("pointName", pn);
+        bare.put("generatedAt", generatedAt);
+        bare.put("teachingSuggestions", "");
+        bare.put("reportMarkdown", "# 学情分析报告\n\n当前知识点下暂无已发布测试。\n");
+        bare.put("questions", List.of());
+        bare.put("submissionCount", 0);
+        bare.put("eligibleStudents", 0);
+        bare.put("completionRatePercent", null);
+        bare.put("classScoreOverview", null);
+        if (t == null) {
+            return ResponseEntity.ok(bare);
+        }
+
+        List<Map<String, Object>> questions = parseQuestions(t.getQuestionsJson());
+        int qCount = questions.size();
+        List<KnowledgePointTestSubmission> subs = submissionRepository.findByTestId(t.getId());
+        if (subs == null) {
+            subs = List.of();
+        }
+        int submitted = subs.size();
+
+        int eligible = 0;
+        try {
+            eligible = studentStateRepository.findUserIdsWithCourseInJoined(cn).size();
+        } catch (Exception ignored) {
+            eligible = 0;
+        }
+
+        double[] sumScores = new double[Math.max(0, qCount)];
+        double[] sumFull = new double[Math.max(0, qCount)];
+        int[] cnts = new int[Math.max(0, qCount)];
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>>[] wrongChoiceBuckets = new List[qCount];
+        for (int i = 0; i < qCount; i++) {
+            wrongChoiceBuckets[i] = new ArrayList<>();
+        }
+
+        for (KnowledgePointTestSubmission s : subs) {
+            List<Map<String, Object>> per;
+            try {
+                per = objectMapper.readValue(s.getPerQuestionJson() == null ? "[]" : s.getPerQuestionJson(), new TypeReference<>() {});
+            } catch (Exception ex) {
+                continue;
+            }
+            if (per == null) {
+                continue;
+            }
+            for (int i = 0; i < per.size() && i < qCount; i++) {
+                Map<String, Object> row = per.get(i);
+                double sc = toInt(row.get("score"));
+                double fs = toInt(row.get("full_score"));
+                sumScores[i] += sc;
+                sumFull[i] += fs;
+                cnts[i] += 1;
+
+                Map<String, Object> q = questions.get(i);
+                String qt = normalizeQuestionType(String.valueOf(q.getOrDefault("question_type", "")));
+                if (!"选择题".equals(qt)) {
+                    continue;
+                }
+                int fullOne = toInt(q.get("fullScore"));
+                if (fullOne <= 0) {
+                    fullOne = toInt(row.get("full_score"));
+                }
+                if (sc < fullOne) {
+                    String letter = aiService.normalizeSingleChoiceLetter(String.valueOf(row.get("studentAnswer")));
+                    if (StringUtils.hasText(letter) && letter.length() == 1) {
+                        wrongChoiceBuckets[i].add(Map.of("letter", letter));
+                    } else {
+                        wrongChoiceBuckets[i].add(Map.of("letter", "(无效/未选)"));
+                    }
+                }
+            }
+        }
+
+        // 每题「未得满分」学生名单（用于报告逐题展示，替代整卷作答流水）
+        List<List<String>> wrongStudentLabels = new ArrayList<>();
+        for (int i = 0; i < qCount; i++) {
+            wrongStudentLabels.add(new ArrayList<>());
+        }
+        Map<Long, User> reportUserMap = new HashMap<>();
+        List<Long> reportUserIds = subs.stream()
+                .map(KnowledgePointTestSubmission::getStudentUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (!reportUserIds.isEmpty()) {
+            for (User u : userRepository.findAllById(reportUserIds)) {
+                if (u != null && u.getId() != null) {
+                    reportUserMap.put(u.getId(), u);
+                }
+            }
+        }
+        for (KnowledgePointTestSubmission s : subs) {
+            List<Map<String, Object>> per;
+            try {
+                per = objectMapper.readValue(s.getPerQuestionJson() == null ? "[]" : s.getPerQuestionJson(), new TypeReference<>() {});
+            } catch (Exception ex) {
+                continue;
+            }
+            if (per == null) {
+                continue;
+            }
+            User u = reportUserMap.get(s.getStudentUserId());
+            for (int i = 0; i < qCount; i++) {
+                Map<String, Object> row = findPerRowByIndex(per, i + 1);
+                if (row == null) {
+                    continue;
+                }
+                int sc = toInt(row.get("score"));
+                int fs = toInt(row.get("full_score"));
+                if (sc < fs) {
+                    wrongStudentLabels.get(i).add(formatStudentLabel(u, s.getStudentUserId()));
+                }
+            }
+        }
+        for (int i = 0; i < qCount; i++) {
+            List<String> raw = wrongStudentLabels.get(i);
+            wrongStudentLabels.set(i, raw.stream()
+                    .distinct()
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .collect(Collectors.toCollection(ArrayList::new)));
+        }
+
+        List<Map<String, Object>> questionBlocks = new ArrayList<>();
+        List<Map<String, Object>> aiPayloadQuestions = new ArrayList<>();
+
+        for (int i = 0; i < qCount; i++) {
+            Map<String, Object> q = questions.get(i);
+            String qt = normalizeQuestionType(String.valueOf(q.getOrDefault("question_type", "")));
+            double avgScore = cnts[i] <= 0 ? 0 : (sumScores[i] / cnts[i]);
+            double avgFull = cnts[i] <= 0 ? 0 : (sumFull[i] / cnts[i]);
+            Double scoreRate = avgFull <= 0 ? null : Math.round((avgScore / avgFull) * 1000.0) / 10.0;
+
+            Map<String, Integer> wrongDist = new HashMap<>();
+            for (Map<String, Object> w : wrongChoiceBuckets[i]) {
+                String letter = String.valueOf(w.get("letter"));
+                wrongDist.merge(letter, 1, Integer::sum);
+            }
+            String topWrong = null;
+            int topWrongCnt = 0;
+            for (Map.Entry<String, Integer> e : wrongDist.entrySet()) {
+                if (e.getValue() > topWrongCnt) {
+                    topWrongCnt = e.getValue();
+                    topWrong = e.getKey();
+                }
+            }
+
+            Map<String, Object> qb = new LinkedHashMap<>();
+            qb.put("index", i + 1);
+            qb.put("question_type", qt);
+            qb.put("question", String.valueOf(q.getOrDefault("question", "")));
+            qb.put("answer", String.valueOf(q.getOrDefault("answer", "")));
+            qb.put("explanation", String.valueOf(q.getOrDefault("explanation", "")));
+            qb.put("focusPointName", String.valueOf(q.getOrDefault("focusPointName", "")).trim());
+            qb.put("scoreRatePercent", scoreRate);
+            qb.put("answeredCount", cnts[i]);
+            qb.put("topWrongChoice", "选择题".equals(qt) ? topWrong : null);
+            qb.put("topWrongChoiceCount", "选择题".equals(qt) && topWrong != null ? topWrongCnt : 0);
+            List<Map<String, Object>> distList = new ArrayList<>();
+            wrongDist.entrySet().stream()
+                    .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                    .forEach(e -> distList.add(Map.of("option", e.getKey(), "count", e.getValue())));
+            qb.put("wrongChoiceDistribution", "选择题".equals(qt) ? distList : List.of());
+            qb.put("wrongStudentNames", wrongStudentLabels.get(i));
+            questionBlocks.add(qb);
+
+            Map<String, Object> aiQ = new LinkedHashMap<>();
+            aiQ.put("index", i + 1);
+            aiQ.put("type", qt);
+            aiQ.put("scoreRatePercent", scoreRate);
+            aiQ.put("answeredCount", cnts[i]);
+            if ("选择题".equals(qt)) {
+                aiQ.put("topWrongChoice", topWrong);
+                aiQ.put("topWrongChoiceCount", topWrongCnt);
+            }
+            aiPayloadQuestions.add(aiQ);
+        }
+
+        Map<String, Object> aiSummary = new LinkedHashMap<>();
+        aiSummary.put("courseName", cn);
+        aiSummary.put("pointName", pn);
+        aiSummary.put("testTitle", t.getTitle());
+        aiSummary.put("eligibleStudents", eligible);
+        aiSummary.put("submissionCount", submitted);
+        aiSummary.put("completionRatePercent", eligible <= 0 ? null : Math.round((submitted * 1000.0) / eligible) / 10.0);
+        if (submitted > 0) {
+            int mx = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).max().orElse(0);
+            int mn = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).min().orElse(0);
+            double av = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).average().orElse(0);
+            aiSummary.put("maxScore", mx);
+            aiSummary.put("minScore", mn);
+            aiSummary.put("avgScore", Math.round(av * 100.0) / 100.0);
+        }
+        aiSummary.put("questions", aiPayloadQuestions);
+
+        String summaryJson;
+        try {
+            summaryJson = objectMapper.writeValueAsString(aiSummary);
+        } catch (Exception e) {
+            summaryJson = "{}";
+        }
+
+        String teaching = aiService.publishedTestTeachingSuggestions(summaryJson, teacher.getUsername());
+
+        StringBuilder md = new StringBuilder();
+        md.append("# 学情分析报告\n\n");
+        md.append("- **课程**：").append(mdPlain(cn)).append("\n");
+        md.append("- **知识点锚点**：").append(mdPlain(pn)).append("\n");
+        md.append("- **试卷标题**：").append(mdPlain(t.getTitle())).append("\n");
+        md.append("- **生成时间**：").append(mdPlain(generatedAt)).append("\n");
+        md.append("- **应测人数**（已加入课程）：").append(eligible).append("\n");
+        md.append("- **已提交份数**：").append(submitted).append("\n\n");
+
+        md.append("## 班级成绩概览\n\n");
+        if (submitted <= 0) {
+            md.append("暂无学生提交答卷。\n\n");
+        } else {
+            int mx = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).max().orElse(0);
+            int mn = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).min().orElse(0);
+            double av = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).average().orElse(0);
+            md.append("- 最高分：").append(mx).append("\n");
+            md.append("- 最低分：").append(mn).append("\n");
+            md.append("- 平均分：").append(Math.round(av * 100.0) / 100.0).append("\n\n");
+        }
+
+        md.append("## AI 教学建议\n\n");
+        md.append(teaching).append("\n\n");
+
+        md.append("## 逐题分析\n\n");
+        for (Map<String, Object> qb : questionBlocks) {
+            int idx = toInt(qb.get("index"));
+            String qt = String.valueOf(qb.get("question_type"));
+            md.append("### 第 ").append(idx).append(" 题（").append(mdPlain(qt)).append("）\n\n");
+            if (qb.get("scoreRatePercent") == null) {
+                md.append("- **得分率**：—（尚无答卷）\n");
+            } else {
+                md.append("- **得分率**：").append(qb.get("scoreRatePercent")).append("%（基于 ")
+                        .append(qb.get("answeredCount")).append(" 份有效作答）\n");
+            }
+            // 勿用 ``` 围栏：围栏内内容会被当作纯文本，前端无法渲染 LaTeX/列表等 Markdown
+            md.append("\n**题干**\n\n").append(mdBlockquoteBody(String.valueOf(qb.get("question")))).append("\n");
+            md.append("**参考答案**\n\n").append(mdAnswerBody(String.valueOf(qb.get("answer")))).append("\n");
+            md.append("**解析**\n\n").append(mdBlockquoteBody(String.valueOf(qb.get("explanation")))).append("\n");
+            if ("选择题".equals(qt)) {
+                md.append("- **高频错选（在答错样本中）**：");
+                if (qb.get("topWrongChoice") == null || Objects.equals(qb.get("topWrongChoiceCount"), 0)) {
+                    md.append("无（全部答对或无错选样本）\n\n");
+                } else {
+                    md.append(mdPlain(String.valueOf(qb.get("topWrongChoice"))))
+                            .append("（").append(qb.get("topWrongChoiceCount")).append(" 人次）\n\n");
+                    md.append("错选分布：");
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> dist = (List<Map<String, Object>>) qb.get("wrongChoiceDistribution");
+                    if (dist != null && !dist.isEmpty()) {
+                        md.append(dist.stream()
+                                .map(d -> mdPlain(String.valueOf(d.get("option"))) + ":" + d.get("count"))
+                                .reduce((a, b) -> a + "，" + b)
+                                .orElse("—"));
+                    } else {
+                        md.append("—");
+                    }
+                    md.append("\n\n");
+                }
+            }
+            @SuppressWarnings("unchecked")
+            List<String> wrongNames = (List<String>) qb.get("wrongStudentNames");
+            md.append("**未得满分学生**：");
+            if (wrongNames == null || wrongNames.isEmpty()) {
+                md.append("_无_");
+            } else {
+                md.append(wrongNames.stream().map(KnowledgePointPublishedTestController::mdPlain).collect(Collectors.joining("、")));
+            }
+            md.append("\n\n");
+        }
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("testId", t.getId());
+        out.put("title", t.getTitle());
+        out.put("courseName", cn);
+        out.put("pointName", pn);
+        out.put("generatedAt", generatedAt);
+        out.put("teachingSuggestions", teaching);
+        out.put("reportMarkdown", md.toString());
+        out.put("questions", questionBlocks);
+        out.put("submissionCount", submitted);
+        out.put("eligibleStudents", eligible);
+        out.put(
+                "completionRatePercent",
+                eligible <= 0 ? null : Math.round((submitted * 1000.0) / eligible) / 10.0);
+        Map<String, Object> classScoreOverview = new LinkedHashMap<>();
+        if (submitted > 0) {
+            int mx = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).max().orElse(0);
+            int mn = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).min().orElse(0);
+            double av = subs.stream().mapToInt(s -> s.getTotalScore() == null ? 0 : s.getTotalScore()).average().orElse(0);
+            classScoreOverview.put("maxScore", mx);
+            classScoreOverview.put("minScore", mn);
+            classScoreOverview.put("avgScore", Math.round(av * 100.0) / 100.0);
+        }
+        out.put("classScoreOverview", submitted > 0 ? classScoreOverview : null);
+        return ResponseEntity.ok(out);
+    }
+
+    private static Map<String, Object> findPerRowByIndex(List<Map<String, Object>> per, int oneBasedIndex) {
+        if (per == null || oneBasedIndex < 1) {
+            return null;
+        }
+        for (Map<String, Object> row : per) {
+            if (row != null && toInt(row.get("index")) == oneBasedIndex) {
+                return row;
+            }
+        }
+        if (oneBasedIndex <= per.size()) {
+            return per.get(oneBasedIndex - 1);
+        }
+        return null;
+    }
+
+    private static String formatStudentLabel(User u, Long studentUserId) {
+        if (studentUserId == null) {
+            return "?";
+        }
+        if (u == null) {
+            return "user#" + studentUserId;
+        }
+        String name = u.getUsername() == null ? ("user#" + studentUserId) : u.getUsername();
+        String wid = u.getWorkId();
+        if (StringUtils.hasText(wid)) {
+            return name + "（学号" + wid + "）";
+        }
+        return name;
+    }
+
+    private static String mdPlain(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("\r\n", "\n").replace("\n", " ").trim();
+    }
+
+    /** 多行放入引用块，便于 Markdown 引擎解析行内 $...$、列表等（避免代码围栏导致整段当纯文本）。 */
+    private static String mdBlockquoteBody(String s) {
+        String t = s == null ? "" : s;
+        String norm = t.replace("\r\n", "\n").replace("\r", "\n");
+        if (!StringUtils.hasText(norm)) {
+            return "> _（空）_\n";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String line : norm.split("\n", -1)) {
+            sb.append("> ").append(line).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /** 参考答案：单行用段落，多行用引用块。 */
+    private static String mdAnswerBody(String s) {
+        String t = s == null ? "" : s.replace("\r\n", "\n").replace("\r", "\n");
+        if (!StringUtils.hasText(t)) {
+            return "_（空）_\n\n";
+        }
+        if (!t.contains("\n")) {
+            return t.trim() + "\n\n";
+        }
+        return mdBlockquoteBody(t);
     }
 
     /**

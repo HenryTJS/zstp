@@ -871,6 +871,47 @@ public class AiService {
         };
     }
 
+    /**
+     * 将学生单选题作答归一为 A–D 或空串，供测验学情统计（高频错选等）复用判分口径。
+     */
+    public String normalizeSingleChoiceLetter(String answer) {
+        return normalizeObjectiveAnswer(answer, "选择题");
+    }
+
+    /**
+     * 基于一次知识点测验的聚合数据，生成面向教师的教学建议（简体中文）。
+     */
+    public String publishedTestTeachingSuggestions(String aggregatedContext, String teacherUsername) {
+        String ctx = safe(aggregatedContext);
+        if (!StringUtils.hasText(ctx)) {
+            return "暂无可用统计数据，无法生成建议。";
+        }
+        if (!aiEnabled()) {
+            return "当前未配置 AI（OPENAI_API_KEY 为空）。建议结合各题得分率，对得分率最低的题目先做共性错因讲评，再布置同知识点变式训练，并关注仍未提交的学生。";
+        }
+        String who = safe(teacherUsername);
+        String systemPrompt = """
+            你是资深学科教研顾问，只用简体中文回答。
+            你将收到一次「知识点随堂测验」的结构化统计数据摘要。请基于真实数据给出可执行的教学建议，不要编造摘要中未出现的题号或比例。
+            输出要求：
+            1) 用二级标题「整体判断」「课堂讲评」「分层巩固」「后续衔接」四段组织（Markdown 可用 ## 标题）；
+            2) 每段 2～4 条要点，动词开头、可操作；
+            3) 总字数控制在 500 字以内；
+            4) 若提交人数很少或为零，需提醒样本偏差，并给出动员与补测建议。
+            """;
+        String userPrompt = (StringUtils.hasText(who) ? ("教师用户名：" + who + "\n") : "")
+            + "测验数据摘要如下：\n"
+            + ctx
+            + "\n请直接输出建议正文。";
+        try {
+            String out = chatText(systemPrompt, userPrompt);
+            return StringUtils.hasText(out) ? out.trim() : "暂时没有可用建议，请稍后重试。";
+        } catch (Exception exception) {
+            log.warn("publishedTestTeachingSuggestions failed: {}", exception.getMessage());
+            return "生成教学建议时 AI 服务异常，请稍后重试。";
+        }
+    }
+
     private String normalizeObjectiveAnswer(String answer, String questionType) {
         String value = safe(answer);
         if ("选择题".equals(questionType)) {

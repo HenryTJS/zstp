@@ -309,8 +309,8 @@ const openWeightDialog = async () => {
   </div>
 
   <div v-if="analyticsDialogVisible" class="modal-mask" @click.self="analyticsDialogVisible = false">
-    <div class="modal-wrapper" style="max-width: 980px; width: 95vw">
-      <div class="modal-container">
+    <div class="modal-wrapper" style="max-width: 1120px; width: 95vw">
+      <div class="modal-container" style="max-height: calc(100vh - 40px); overflow: auto">
         <button class="modal-close" type="button" aria-label="关闭" @click="analyticsDialogVisible = false">×</button>
         <TeacherStudentAnalytics
           :current-user="currentUser"
