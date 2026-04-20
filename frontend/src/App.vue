@@ -278,8 +278,8 @@ const adminNavSegment = computed(() => {
           }"
         >
           <div class="brand-block">
-            <h1>学生自学平台</h1>
-            <p class="brand-en">AI Self-Learning Platform</p>
+            <h1>AI智能教学助手工作台</h1>
+            <p class="brand-en">AI Intelligent Teaching Assistant Workspace</p>
           </div>
 
           <nav v-if="isStudentUser && isOnStudentRoute" class="section-nav section-nav-inline" aria-label="学生页面导航">

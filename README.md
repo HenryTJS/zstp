@@ -1,4 +1,4 @@
-# AI 学生自学平台
+# AI智能教学助手工作台
 
 面向学生自学与教师教学管理的 AI 辅助平台，包含前端（学生端/教师端/管理员端）与 Spring Boot 后端。
 
@@ -23,7 +23,9 @@
 - 课程广场、课程详情、课程权限申请
 - 课程管理（知识点维护、资料上传/删除、统计看板）
 - 发布知识点测试并查看相关统计
-- 课程简介/封面编辑（仅已授权课程）
+- 学情分析：按课程与知识点查看完成率、分数统计、每题得分率、高低得分题
+- 学情分析报告：生成 AI 教学建议、逐题分析，支持 Markdown 导出
+- 课程简介/封面编辑
 - 知识点交流区与通知铃铛
 - 个人资料编辑、修改密码、AI 助手
 
@@ -40,6 +42,7 @@
 - 课程与目录：`/api/courses*`
 - 知识点与资料：`/api/knowledge-points*`、`/api/materials*`、`/api/resources*`
 - AI 能力：`/api/knowledge-graph`、`/api/learning-suggestions`、`/api/major-relevance`、`/api/agent-chat`、`/api/generate-*`、`/api/grade-answer`
+- 教师测试与学情分析：`/api/knowledge-point-published-tests*`（含 `/stats`、`/submissions-detail`、`/learning-report`、`/course-summary`）
 - 交流区与通知：`/api/knowledge-point-discussions*`（含 `/count-by-user`）、`/api/notifications*`
 - 教师权限：`/api/teacher-course-permissions*`、`/api/teacher-course-permission-requests*`
 - 公告与健康检查：`/api/announcements*`、`/api/health`
