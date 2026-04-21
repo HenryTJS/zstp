@@ -202,6 +202,7 @@ const saveCourseMeta = async () => {
   if (!courseDetail.value?.courseName) return
   courseMetaSaving.value = true
   courseDetailError.value = ''
+  let ok = false
   try {
     const { data } = await updateCourseMeta({
       userId: props.currentUser.id,
@@ -213,16 +214,31 @@ const saveCourseMeta = async () => {
     // 合并而非整体替换：旧版后端 PUT /courses/meta 曾不返回 hasAccess/canEditMeta，会导致误判为「申请权限」
     courseDetail.value = { ...(courseDetail.value || {}), ...(data || {}) }
     await loadMyCourseCatalog()
+    ok = true
   } catch (e) {
     courseDetailError.value = e?.response?.data?.message || '保存失败'
   } finally {
     courseMetaSaving.value = false
   }
+  return ok
 }
 
 const onCourseCoverFileChange = async (e) => {
   const file = e?.target?.files?.[0]
   if (!file || !courseDetail.value?.courseName) return
+  const fileName = String(file?.name || '').toLowerCase()
+  const mime = String(file?.type || '').toLowerCase()
+  const isJpgOrPng =
+    mime === 'image/jpeg' ||
+    mime === 'image/png' ||
+    fileName.endsWith('.jpg') ||
+    fileName.endsWith('.jpeg') ||
+    fileName.endsWith('.png')
+  if (!isJpgOrPng) {
+    courseDetailError.value = '封面仅支持 JPG/PNG。手机请关闭“高效格式(HEIC)”后重试。'
+    if (e?.target) e.target.value = ''
+    return
+  }
   courseMetaSaving.value = true
   courseDetailError.value = ''
   try {
@@ -234,8 +250,11 @@ const onCourseCoverFileChange = async (e) => {
     const url = String(data?.coverUrl || '').trim()
     if (url) {
       courseMetaForm.value = { ...courseMetaForm.value, coverUrl: url }
-      await saveCourseMeta()
+      const saved = await saveCourseMeta()
+      if (!saved) return
       await loadCourseDetail(courseDetail.value.courseName)
+    } else {
+      courseDetailError.value = '封面上传成功但未返回可用地址，请稍后重试。'
     }
   } catch (e2) {
     courseDetailError.value = e2?.response?.data?.message || '封面上传失败'
