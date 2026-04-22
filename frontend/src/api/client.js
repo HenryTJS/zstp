@@ -11,6 +11,8 @@ export const listTeacherCoursePermissions = (teacherId) =>
   http.get('/teacher-course-permissions', { params: { teacherId } })
 export const listTeachersForCourses = (courseNames) =>
   http.post('/teacher-course-permissions/teachers-for-courses', { courseNames })
+export const revokeTeacherCoursePermission = (payload) =>
+  http.post('/teacher-course-permissions/revoke', payload)
 
 // 教师端申请课程权限（管理员端审批后可授予教师课程权限）
 export const listTeacherCoursePermissionRequests = (payload) =>

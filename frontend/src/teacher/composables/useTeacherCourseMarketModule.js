@@ -6,6 +6,7 @@ import {
   getCourseDetail,
   updateCourseMeta,
   uploadCourseCover,
+  revokeTeacherCoursePermission,
   listTeacherCoursePermissionRequests,
   createTeacherCoursePermissionRequest
 } from '../../api/client'
@@ -378,26 +379,38 @@ const openCourseDetailFromMarket = async (courseName) => {
   await router.push({ path: '/teacher/course-detail', query: { course: cn } })
 }
 
-const quitCourseFromMarket = (courseName) => {
+const quitCourseFromMarket = async (courseName) => {
   const cn = String(courseName || '').trim()
   if (!cn) return
 
-  const ok = confirm(`确定要退出课程「${cn}」吗？退出后将停止对该课程的资料管理。`)
+  const ok = confirm(`确定要退出课程「${cn}」吗？\n\n退出后将不再拥有该课程授课权限（如需再次进入需重新申请）。`)
   if (!ok) return
 
-  autoSelectCourseEnabled.value = false
-  if (selectedCourse.value === cn) {
-    selectedCourse.value = ''
-    pointForm.value.courseName = ''
-  }
-
+  courseDetailError.value = ''
+  courseMetaSaving.value = true
   try {
-    localStorage.setItem(teacherEnteredCourseStorageKey, '')
-  } catch (e) {}
+    await revokeTeacherCoursePermission({ teacherId: props.currentUser.id, courseName: cn })
 
-  // 清空可能残留的讨论深链参数（dc/dp/dpost）
-  void loadMyCourseCatalog()
-  router.push({ path: '/teacher/courses', query: {} })
+    autoSelectCourseEnabled.value = false
+    if (selectedCourse.value === cn) {
+      selectedCourse.value = ''
+      pointForm.value.courseName = ''
+    }
+
+    try {
+      localStorage.setItem(teacherEnteredCourseStorageKey, '')
+    } catch (e) {}
+
+    // 权限变更后刷新：我的课程目录、课程详情（会变为无权限状态）、教师列表等
+    await refreshTeacherCoursePermissionsIfNeeded(true)
+    await loadMyCourseCatalog()
+    await loadTeacherCourseMarket()
+    router.push({ path: '/teacher/courses', query: {} })
+  } catch (e) {
+    courseDetailError.value = e?.response?.data?.message || e?.message || '退出课程失败。'
+  } finally {
+    courseMetaSaving.value = false
+  }
 }
 
 watch(

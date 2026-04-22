@@ -15,6 +15,8 @@ public interface TeacherCoursePermissionRepository extends JpaRepository<Teacher
 
     void deleteByTeacherId(Long teacherId);
 
+    void deleteByTeacherIdAndCourseName(Long teacherId, String courseName);
+
     List<TeacherCoursePermission> findByTeacherIdAndCourseNameIn(Long teacherId, Collection<String> courseNames);
 
     void deleteByCourseName(String courseName);

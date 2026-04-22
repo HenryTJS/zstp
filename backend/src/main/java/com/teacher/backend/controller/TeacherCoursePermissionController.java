@@ -11,6 +11,7 @@ import java.util.Set;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -94,6 +95,39 @@ public class TeacherCoursePermissionController {
             out.put(course, teachers);
         }
         return ResponseEntity.ok(out);
+    }
+
+    /**
+     * 教师主动放弃某课程授课权限（从权限表移除）。
+     */
+    @PostMapping("/revoke")
+    @Transactional
+    public ResponseEntity<?> revoke(@RequestBody(required = false) Map<String, Object> body) {
+        Long teacherId = body == null ? null : toLong(body.get("teacherId"));
+        String rawCourseName = body == null ? null : Objects.toString(body.get("courseName"), null);
+        if (teacherId == null) return error(HttpStatus.BAD_REQUEST, "teacherId is required");
+        if (!StringUtils.hasText(rawCourseName)) return error(HttpStatus.BAD_REQUEST, "courseName is required");
+
+        boolean teacherExists = userRepository.findByIdAndRole(teacherId, "teacher").isPresent();
+        if (!teacherExists) return error(HttpStatus.NOT_FOUND, "teacher not found");
+
+        String normalizedCourse = courseCatalogService.normalizeCourseName(rawCourseName);
+        boolean has = permissionRepository.existsByTeacherIdAndCourseName(teacherId, normalizedCourse);
+        if (!has) {
+            // 幂等：已无权限也视为成功
+            return ResponseEntity.ok(Map.of("message", "revoked", "teacherId", teacherId, "courseName", normalizedCourse));
+        }
+        permissionRepository.deleteByTeacherIdAndCourseName(teacherId, normalizedCourse);
+        return ResponseEntity.ok(Map.of("message", "revoked", "teacherId", teacherId, "courseName", normalizedCourse));
+    }
+
+    private Long toLong(Object v) {
+        if (v instanceof Number n) return n.longValue();
+        try {
+            return v == null ? null : Long.parseLong(String.valueOf(v).trim());
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private ResponseEntity<Map<String, String>> error(HttpStatus status, String message) {
