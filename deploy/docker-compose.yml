@@ -54,6 +54,8 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - backend
+    volumes:
+      - uploads:/app/uploads
     ports:
       # 仅本机访问，由宿主机 Nginx 终止 TLS 并反代到此端口
       - "127.0.0.1:8080:80"
