@@ -189,7 +189,14 @@ public class CourseController {
             Path dir = uploadRoot.resolve("course-covers").normalize();
             Path p = dir.resolve(filename).normalize();
             if (!p.startsWith(dir)) return error(HttpStatus.BAD_REQUEST, "非法路径");
-            if (!Files.exists(p) || !Files.isRegularFile(p)) return error(HttpStatus.NOT_FOUND, "封面不存在");
+            if (!Files.exists(p) || !Files.isRegularFile(p)) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "message", "封面不存在",
+                    "filename", filename,
+                    "uploadRoot", uploadRoot.toString(),
+                    "resolvedPath", p.toString()
+                ));
+            }
             Resource res = new UrlResource(p.toUri());
             String lower = p.getFileName().toString().toLowerCase();
             MediaType type = lower.endsWith(".png") ? MediaType.IMAGE_PNG : MediaType.IMAGE_JPEG;
