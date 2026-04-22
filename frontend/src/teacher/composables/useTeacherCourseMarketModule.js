@@ -381,14 +381,15 @@ const openCourseDetailFromMarket = async (courseName) => {
 const quitCourseFromMarket = (courseName) => {
   const cn = String(courseName || '').trim()
   if (!cn) return
-  if (selectedCourse.value !== cn) return
 
   const ok = confirm(`确定要退出课程「${cn}」吗？退出后将停止对该课程的资料管理。`)
   if (!ok) return
 
   autoSelectCourseEnabled.value = false
-  selectedCourse.value = ''
-  pointForm.value.courseName = ''
+  if (selectedCourse.value === cn) {
+    selectedCourse.value = ''
+    pointForm.value.courseName = ''
+  }
 
   try {
     localStorage.setItem(teacherEnteredCourseStorageKey, '')
