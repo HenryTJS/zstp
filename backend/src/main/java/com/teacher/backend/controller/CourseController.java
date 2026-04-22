@@ -8,10 +8,8 @@ import java.util.Set;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
-import java.awt.Graphics2D;
 
 import com.teacher.backend.service.CourseCatalogService;
 import com.teacher.backend.entity.CourseCatalogEntry;
@@ -40,7 +38,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
-import javax.imageio.ImageIO;
 
 @RestController
 @RequestMapping("/api")
@@ -157,11 +154,6 @@ public class CourseController {
         if (format == null) return error(HttpStatus.BAD_REQUEST, "仅支持 png/jpg/jpeg");
 
         try {
-            BufferedImage src = ImageIO.read(file.getInputStream());
-            if (src == null) return error(HttpStatus.BAD_REQUEST, "无法解析图片");
-            BufferedImage cropped = centerCropToRatio(src, 16, 9);
-            BufferedImage out = resizeTo(cropped, 1280, 720);
-
             Path dir = uploadRoot.resolve("course-covers").normalize();
             Files.createDirectories(dir);
             String slug = safe(courseName).replaceAll("[^\\p{IsAlphabetic}\\p{IsDigit}_-]+", "_");
@@ -169,7 +161,11 @@ public class CourseController {
             String storedName = slug + "_" + Instant.now().toEpochMilli() + "." + format;
             Path target = dir.resolve(storedName).normalize();
             if (!target.startsWith(dir)) return error(HttpStatus.BAD_REQUEST, "invalid filename");
-            ImageIO.write(out, format, target.toFile());
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            if (!Files.exists(target) || !Files.isRegularFile(target) || Files.size(target) <= 0) {
+                try { Files.deleteIfExists(target); } catch (Exception ignore) {}
+                return error(HttpStatus.INTERNAL_SERVER_ERROR, "封面写入失败（服务器无写入权限或磁盘异常）");
+            }
             String url = "/api/courses/cover/" + storedName;
             return ResponseEntity.ok(Map.of("coverUrl", url));
         } catch (Exception ex) {
@@ -268,34 +264,4 @@ public class CourseController {
             && teacherCoursePermissionRepository.existsByTeacherIdAndCourseNameIgnoreCase(user.getId(), courseName);
     }
 
-    private BufferedImage centerCropToRatio(BufferedImage src, int rw, int rh) {
-        int w = src.getWidth();
-        int h = src.getHeight();
-        if (w <= 0 || h <= 0) return src;
-        double target = rw / (double) rh;
-        double actual = w / (double) h;
-        int cropW = w;
-        int cropH = h;
-        if (actual > target) {
-            cropW = (int) Math.round(h * target);
-        } else if (actual < target) {
-            cropH = (int) Math.round(w / target);
-        }
-        cropW = Math.max(1, Math.min(cropW, w));
-        cropH = Math.max(1, Math.min(cropH, h));
-        int x = (w - cropW) / 2;
-        int y = (h - cropH) / 2;
-        return src.getSubimage(x, y, cropW, cropH);
-    }
-
-    private BufferedImage resizeTo(BufferedImage src, int tw, int th) {
-        BufferedImage out = new BufferedImage(tw, th, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = out.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.drawImage(src, 0, 0, tw, th, null);
-        g.dispose();
-        return out;
-    }
 }
