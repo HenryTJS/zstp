@@ -162,12 +162,22 @@ public class CourseController {
             Path target = dir.resolve(storedName).normalize();
             if (!target.startsWith(dir)) return error(HttpStatus.BAD_REQUEST, "invalid filename");
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-            if (!Files.exists(target) || !Files.isRegularFile(target) || Files.size(target) <= 0) {
+            long bytes = 0;
+            try {
+                bytes = Files.size(target);
+            } catch (Exception ignore) {
+                bytes = 0;
+            }
+            if (!Files.exists(target) || !Files.isRegularFile(target) || bytes <= 0) {
                 try { Files.deleteIfExists(target); } catch (Exception ignore) {}
                 return error(HttpStatus.INTERNAL_SERVER_ERROR, "封面写入失败（服务器无写入权限或磁盘异常）");
             }
             String url = "/api/courses/cover/" + storedName;
-            return ResponseEntity.ok(Map.of("coverUrl", url));
+            return ResponseEntity.ok(Map.of(
+                "coverUrl", url,
+                "filename", storedName,
+                "bytes", bytes
+            ));
         } catch (Exception ex) {
             return error(HttpStatus.INTERNAL_SERVER_ERROR, "封面上传失败: " + ex.getMessage());
         }
