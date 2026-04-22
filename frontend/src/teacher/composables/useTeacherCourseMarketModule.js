@@ -226,6 +226,12 @@ const saveCourseMeta = async () => {
 const onCourseCoverFileChange = async (e) => {
   const file = e?.target?.files?.[0]
   if (!file || !courseDetail.value?.courseName) return
+  const maxBytes = 2 * 1024 * 1024
+  if (Number.isFinite(file.size) && file.size > maxBytes) {
+    courseDetailError.value = '封面图片大小需 ≤ 2MB，请压缩后再上传。'
+    if (e?.target) e.target.value = ''
+    return
+  }
   const fileName = String(file?.name || '').toLowerCase()
   const mime = String(file?.type || '').toLowerCase()
   const isJpgOrPng =
@@ -257,7 +263,12 @@ const onCourseCoverFileChange = async (e) => {
       courseDetailError.value = '封面上传成功但未返回可用地址，请稍后重试。'
     }
   } catch (e2) {
-    courseDetailError.value = e2?.response?.data?.message || '封面上传失败'
+    const status = e2?.response?.status
+    if (status === 413) {
+      courseDetailError.value = '封面图片大小需 ≤ 2MB（服务器拒绝接收超大文件）。'
+    } else {
+      courseDetailError.value = e2?.response?.data?.message || '封面上传失败'
+    }
   } finally {
     courseMetaSaving.value = false
     if (e?.target) e.target.value = ''
