@@ -131,8 +131,7 @@ public class CourseCatalogService {
     }
 
     public String defaultCoverUrl(String courseName) {
-        String text = StringUtils.hasText(courseName) ? courseName.trim() : "课程";
-        return "https://dummyimage.com/640x360/edf2ff/2b4eff&text=" + java.net.URLEncoder.encode(text, java.nio.charset.StandardCharsets.UTF_8);
+        return "/moren.png";
     }
 
     public String defaultSummary(String courseName) {
