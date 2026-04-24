@@ -1,10 +1,11 @@
 # Build stage
-FROM node:20-alpine AS build
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 # Mainland-friendly npm defaults to reduce "stuck at npm ci".
 # Can be overridden at build time via --build-arg NPM_REGISTRY=...
 ARG NPM_REGISTRY=https://registry.npmmirror.com
+ENV NODE_OPTIONS=--max-old-space-size=1024
 RUN npm config set registry "${NPM_REGISTRY}" \
     && npm config set fetch-retries 5 \
     && npm config set fetch-retry-mintimeout 20000 \
