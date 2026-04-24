@@ -114,7 +114,7 @@ public class MajorPathLookupService {
             String c = node.get("code") == null ? null : String.valueOf(node.get("code"));
             List<String> here = new ArrayList<>(ancestorCodes);
             if (StringUtils.hasText(c)) {
-                here.add(c.trim());
+                here.add(Objects.requireNonNull(c).trim());
             }
             if (Objects.equals(trimmedCode(c), trimmedCode(targetCode))) {
                 return Optional.of(here);

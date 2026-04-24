@@ -177,7 +177,8 @@ public class KnowledgePointDiscussionController {
         if (request == null || request.userId() == null) {
             return error(HttpStatus.BAD_REQUEST, "userId 必填");
         }
-        User author = userRepository.findById(request.userId()).orElse(null);
+        Long authorId = Objects.requireNonNull(request.userId());
+        User author = userRepository.findById(authorId).orElse(null);
         if (author == null || !ALLOWED_ROLES.contains(author.getRole())) {
             return error(HttpStatus.FORBIDDEN, "无权限发帖");
         }
@@ -200,7 +201,8 @@ public class KnowledgePointDiscussionController {
         post.setContent(content);
         String postKind = "NORMAL";
         if (request.parentId() != null) {
-            KnowledgePointDiscussionPost parent = postRepository.findById(request.parentId()).orElse(null);
+            Long parentId = Objects.requireNonNull(request.parentId());
+            KnowledgePointDiscussionPost parent = postRepository.findById(parentId).orElse(null);
             if (parent == null || !parent.getKnowledgePoint().getId().equals(kp.getId())) {
                 return error(HttpStatus.BAD_REQUEST, "父帖不存在或不属于该知识点");
             }
@@ -265,14 +267,14 @@ public class KnowledgePointDiscussionController {
         if (user == null || !ALLOWED_ROLES.contains(user.getRole())) {
             return error(HttpStatus.FORBIDDEN, "无权限");
         }
-        KnowledgePointDiscussionPost post = postRepository.findById(postId).orElse(null);
+        KnowledgePointDiscussionPost post = postRepository.findById(Objects.requireNonNull(postId)).orElse(null);
         if (post == null) {
             return error(HttpStatus.NOT_FOUND, "帖子不存在");
         }
         Optional<KnowledgePointDiscussionLike> existing = likeRepository.findByPost_IdAndUser_Id(postId, userId);
         boolean added = false;
         if (existing.isPresent()) {
-            likeRepository.delete(existing.get());
+            likeRepository.delete(Objects.requireNonNull(existing.get()));
         } else {
             KnowledgePointDiscussionLike like = new KnowledgePointDiscussionLike();
             like.setPost(post);
@@ -308,7 +310,7 @@ public class KnowledgePointDiscussionController {
         if (actor == null || !ALLOWED_ROLES.contains(actor.getRole())) {
             return error(HttpStatus.FORBIDDEN, "无权限");
         }
-        KnowledgePointDiscussionPost post = postRepository.findById(postId).orElse(null);
+        KnowledgePointDiscussionPost post = postRepository.findById(Objects.requireNonNull(postId)).orElse(null);
         if (post == null) {
             return error(HttpStatus.NOT_FOUND, "帖子不存在");
         }

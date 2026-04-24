@@ -146,7 +146,8 @@ public class CourseController {
         if (user == null) return error(HttpStatus.NOT_FOUND, "user not found");
         if (!hasCourseMetaEditPermission(user, courseName)) return error(HttpStatus.FORBIDDEN, "无权限上传课程封面");
 
-        String original = StringUtils.cleanPath(Objects.requireNonNullElse(file.getOriginalFilename(), ""));
+        String originalFilename = file.getOriginalFilename();
+        String original = StringUtils.cleanPath(originalFilename == null ? "" : originalFilename);
         String lower = original.toLowerCase();
         String format = null;
         if (lower.endsWith(".png")) format = "png";
@@ -197,10 +198,10 @@ public class CourseController {
                     "resolvedPath", p.toString()
                 ));
             }
-            Resource res = new UrlResource(p.toUri());
+            Resource res = new UrlResource(Objects.requireNonNull(p.toUri()));
             String lower = p.getFileName().toString().toLowerCase();
             MediaType type = lower.endsWith(".png") ? MediaType.IMAGE_PNG : MediaType.IMAGE_JPEG;
-            return ResponseEntity.ok().contentType(type).body(res);
+            return ResponseEntity.ok().contentType(Objects.requireNonNull(type)).body(res);
         } catch (Exception ex) {
             return error(HttpStatus.INTERNAL_SERVER_ERROR, "读取封面失败");
         }

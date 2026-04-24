@@ -211,7 +211,7 @@ public class ResourceController {
         int total = validKeys.size();
 
         List<Long> userIds = studentStateRepository.findUserIdsWithCourseInJoined(cn);
-        List<User> users = userRepository.findAllById(userIds).stream()
+        List<User> users = userRepository.findAllById(Objects.requireNonNull(userIds)).stream()
                 .filter(u -> "student".equals(u.getRole()))
                 .toList();
 

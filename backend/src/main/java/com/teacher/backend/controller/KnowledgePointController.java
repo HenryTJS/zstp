@@ -11,6 +11,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import com.teacher.backend.dto.UpsertKnowledgePointRequest;
@@ -45,7 +46,7 @@ public class KnowledgePointController {
         }
         try {
             Set<Long> idsToDelete = collectSubtreeIds(toDelete);
-            courseKnowledgePointRepository.deleteAllById(idsToDelete);
+            courseKnowledgePointRepository.deleteAllById(Objects.requireNonNull(idsToDelete));
             return ResponseEntity.ok(Map.of("message", "已删除", "deletedCount", idsToDelete.size()));
         } catch (Exception ex) {
             // 返回更友好的错误信息，便于前端诊断

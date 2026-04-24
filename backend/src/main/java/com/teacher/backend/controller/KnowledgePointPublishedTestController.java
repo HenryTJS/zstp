@@ -421,9 +421,12 @@ public class KnowledgePointPublishedTestController {
             return ResponseEntity.ok(empty);
         }
 
-        List<Map<String, Object>> questions = parseQuestions(t.getQuestionsJson());
-        int qCount = questions == null ? 0 : questions.size();
+        List<Map<String, Object>> questions = Objects.requireNonNull(parseQuestions(t.getQuestionsJson()));
+        int qCount = questions.size();
         List<com.teacher.backend.entity.KnowledgePointTestSubmission> subs = submissionRepository.findByTestId(t.getId());
+        if (subs == null) {
+            subs = List.of();
+        }
 
         // 可见学生人数（已加入该课）
         int eligible = 0;
@@ -433,7 +436,7 @@ public class KnowledgePointPublishedTestController {
             eligible = 0;
         }
 
-        int submitted = subs == null ? 0 : subs.size();
+        int submitted = subs.size();
         int completionRate = eligible <= 0 ? 0 : (int) Math.round((submitted * 100.0) / eligible);
 
         int max = 0;
@@ -783,7 +786,7 @@ public class KnowledgePointPublishedTestController {
             Map<String, Integer> wrongDist = new HashMap<>();
             for (Map<String, Object> w : wrongChoiceBuckets[i]) {
                 String letter = String.valueOf(w.get("letter"));
-                wrongDist.merge(letter, 1, Integer::sum);
+                wrongDist.put(letter, wrongDist.getOrDefault(letter, 0) + 1);
             }
             String topWrong = null;
             int topWrongCnt = 0;
@@ -1049,7 +1052,10 @@ public class KnowledgePointPublishedTestController {
                 continue;
             }
             List<KnowledgePointTestSubmission> subs = submissionRepository.findByTestId(t.getId());
-            int submitted = subs == null ? 0 : subs.size();
+            if (subs == null) {
+                subs = List.of();
+            }
+            int submitted = subs.size();
             int completionRate = eligible <= 0 ? 0 : (int) Math.round((submitted * 100.0) / eligible);
             double avg = 0;
             if (submitted > 0) {

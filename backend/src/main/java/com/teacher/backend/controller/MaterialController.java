@@ -74,7 +74,7 @@ public class MaterialController {
                 return error(HttpStatus.NOT_FOUND, "文件不存在");
             }
 
-            Resource resource = new UrlResource(p.toUri());
+            Resource resource = new UrlResource(Objects.requireNonNull(p.toUri()));
             if (!resource.exists()) {
                 return error(HttpStatus.NOT_FOUND, "文件不存在");
             }
@@ -83,7 +83,9 @@ public class MaterialController {
             MediaType contentType;
             try {
                 String probed = Files.probeContentType(p);
-                contentType = StringUtils.hasText(probed) ? MediaType.parseMediaType(probed) : MediaType.APPLICATION_OCTET_STREAM;
+                contentType = StringUtils.hasText(probed)
+                    ? MediaType.parseMediaType(Objects.requireNonNull(probed))
+                    : MediaType.APPLICATION_OCTET_STREAM;
             } catch (Exception ex) {
                 contentType = MediaType.APPLICATION_OCTET_STREAM;
             }
