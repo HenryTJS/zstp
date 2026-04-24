@@ -379,6 +379,14 @@ docker compose up -d --build
 
 第一次会很久（下载镜像、编译 Java），**有耐心**。  
 
+若你看到前端构建长时间卡在 `web` 服务的 `npm ci`：
+
+```bash
+docker compose build web --no-cache --progress=plain
+```
+
+观察是否反复卡在依赖下载（常见于国外源网络慢）。本仓库当前 `frontend/Dockerfile` 已默认使用国内 npm 镜像源；如果你曾在服务器上缓存过旧镜像层，请加 `--no-cache` 强制重建一次。
+
 看是否在跑：
 
 ```bash
