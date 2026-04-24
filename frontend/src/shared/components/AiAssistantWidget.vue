@@ -83,17 +83,19 @@ const send = async () => {
           </div>
         </div>
         <div class="ai-input-row">
-          <textarea
-            v-model="input"
-            class="ai-chat-textarea"
-            rows="3"
-            :disabled="loading"
-            placeholder="描述你在平台上的具体问题…"
-            @keydown.enter.exact.prevent="send"
-          ></textarea>
-          <button type="button" class="match-button" :disabled="loading || !input.trim()" @click="send">
-            {{ loading ? '思考中…' : '发送' }}
-          </button>
+          <div class="ai-input-wrap">
+            <textarea
+              v-model="input"
+              class="ai-chat-textarea"
+              rows="3"
+              :disabled="loading"
+              placeholder="描述你在平台上的具体问题…"
+              @keydown.enter.exact.prevent="send"
+            ></textarea>
+            <button type="button" class="match-button ai-send-inside" :disabled="loading || !input.trim()" @click="send">
+              {{ loading ? '思考中…' : '发送' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -161,21 +163,30 @@ const send = async () => {
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid rgba(15, 23, 42, 0.08);
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
+}
+
+.ai-input-wrap {
+  width: 100%;
+  position: relative;
 }
 
 .ai-chat-textarea {
-  flex: 1;
-  resize: vertical;
-  min-height: 72px;
-  padding: 10px 12px;
+  width: 100%;
+  resize: none;
+  min-height: 96px;
+  padding: 12px 96px 12px 12px;
   border-radius: var(--ui-btn-radius, 10px);
   border: 1px solid rgba(15, 23, 42, 0.12);
   font: inherit;
-  line-height: 1.45;
+  line-height: 1.4;
   box-sizing: border-box;
+}
+
+.ai-send-inside {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 1;
 }
 
 .ai-chat-textarea:focus {
