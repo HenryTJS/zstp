@@ -69,8 +69,8 @@ const openMetaEditor = () => {
     <div v-if="metaEditorOpen" class="meta-editor-mask" @click.self="metaEditorOpen = false">
       <section class="meta-editor-dialog" role="dialog" aria-modal="true" aria-label="编辑课程信息">
         <div class="meta-editor-head">
-          <h3>编辑课程信息</h3>
-          <button type="button" class="cancel-button" @click="metaEditorOpen = false">关闭</button>
+          <h3 class="portal-section-title portal-section-title--violet">编辑课程信息</h3>
+          <button type="button" class="modal-close" aria-label="关闭" @click="metaEditorOpen = false">×</button>
         </div>
 
         <label class="ui-block ui-mt-8">
@@ -107,6 +107,7 @@ const openMetaEditor = () => {
   padding:16px;
 }
 .meta-editor-dialog{
+  position: relative;
   width:min(860px,100%);
   max-height:calc(100vh - 32px);
   overflow:auto;
@@ -121,12 +122,11 @@ const openMetaEditor = () => {
   align-items:center;
   justify-content:space-between;
   gap:10px;
-  margin-bottom:10px;
+  margin-bottom:12px;
 }
-.meta-editor-head h3{
+.meta-editor-head h3.portal-section-title{
   margin:0;
-  font-size:18px;
-  color:#0f172a;
+  padding-right:28px;
 }
 .detail-textarea {
   width: 100%;
