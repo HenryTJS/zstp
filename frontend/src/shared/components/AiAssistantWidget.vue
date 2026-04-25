@@ -22,7 +22,7 @@ const messages = ref([
   {
     role: 'assistant',
     content:
-      '你好，我是 **AI智能教学助手工作台** 内置助手，可协助你使用本站的课程广场、知识图谱、交流区、通知与 AI 练习等功能。请直接描述你当前页面或想完成的任务；若问题超出本平台范围，我会说明边界。'
+      '你好，我是 **AI智能教学助手工作台** 内置助手。你可以随时问我知识点（如“什么是正态分布”），我会先直接讲清楚；如果你想了解平台怎么操作，我也可以一步步带你完成。'
   }
 ])
 
@@ -89,7 +89,7 @@ const send = async () => {
               class="ai-chat-textarea"
               rows="3"
               :disabled="loading"
-              placeholder="描述你在平台上的具体问题…"
+              placeholder="可直接问知识点，或咨询平台功能…"
               @keydown.enter.exact.prevent="send"
             ></textarea>
             <button type="button" class="match-button ai-send-inside" :disabled="loading || !input.trim()" @click="send">
