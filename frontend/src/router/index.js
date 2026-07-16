@@ -62,9 +62,27 @@ const readStoredUser = () => {
   }
 }
 
+/** 检查 localStorage 中是否存在有效的 JWT token */
+const hasValidToken = () => {
+  try {
+    return !!localStorage.getItem('authToken')
+  } catch {
+    return false
+  }
+}
+
 /** 未登录或角色不符时禁止进入各端门户（localStorage 清空后必须离开受保护路由） */
 router.beforeEach((to) => {
   const u = readStoredUser()
+  const hasToken = hasValidToken()
+
+  // 如果 localStorage 中有用户信息但没有 token，视为未登录
+  if (to.path !== '/' && to.path !== '/login') {
+    if (!u || !hasToken) {
+      return { path: '/login', replace: true }
+    }
+  }
+
   if (to.path === '/' || to.path === '/login') return true
 
   if (to.path === '/security' && !u) {

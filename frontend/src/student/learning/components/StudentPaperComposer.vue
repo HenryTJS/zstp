@@ -300,7 +300,8 @@ const generateRow = async (row) => {
     const { data } = await fetchQuestion({
       topic,
       difficulty: paperDifficulty.value || '中等',
-      questionType: normalizeExamQuestionType(row.typeKey)
+      questionType: normalizeExamQuestionType(row.typeKey),
+      knowledgePointDescription: ''
     })
     row.question = normalizeQuestionPayload(data)
   } catch (err) {

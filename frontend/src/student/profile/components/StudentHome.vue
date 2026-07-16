@@ -1,6 +1,7 @@
 <script setup>
 import * as echarts from 'echarts'
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import DefaultAvatar from '@/shared/components/DefaultAvatar.vue'
 
 const props = defineProps({
   userInitial: { type: String, required: true },
@@ -107,7 +108,7 @@ watch(
   <section class="panel-stack">
     <article class="result-card profile-hero-card profile-hero-card--no-actions">
       <div class="profile-hero-main">
-        <div class="profile-avatar">{{ userInitial }}</div>
+        <DefaultAvatar :username="profileForm.username || currentUser.username" :avatar-url="currentUser.avatarUrl" :size="52" />
         <div>
           <h3>{{ profileForm.username || currentUser.username }}</h3>
         </div>

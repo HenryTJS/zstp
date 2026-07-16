@@ -29,6 +29,7 @@ public class ApiResponseMapper {
         response.put("workId", user.getWorkId());
         response.put("role", user.getRole());
         response.put("college", user.getCollege());
+        response.put("avatarUrl", user.getAvatarUrl());
         response.put("createdAt", user.getCreatedAt() == null ? null : user.getCreatedAt().toString());
         if ("student".equals(user.getRole())) {
             enrichStudentMajorLevels(response, user.getId());

@@ -7,8 +7,10 @@ import {
   deleteAnnouncement,
   fetchAnnouncements,
   listUsers,
-  updateUser
+  updateUser,
+  uploadAvatar
 } from '../api/client'
+import DefaultAvatar from '../shared/components/DefaultAvatar.vue'
 import { appShellKey } from '../appShell'
 import AccountSecurityPanel from '../shared/components/AccountSecurityPanel.vue'
 import AiAssistantWidget from '../shared/components/AiAssistantWidget.vue'
@@ -63,6 +65,8 @@ const profileMessage = ref('')
 const editProfileVisible = ref(false)
 const editProfileForm = ref({ username: '', email: '', workId: '' })
 const changePasswordVisible = ref(false)
+const avatarUploading = ref(false)
+const avatarInputRef = ref(null)
 const passwordPanelRef = ref(null)
 
 const userInitial = computed(() =>
@@ -367,13 +371,44 @@ const handlePasswordSave = async () => {
   if (ok) changePasswordVisible.value = false
 }
 
+const triggerAvatarUpload = () => {
+  avatarInputRef.value?.click()
+}
+
+const handleAvatarFileChange = async (e) => {
+  const file = e.target?.files?.[0]
+  if (!file) return
+  avatarUploading.value = true
+  try {
+    const formData = new FormData()
+    formData.append('userId', String(props.currentUser.id))
+    formData.append('file', file)
+    const resp = await uploadAvatar(formData)
+    const avatarUrl = resp?.data?.avatarUrl
+    if (avatarUrl) {
+      const stored = JSON.parse(localStorage.getItem('currentUser') || '{}')
+      stored.avatarUrl = avatarUrl
+      localStorage.setItem('currentUser', JSON.stringify(stored))
+      props.currentUser.avatarUrl = avatarUrl
+      relayUpdateUser({ avatarUrl })
+    }
+  } catch (err) {
+    console.error('头像上传失败', err)
+    const msg = err?.response?.data?.message || err?.message || '未知错误'
+    alert('头像上传失败：' + msg)
+  } finally {
+    avatarUploading.value = false
+    if (avatarInputRef.value) avatarInputRef.value.value = ''
+  }
+}
+
 </script>
 
 <template>
     <section v-if="currentPage === 'profile'" class="panel-stack admin-theme">
       <article class="result-card profile-hero-card">
         <div class="profile-hero-main">
-          <div class="profile-avatar">{{ userInitial }}</div>
+          <DefaultAvatar :username="profileForm.username || currentUser.username" :avatar-url="currentUser.avatarUrl" :size="52" />
           <div>
             <h3>{{ profileForm.username || currentUser.username }}</h3>
           </div>
@@ -633,6 +668,28 @@ const handlePasswordSave = async () => {
         <div class="modal-container">
           <button class="modal-close" type="button" @click="editProfileVisible = false" aria-label="关闭">×</button>
           <h3 class="portal-section-title portal-section-title--teal">编辑资料</h3>
+
+          <!-- 头像区域 -->
+          <div class="avatar-upload-section">
+            <DefaultAvatar
+              :username="editProfileForm.username || currentUser.username"
+              :avatar-url="currentUser.avatarUrl"
+              :size="72"
+            />
+            <div class="avatar-upload-actions">
+              <button type="button" class="nav-btn" @click="triggerAvatarUpload" :disabled="avatarUploading">
+                {{ avatarUploading ? '上传中…' : '更换头像' }}
+              </button>
+              <input
+                ref="avatarInputRef"
+                type="file"
+                accept="image/*"
+                style="display:none"
+                @change="handleAvatarFileChange"
+              />
+            </div>
+          </div>
+
           <div class="grid-form single-col" style="margin-top:12px">
             <label>
               用户名

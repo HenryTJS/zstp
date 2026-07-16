@@ -43,6 +43,10 @@ public class User {
     @Column(name = "college", length = 64)
     private String college;
 
+    /** 用户头像 URL（相对路径或完整 URL）；为空时前端显示默认头像 */
+    @Column(name = "avatar_url", length = 512)
+    private String avatarUrl;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -110,6 +114,14 @@ public class User {
 
     public void setCollege(String college) {
         this.college = college;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 
     public LocalDateTime getCreatedAt() {

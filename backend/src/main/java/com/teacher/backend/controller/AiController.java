@@ -82,7 +82,8 @@ public class AiController {
         return ResponseEntity.ok(aiService.generateQuestion(
             request == null ? null : request.topic(),
             request == null ? null : request.difficulty(),
-            request == null ? null : request.questionType()
+            request == null ? null : request.questionType(),
+            request == null ? null : request.knowledgePointDescription()
         ));
     }
 

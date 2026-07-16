@@ -348,9 +348,11 @@ const {
     <TeacherEditProfileModal
       :visible="editProfileVisible"
       :edit-profile-form="editProfileForm"
+      :current-user="currentUser"
       :colleges="colleges"
       @close="editProfileVisible = false"
       @save="handleSaveProfile"
+      @avatar-updated="(url) => { currentUser.avatarUrl = url; relayUpdateUser({ avatarUrl: url }) }"
     />
 
     <TeacherChangePasswordModal

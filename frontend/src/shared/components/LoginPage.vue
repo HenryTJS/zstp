@@ -22,6 +22,10 @@ const doLogin = async () => {
   error.value = ''
   try {
     const { data } = await loginUser(loginForm.value)
+    // 存储 JWT token
+    if (data.token) {
+      try { localStorage.setItem('authToken', data.token) } catch { /* ignore */ }
+    }
     message.value = `登录成功，欢迎 ${data.user?.username ?? ''}`
     if (typeof shell?.loginSuccess === 'function') shell.loginSuccess(data.user)
     else emit('login-success', data.user)

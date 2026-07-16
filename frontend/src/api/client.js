@@ -40,6 +40,43 @@ const http = axios.create({
   timeout: 120000
 })
 
+// JWT 请求拦截器：自动从 localStorage 读取 token 并附加到 Authorization 头
+http.interceptors.request.use(
+  (config) => {
+    try {
+      const token = localStorage.getItem('authToken')
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
+    } catch {
+      // localStorage 不可用时静默忽略
+    }
+    return config
+  },
+  (error) => Promise.reject(error)
+)
+
+// JWT 响应拦截器：401 时清除本地登录态并跳转登录页
+http.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // 清除本地存储的登录信息
+      try {
+        localStorage.removeItem('authToken')
+        localStorage.removeItem('currentUser')
+      } catch {
+        // ignore
+      }
+      // 避免在登录页自身请求 401 时无限重定向
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.assign('/login')
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
 export { http }
 
 export const fetchMaterialsByKnowledgePoint = (courseName, knowledgePoint, includeAncestors = true, teacherId) =>
@@ -70,6 +107,7 @@ export const deleteAnnouncement = (id, userId) => http.delete(`/announcements/${
 export const changePassword = (payload) => http.post('/users/change-password', payload)
 export const listUsers = (role) => http.get('/users', { params: role ? { role } : {} })
 export const updateUser = (payload) => http.post('/users/update', payload)
+export const uploadAvatar = (formData) => http.post('/users/avatar/upload', formData)
 export const bulkImportUsers = (payload) => http.post('/users/bulk-import', payload)
 export const uploadMaterial = (formData) =>
   // Let axios set Content-Type (with boundary) automatically for multipart requests

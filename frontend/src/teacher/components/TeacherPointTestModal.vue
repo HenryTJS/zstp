@@ -157,7 +157,8 @@ const onAiQuestion = async (idx) => {
       topic,
       difficulty: '中等',
       questionType: q.question_type,
-      major: null
+      major: null,
+      knowledgePointDescription: ''
     })
     const d = data || {}
     q.question = String(d.question || '').trim() || q.question

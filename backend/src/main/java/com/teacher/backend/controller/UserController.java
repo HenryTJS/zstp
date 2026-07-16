@@ -18,8 +18,11 @@ import com.teacher.backend.entity.User;
 import com.teacher.backend.repository.UserRepository;
 import com.teacher.backend.service.ApiResponseMapper;
 import com.teacher.backend.service.PasswordService;
+import com.teacher.backend.util.JwtUtil;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -29,6 +32,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/users")
@@ -40,11 +49,16 @@ public class UserController {
     private final UserRepository userRepository;
     private final PasswordService passwordService;
     private final ApiResponseMapper responseMapper;
+    private final JwtUtil jwtUtil;
+    private final Path uploadRoot;
 
-    public UserController(UserRepository userRepository, PasswordService passwordService, ApiResponseMapper responseMapper) {
+    public UserController(UserRepository userRepository, PasswordService passwordService, ApiResponseMapper responseMapper, JwtUtil jwtUtil,
+                          @Value("${app.upload-dir:uploads}") String uploadDir) {
         this.userRepository = userRepository;
         this.passwordService = passwordService;
         this.responseMapper = responseMapper;
+        this.jwtUtil = jwtUtil;
+        this.uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
     }
 
     @PostMapping("/login")
@@ -58,10 +72,14 @@ public class UserController {
 
         return userRepository.findByWorkIdIgnoreCaseOrEmailIgnoreCase(identity, identity)
             .filter(user -> passwordService.matches(password, user.getPasswordHash()))
-            .<ResponseEntity<?>>map(user -> ResponseEntity.ok(Map.of(
-                "message", "ok",
-                "user", responseMapper.toUserMap(user)
-            )))
+            .<ResponseEntity<?>>map(user -> {
+                String token = jwtUtil.generateToken(user.getId(), user.getRole());
+                return ResponseEntity.ok(Map.of(
+                    "message", "ok",
+                    "token", token,
+                    "user", responseMapper.toUserMap(user)
+                ));
+            })
             .orElseGet(() -> error(HttpStatus.UNAUTHORIZED, "invalid credentials"));
     }
 
@@ -159,6 +177,10 @@ public class UserController {
                     String c = request.college().trim();
                     nonNullUser.setCollege(StringUtils.hasText(c) ? c : null);
                 }
+                if (request.avatarUrl() != null) {
+                    String a = request.avatarUrl().trim();
+                    nonNullUser.setAvatarUrl(StringUtils.hasText(a) ? a : null);
+                }
                 try {
                     User saved = userRepository.save(nonNullUser);
                     return ResponseEntity.ok(Map.of("message", "user updated", "user", responseMapper.toUserMap(saved)));
@@ -250,5 +272,45 @@ public class UserController {
             return Optional.empty();
         }
         return userRepository.findById(userId).filter(u -> ROLE_ADMIN.equals(u.getRole()));
+    }
+
+    @PostMapping("/avatar/upload")
+    public ResponseEntity<?> uploadAvatar(@RequestParam("userId") Long userId,
+                                          @RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            return error(HttpStatus.BAD_REQUEST, "file is required");
+        }
+        return userRepository.findById(userId)
+            .<ResponseEntity<?>>map(user -> {
+                try {
+                    // 确保上传目录存在
+                    Path uploadPath = uploadRoot.resolve("avatars").normalize();
+                    Files.createDirectories(uploadPath);
+
+                    // 生成唯一文件名，保留扩展名
+                    String originalName = file.getOriginalFilename();
+                    String ext = "";
+                    if (originalName != null && originalName.contains(".")) {
+                        ext = originalName.substring(originalName.lastIndexOf("."));
+                    }
+                    String fileName = UUID.randomUUID().toString() + ext;
+                    Path targetPath = uploadPath.resolve(fileName);
+                    file.transferTo(targetPath.toFile());
+
+                    // 存储相对路径
+                    String avatarUrl = "/uploads/avatars/" + fileName;
+                    user.setAvatarUrl(avatarUrl);
+                    User saved = userRepository.save(user);
+
+                    return ResponseEntity.ok(Map.of(
+                        "message", "avatar uploaded",
+                        "avatarUrl", avatarUrl,
+                        "user", responseMapper.toUserMap(saved)
+                    ));
+                } catch (Exception e) {
+                    return error(HttpStatus.INTERNAL_SERVER_ERROR, "upload failed: " + e.getMessage());
+                }
+            })
+            .orElseGet(() -> error(HttpStatus.NOT_FOUND, "user not found"));
     }
 }

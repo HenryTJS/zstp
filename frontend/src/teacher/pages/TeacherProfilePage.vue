@@ -1,4 +1,6 @@
 <script setup>
+import DefaultAvatar from '@/shared/components/DefaultAvatar.vue'
+
 const props = defineProps({
   currentUser: { type: Object, required: true },
   userInitial: { type: String, default: '' },
@@ -17,7 +19,7 @@ const emit = defineEmits(['edit-profile', 'change-password', 'logout'])
 <template>
   <article class="result-card profile-hero-card">
     <div class="profile-hero-main">
-      <div class="profile-avatar">{{ userInitial }}</div>
+      <DefaultAvatar :username="profileForm.username || currentUser.username" :avatar-url="currentUser.avatarUrl" :size="52" />
       <div>
         <h3>{{ profileForm.username || currentUser.username }}</h3>
       </div>

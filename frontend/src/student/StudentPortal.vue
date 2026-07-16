@@ -1365,6 +1365,7 @@ const handleCourseDetailQuit = async () => {
     <StudentEditProfileModal
       :visible="editProfileVisible"
       :edit-profile-form="editProfileForm"
+      :current-user="currentUser"
       :major-level1="majorLevel1"
       :major-level2="majorLevel2"
       :major-level3="majorLevel3"
@@ -1372,6 +1373,7 @@ const handleCourseDetailQuit = async () => {
       :on-edit-major2-change="onEditMajor2Change"
       :on-save="handleSaveProfile"
       @close="editProfileVisible = false"
+      @avatar-updated="(url) => { currentUser.avatarUrl = url; relayUpdateUser({ avatarUrl: url }) }"
     />
 
     <StudentChangePasswordModal

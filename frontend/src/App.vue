@@ -46,6 +46,7 @@ const handleLoginSuccess = (user) => {
   if (user?.role !== 'student' && user?.role !== 'teacher' && user?.role !== 'admin') {
     currentUser.value = null
     localStorage.removeItem('currentUser')
+    localStorage.removeItem('authToken')
     router.push('/login')
     return
   }
@@ -66,6 +67,7 @@ const handleLoginSuccess = (user) => {
 const handleLogout = () => {
   try {
     localStorage.removeItem('currentUser')
+    localStorage.removeItem('authToken')
   } catch {
     /* ignore */
   }
