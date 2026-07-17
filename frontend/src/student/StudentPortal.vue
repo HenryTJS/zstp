@@ -1329,7 +1329,7 @@ const handleCourseDetailQuit = async () => {
               type="button"
               class="match-button"
               :disabled="testLoading || testTotalCount < 1"
-              @click="quickExerciseVisible = false; generateTest()"
+              @click="quickExerciseVisible = false; currentPage = 'exercise'; router.push('/student/exercise'); generateTest()"
             >
               {{ testLoading ? '生成中...' : '开始练习' }}
             </button>
