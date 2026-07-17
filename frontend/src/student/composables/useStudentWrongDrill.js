@@ -8,7 +8,13 @@ import {
 } from '../utils/studentWrongDrillUtils'
 
 /**
+ * 间隔重复复习间隔（天）：连续答对次数 -> 下次复习间隔
+ */
+const SPACED_REPETITION_INTERVALS = [1, 3, 7, 14, 30]
+
+/**
  * 错题巩固测试：选题、提交、连续答对计数与学习记录写入
+ * 支持间隔重复（spaced repetition）策略
  */
 export function useStudentWrongDrill({
   wrongBook,
@@ -24,10 +30,51 @@ export function useStudentWrongDrill({
   const wrongDrillError = ref('')
   const wrongDrillSubmitting = ref(false)
 
+  /** 计算下次复习日期（ISO 字符串） */
+  const computeNextReviewAt = (consecutiveCorrect) => {
+    const idx = Math.min(consecutiveCorrect, SPACED_REPETITION_INTERVALS.length - 1)
+    const days = SPACED_REPETITION_INTERVALS[idx]
+    const d = new Date()
+    d.setDate(d.getDate() + days)
+    return d.toISOString().split('T')[0] // YYYY-MM-DD
+  }
+
+  /** 待复习错题数（按课程分组） */
+  const dueReviewCountByCourse = computed(() => {
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+    const m = new Map()
+    for (const w of wrongBook.value || []) {
+      // 已连续答对 2 次以上且未到复习时间的跳过
+      const consecutive = Number(w.wrongTestConsecutiveCorrect || 0)
+      if (consecutive >= 2) {
+        const nextReview = String(w.nextReviewAt || '').trim()
+        if (nextReview && nextReview > today) continue
+      }
+      const c = String(w.course || '').trim()
+      if (!c) continue
+      m.set(c, (m.get(c) || 0) + 1)
+    }
+    return m
+  })
+
+  /** 总待复习错题数（首页展示） */
+  const totalDueReviewCount = computed(() => {
+    let total = 0
+    for (const count of dueReviewCountByCourse.value.values()) {
+      total += count
+    }
+    return total
+  })
+
   const wrongDrillEligibleByCourse = computed(() => {
     const m = new Map()
     for (const w of wrongBook.value || []) {
-      if (Number(w.wrongTestConsecutiveCorrect || 0) >= 2) continue
+      const consecutive = Number(w.wrongTestConsecutiveCorrect || 0)
+      if (consecutive >= 2) {
+        const nextReview = String(w.nextReviewAt || '').trim()
+        const today = new Date().toISOString().split('T')[0]
+        if (nextReview && nextReview > today) continue
+      }
       const c = String(w.course || '').trim()
       if (!c) continue
       m.set(c, (m.get(c) || 0) + 1)
@@ -134,7 +181,10 @@ export function useStudentWrongDrill({
         const wi = wb.findIndex((w) => w.id === item.id)
         if (wi >= 0) {
           const prev = Number(wb[wi].wrongTestConsecutiveCorrect || 0)
-          wb[wi].wrongTestConsecutiveCorrect = correct ? prev + 1 : 0
+          const newConsecutive = correct ? prev + 1 : 0
+          wb[wi].wrongTestConsecutiveCorrect = newConsecutive
+          // 间隔重复：设置下次复习日期
+          wb[wi].nextReviewAt = correct ? computeNextReviewAt(newConsecutive) : ''
         }
 
         const kp = String(item.knowledgePoint || '').trim() || '未标注'
@@ -173,6 +223,8 @@ export function useStudentWrongDrill({
     wrongDrillError,
     wrongDrillSubmitting,
     wrongDrillCourseOptions,
+    dueReviewCountByCourse,
+    totalDueReviewCount,
     inferWrongBookQuestionType,
     setWrongDrillCourse,
     startWrongDrill,

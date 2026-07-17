@@ -186,7 +186,8 @@ watch(
   ([cur, list]) => {
     const current = String(cur || '').trim()
     const arr = Array.isArray(list) ? list : []
-    if (current && arr.includes(current)) {
+    // 优先使用 props.currentCourse（可能 joinedCourses 尚未加载完成）
+    if (current) {
       paperCourse.value = current
       return
     }
@@ -228,7 +229,7 @@ watch(paperCourse, () => {
     r.question = null
     r.rowError = ''
   }
-})
+}, { immediate: true })
 
 const pointSelectOptions = computed(() => {
   const cn = String(paperCourse.value || '').trim()
@@ -309,6 +310,36 @@ const generateRow = async (row) => {
   } finally {
     row.loading = false
   }
+}
+
+const batchLoading = ref(false)
+
+const generateAllRows = async () => {
+  batchLoading.value = true
+  const todo = rows.value.filter((r) => !r.question && !r.loading)
+  for (const row of todo) {
+    await generateRow(row)
+  }
+  batchLoading.value = false
+}
+
+/** 智能组卷：自动填充题型与知识点组合 */
+const smartCompose = () => {
+  const types = ['单选', '多选', '判断', '填空', '简答', '解答']
+  const points = pointSelectOptions.value.filter((p) => p.value && p.value !== paperCourse.value)
+  if (!points.length) {
+    paperError.value = '请先选择课程并确保有知识点数据。'
+    return
+  }
+  const newRows = []
+  // 生成 6 题：每种题型各一题，知识点轮换
+  for (let i = 0; i < 6; i++) {
+    const row = makeRow()
+    row.typeKey = types[i % types.length]
+    row.pointName = points[i % points.length].value
+    newRows.push(row)
+  }
+  rows.value = newRows
 }
 
 const addRow = () => {
@@ -404,6 +435,9 @@ const goCourses = () => emit('go-courses')
               <button type="button" class="cancel-button" :disabled="paperPointsLoading" @click="loadPaperPoints">
                 {{ paperPointsLoading ? '加载中…' : '刷新知识点' }}
               </button>
+              <button type="button" class="match-button" @click="smartCompose" title="自动填充 6 题，涵盖各题型与知识点">
+                智能组卷
+              </button>
               <p v-if="paperPointsError" class="error-text" style="margin: 0">{{ paperPointsError }}</p>
             </div>
           </div>
@@ -479,6 +513,9 @@ const goCourses = () => emit('go-courses')
 
         <div class="inline-form ui-mt-12">
           <button type="button" class="cancel-button" :disabled="rows.length >= 15" @click="addRow">增加一题</button>
+          <button type="button" class="match-button" :disabled="batchLoading || !rows.some(r => !r.question)" @click="generateAllRows">
+            {{ batchLoading ? '批量生成中…' : '批量生成全部' }}
+          </button>
           <button type="button" class="match-button" :disabled="saving || !previewRows.length" @click="persistPaper">
             {{ saving ? '保存中…' : '保存试卷并生成 MD' }}
           </button>

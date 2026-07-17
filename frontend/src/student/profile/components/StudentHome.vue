@@ -15,6 +15,7 @@ const props = defineProps({
   dimensionScoresLoading: { type: Boolean, required: false, default: false },
   dimensionScoresError: { type: String, required: false, default: '' },
   filteredWrongBookCount: { type: Number, required: true },
+  dueReviewCount: { type: Number, default: 0 },
   profileMessage: { type: String, required: false, default: '' }
 })
 
@@ -112,6 +113,23 @@ watch(
         <div>
           <h3>{{ profileForm.username || currentUser.username }}</h3>
         </div>
+      </div>
+    </article>
+
+    <!-- 待复习卡片（间隔重复） -->
+    <article v-if="dueReviewCount > 0" class="result-card" style="border-left: 4px solid #f59e0b">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div>
+          <h3 class="portal-section-title portal-section-title--amber" style="margin:0">
+            📚 待复习错题
+          </h3>
+          <p class="panel-subtitle" style="margin:4px 0 0">
+            你有 <strong style="color:#d97706">{{ dueReviewCount }}</strong> 道错题需要复习（基于间隔重复策略）
+          </p>
+        </div>
+        <router-link to="/student/review" class="match-button" style="text-decoration:none;white-space:nowrap">
+          去复习
+        </router-link>
       </div>
     </article>
 

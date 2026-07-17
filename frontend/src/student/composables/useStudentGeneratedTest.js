@@ -29,7 +29,8 @@ export function useStudentGeneratedTest({
   selectedMajorDisplay,
   selectedMajor,
   composeTopic,
-  schedulePersistStudentState
+  schedulePersistStudentState,
+  preferences
 }) {
   const testTotalCount = computed(
     () =>
@@ -45,6 +46,52 @@ export function useStudentGeneratedTest({
     testSubmitted.value = false
     testResult.value = null
     testError.value = ''
+  }
+
+  /** 基于历史得分率推荐难度 */
+  const computeRecommendedDifficulty = () => {
+    const records = learningRecords.value || []
+    if (!records.length) return null
+    const scored = records.filter(r => Number(r.fullScore || 0) > 0)
+    if (!scored.length) return null
+    const avgRate = scored.reduce((s, r) => s + Number(r.score || 0) / Number(r.fullScore || 1), 0) / scored.length
+    if (avgRate >= 0.85) return '拔高'
+    if (avgRate >= 0.6) return '中等'
+    return '基础'
+  }
+
+  /** 保存偏好到 preferences */
+  const savePreferences = () => {
+    if (!preferences) return
+    preferences.value = {
+      ...preferences.value,
+      difficulty: questionForm.value.difficulty,
+      singleChoiceCount: testCounts.value.singleChoiceCount,
+      multiChoiceCount: testCounts.value.multiChoiceCount,
+      judgeCount: testCounts.value.judgeCount,
+      fillCount: testCounts.value.fillCount,
+      selectedPoints: testForm.value.selectedPoints
+    }
+  }
+
+  /** 从 preferences 恢复偏好 */
+  const restorePreferences = () => {
+    if (!preferences?.value) return
+    const p = preferences.value
+    if (p.difficulty && ['基础', '中等', '拔高'].includes(p.difficulty)) {
+      questionForm.value.difficulty = p.difficulty
+    } else {
+      // 自适应推荐
+      const rec = computeRecommendedDifficulty()
+      if (rec) questionForm.value.difficulty = rec
+    }
+    if (typeof p.singleChoiceCount === 'number') testCounts.value.singleChoiceCount = p.singleChoiceCount
+    if (typeof p.multiChoiceCount === 'number') testCounts.value.multiChoiceCount = p.multiChoiceCount
+    if (typeof p.judgeCount === 'number') testCounts.value.judgeCount = p.judgeCount
+    if (typeof p.fillCount === 'number') testCounts.value.fillCount = p.fillCount
+    if (Array.isArray(p.selectedPoints) && p.selectedPoints.length) {
+      testForm.value.selectedPoints = [...p.selectedPoints]
+    }
   }
 
   const generateTest = async () => {
@@ -132,6 +179,9 @@ export function useStudentGeneratedTest({
         if (q.question_type === '多选题') return []
         return ''
       })
+
+      // 保存偏好
+      savePreferences()
     } catch (e) {
       const msg =
         e?.response?.data?.message ||
@@ -274,6 +324,9 @@ export function useStudentGeneratedTest({
     testTotalCount,
     resetTestState,
     generateTest,
-    submitTest
+    submitTest,
+    computeRecommendedDifficulty,
+    restorePreferences,
+    savePreferences
   }
 }

@@ -1,4 +1,5 @@
 <script setup>
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   canStudyCurrentCourse: { type: Boolean, required: true },
@@ -12,6 +13,11 @@ const props = defineProps({
   testSubmitted: { type: Boolean, required: true },
   testResult: { type: Object, default: null },
   testAnswers: { type: Array, required: true },
+  testCounts: { type: Object, default: () => ({ singleChoiceCount: 0, multiChoiceCount: 0, judgeCount: 0, fillCount: 0 }) },
+  testForm: { type: Object, default: () => ({ selectedPoints: [] }) },
+
+  // knowledge point options for multi-select
+  kpOptions: { type: Array, default: () => [] },
 
   // actions
   generateTest: { type: Function, required: true },
@@ -25,13 +31,22 @@ const props = defineProps({
   resolveAnswerText: { type: Function, required: true }
 })
 
-const emit = defineEmits(['go-courses'])
+const emit = defineEmits(['go-courses', 'regenerate', 'add-test-point', 'remove-test-point'])
+
+const selectedKpToAdd = ref('')
 
 const goCourses = () => {
-  // 优先用 emit（推荐），兼容旧用法给 onGoCourses
   if (props.onGoCourses) props.onGoCourses()
   else emit('go-courses')
 }
+
+const testTotalCount = computed(
+  () =>
+    Number(props.testCounts.singleChoiceCount || 0) +
+    Number(props.testCounts.multiChoiceCount || 0) +
+    Number(props.testCounts.judgeCount || 0) +
+    Number(props.testCounts.fillCount || 0)
+)
 </script>
 
 <template>
@@ -57,8 +72,51 @@ const goCourses = () => {
             </label>
           </div>
 
+          <!-- 知识点多选 -->
+          <div class="kp-multi-select ui-mt-12">
+            <label class="kp-multi-select-label">知识点（可多选）</label>
+            <div class="kp-multi-tags">
+              <span
+                v-for="kp in testForm.selectedPoints || []"
+                :key="kp"
+                class="kp-tag"
+              >
+                {{ kp }}
+                <button type="button" class="kp-tag-remove" @click="emit('remove-test-point', kp)">&times;</button>
+              </span>
+            </div>
+            <div class="kp-add-row">
+              <select v-model="selectedKpToAdd" class="match-height" style="flex:1">
+                <option value="">— 添加知识点 —</option>
+                <option v-for="opt in kpOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </select>
+              <button type="button" class="cancel-button" :disabled="!selectedKpToAdd" @click="selectedKpToAdd ? (emit('add-test-point', selectedKpToAdd), selectedKpToAdd = '') : null">添加</button>
+            </div>
+          </div>
+
+          <!-- 题型数量选择 -->
+          <div class="test-count-grid ui-mt-12">
+            <label>
+              单选题
+              <input type="number" min="0" max="10" v-model.number="testCounts.singleChoiceCount" class="match-height test-count-input" />
+            </label>
+            <label>
+              多选题
+              <input type="number" min="0" max="10" v-model.number="testCounts.multiChoiceCount" class="match-height test-count-input" />
+            </label>
+            <label>
+              判断题
+              <input type="number" min="0" max="10" v-model.number="testCounts.judgeCount" class="match-height test-count-input" />
+            </label>
+            <label>
+              填空题
+              <input type="number" min="0" max="10" v-model.number="testCounts.fillCount" class="match-height test-count-input" />
+            </label>
+          </div>
+          <p class="panel-subtitle" style="margin-top: 4px">共 {{ testTotalCount }} 题（最多 10 题）</p>
+
           <div class="inline-form ui-mt-12">
-            <button type="button" class="match-button" :disabled="testLoading" @click="generateTest">
+            <button type="button" class="match-button" :disabled="testLoading || testTotalCount < 1" @click="generateTest">
               {{ testLoading ? '生成中...' : '开始测试' }}
             </button>
           </div>
@@ -153,10 +211,80 @@ const goCourses = () => {
             <div class="latex-block" v-html="renderLatexText(q.explanation)"></div>
           </div>
         </div>
+
+        <!-- 再来一套 -->
+        <div class="inline-form ui-mt-16">
+          <button type="button" class="match-button" :disabled="testLoading" @click="emit('regenerate')">
+            {{ testLoading ? '生成中...' : '再来一套' }}
+          </button>
+        </div>
       </article>
     </template>
   </section>
 </template>
+
+<style scoped>
+.test-count-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.test-count-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #475569;
+}
+.test-count-input {
+  width: 100%;
+  text-align: center;
+}
+.kp-multi-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kp-multi-select-label {
+  font-size: 13px;
+  color: #475569;
+  font-weight: 500;
+}
+.kp-multi-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.kp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eef2ff;
+  color: #4338ca;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.kp-tag-remove {
+  background: none;
+  border: none;
+  color: #4338ca;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.kp-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+@media (max-width: 600px) {
+  .test-count-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+</style>
 
 <style>
 @import '@/student/styles/student-portal.css';

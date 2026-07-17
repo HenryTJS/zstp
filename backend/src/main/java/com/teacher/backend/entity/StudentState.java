@@ -48,6 +48,9 @@ public class StudentState {
     @Column(name = "total_learning_seconds", nullable = false)
     private Long totalLearningSeconds = 0L;
 
+    @Column(name = "preferences_json", columnDefinition = "TEXT")
+    private String preferencesJson = "{}";
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -81,6 +84,9 @@ public class StudentState {
         }
         if (totalLearningSeconds == null) {
             totalLearningSeconds = 0L;
+        }
+        if (preferencesJson == null) {
+            preferencesJson = "{}";
         }
     }
 
@@ -160,6 +166,14 @@ public class StudentState {
 
     public void setCompletedResourceKeysJson(String completedResourceKeysJson) {
         this.completedResourceKeysJson = completedResourceKeysJson;
+    }
+
+    public String getPreferencesJson() {
+        return preferencesJson;
+    }
+
+    public void setPreferencesJson(String preferencesJson) {
+        this.preferencesJson = preferencesJson;
     }
 
     public LocalDateTime getCreatedAt() {

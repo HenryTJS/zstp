@@ -64,7 +64,8 @@ public class StudentStateController {
                 "wrongBook", List.of(),
                 "joinedCourses", List.of(),
                 "completedResourceKeys", List.of(),
-                "totalLearningSeconds", 0
+                "totalLearningSeconds", 0,
+                "preferences", Map.of()
             ));
         }
 
@@ -79,7 +80,8 @@ public class StudentStateController {
             "wrongBook", parseJsonArray(state.getWrongBookJson()),
             "joinedCourses", normalizeJoinedCourseNames(parseJsonStringList(state.getJoinedCoursesJson())),
             "completedResourceKeys", parseJsonStringList(state.getCompletedResourceKeysJson()),
-            "totalLearningSeconds", state.getTotalLearningSeconds() == null ? 0 : state.getTotalLearningSeconds()
+            "totalLearningSeconds", state.getTotalLearningSeconds() == null ? 0 : state.getTotalLearningSeconds(),
+            "preferences", parseJsonObject(state.getPreferencesJson())
         ));
     }
 
@@ -119,6 +121,11 @@ public class StudentStateController {
         }
         Long totalSeconds = request == null ? null : request.totalLearningSeconds();
         state.setTotalLearningSeconds(totalSeconds == null ? 0L : Math.max(0L, totalSeconds));
+        if (request != null && request.preferencesJson() != null) {
+            state.setPreferencesJson(request.preferencesJson());
+        } else if (state.getId() == null) {
+            state.setPreferencesJson("{}");
+        }
         studentStateRepository.save(state);
 
         return ResponseEntity.ok(Map.of("message", "saved"));
@@ -134,6 +141,18 @@ public class StudentStateController {
             return objectMapper.writeValueAsString(items == null ? List.of() : items);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("failed to serialize student state", exception);
+        }
+    }
+
+    private Map<String, Object> parseJsonObject(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return Map.of();
+        }
+        try {
+            Map<String, Object> map = objectMapper.readValue(raw, new TypeReference<>() {});
+            return map == null ? Map.of() : map;
+        } catch (JsonProcessingException exception) {
+            return Map.of();
         }
     }
 

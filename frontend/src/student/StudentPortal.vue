@@ -115,6 +115,8 @@ const hydrateJoiningCourses = ref(false)
 const dimensionScores = ref(null)
 const dimensionScoresLoading = ref(false)
 const dimensionScoresError = ref('')
+const preferences = ref({})
+const quickExerciseVisible = ref(false)
 const discussionPostCount = ref(0)
 const activeQuestionType = computed(() => generatedQuestion.value?.question_type || questionForm.value.questionType)
 const userInitial = computed(() => props.currentUser?.username?.charAt(0) || '')
@@ -337,7 +339,8 @@ const {
   dimensionScores,
   dimensionScoresLoading,
   dimensionScoresError,
-  hydrateJoiningCourses
+  hydrateJoiningCourses,
+  preferences
 })
 
 watch([selectedMajor1, selectedMajor2, selectedMajor3], async () => {
@@ -359,6 +362,7 @@ const {
   wrongDrillError,
   wrongDrillSubmitting,
   wrongDrillCourseOptions,
+  totalDueReviewCount,
   inferWrongBookQuestionType,
   setWrongDrillCourse,
   startWrongDrill,
@@ -505,6 +509,102 @@ const kpLevel3Options = computed(() => {
   return examPointsRaw.value.filter((p) => p?.parentPoint === parent).slice().sort(sortPoints)
 })
 
+/**
+ * 为 examPointsRaw 构建编号映射（与组卷页逻辑一致）
+ * 用于练习页知识点下拉显示 "1.1 数据结构" 格式
+ */
+const kpPointNumberMap = computed(() => {
+  const outById = new Map()
+  const list = Array.isArray(examPointsRaw.value) ? examPointsRaw.value : []
+  if (!list.length) return outById
+
+  const nodes = list.slice().sort(sortPoints)
+  const childrenByParentId = new Map()
+  const lastByTrimPointName = new Map()
+
+  for (const p of nodes) {
+    let parentId = p?.parentId == null ? null : Number(p.parentId)
+    if (parentId == null) {
+      const rawParent = p?.parentPoint == null ? null : String(p.parentPoint).trim()
+      parentId = rawParent ? (lastByTrimPointName.get(rawParent)?.id ?? null) : null
+    }
+    if (!childrenByParentId.has(parentId)) childrenByParentId.set(parentId, [])
+    childrenByParentId.get(parentId).push(p)
+
+    const selfName = String(p?.pointName || '').trim()
+    if (selfName) lastByTrimPointName.set(selfName, p)
+  }
+
+  const isCourseRoot = (item) => Boolean(item?.courseRoot)
+
+  const assign = (parentId, prefixParts, guard) => {
+    const visiting = new Set(guard || [])
+    if (prefixParts.length > 12) return
+    if (parentId != null) {
+      const key = String(parentId)
+      if (visiting.has(key)) return
+      visiting.add(key)
+    }
+    const children = (childrenByParentId.get(parentId) || []).slice().sort(sortPoints)
+    let idx = 0
+    for (const child of children) {
+      if (isCourseRoot(child)) continue
+      idx += 1
+      const parts = [...prefixParts, idx]
+      outById.set(String(child.id), parts.join('.'))
+      assign(child.id, parts, visiting)
+    }
+  }
+
+  assign(null, [], new Set())
+
+  const courseRoot = nodes.find((p) => isCourseRoot(p))
+  if (courseRoot?.id != null) {
+    assign(courseRoot.id, [], new Set())
+  }
+
+  return outById
+})
+
+const getKpPointNumber = (pointOrName) => {
+  if (pointOrName && typeof pointOrName === 'object') {
+    return kpPointNumberMap.value.get(String(pointOrName.id)) || ''
+  }
+  const name = String(pointOrName || '').trim()
+  if (!name) return ''
+  const exact = (Array.isArray(examPointsRaw.value) ? examPointsRaw.value : []).find(
+    (p) => String(p?.pointName || '').trim() === name
+  )
+  return exact ? kpPointNumberMap.value.get(String(exact.id)) || '' : ''
+}
+
+/** 所有层级知识点选项（用于练习页多选下拉，已去重，显示编号前缀） */
+const kpAllLevelOptions = computed(() => {
+  const cn = learningContextCourse.value
+  const seen = new Set()
+  return examPointsRaw.value
+    .filter((p) => {
+      if (!cn || p?.pointName === cn) return false
+      const name = p?.pointName
+      if (!name || seen.has(name)) return false
+      seen.add(name)
+      return true
+    })
+    .slice()
+    .sort((a, b) => {
+      const na = getKpPointNumber(a) || ''
+      const nb = getKpPointNumber(b) || ''
+      const byNum = na.localeCompare(nb, undefined, { numeric: true })
+      if (byNum !== 0) return byNum
+      return String(a.pointName || '').localeCompare(String(b.pointName || ''), 'zh-CN')
+    })
+    .map((p) => {
+      const num = getKpPointNumber(p) || ''
+      const label = num ? `${num} ${p.pointName}` : p.pointName
+      return { value: p.pointName, label }
+    })
+})
+
 watch(kpCascade1, () => {
   kpCascade2.value = ''
   kpCascade3.value = ''
@@ -570,14 +670,14 @@ const testForm = ref({
   selectedPoints: []
 })
 
-const addTestPoint = () => {
-  const p = pickCascadePoint()
+const addTestPoint = (pointName) => {
+  const p = pointName || pickCascadePoint()
   if (!p) return
   if (!Array.isArray(testForm.value.selectedPoints)) testForm.value.selectedPoints = []
   if (!testForm.value.selectedPoints.includes(p)) {
     testForm.value.selectedPoints.push(p)
   }
-  clearCascadeAfterAdd()
+  if (!pointName) clearCascadeAfterAdd()
 }
 
 const removeTestPoint = (p) => {
@@ -741,7 +841,7 @@ const composeTopic = (knowledgePoint) => {
   return `${learningContextCourse.value} ${knowledgePoint}`.trim()
 }
 
-const { testTotalCount, resetTestState, generateTest, submitTest } = useStudentGeneratedTest({
+const { testTotalCount, resetTestState, generateTest, submitTest, restorePreferences } = useStudentGeneratedTest({
   graphData,
   questionForm,
   testForm,
@@ -759,7 +859,8 @@ const { testTotalCount, resetTestState, generateTest, submitTest } = useStudentG
   selectedMajorDisplay,
   selectedMajor,
   composeTopic,
-  schedulePersistStudentState
+  schedulePersistStudentState,
+  preferences
 })
 
 const {
@@ -1131,6 +1232,16 @@ watch(
   { immediate: true }
 )
 
+// 进入练习页时恢复偏好（含自适应难度推荐）
+watch(
+  () => effectivePage.value,
+  (page) => {
+    if (page === 'exercise' && stateHydrated.value) {
+      restorePreferences()
+    }
+  }
+)
+
 const handleCourseDetailJoin = async () => {
   const cn = String(courseDetail.value?.courseName || '').trim()
   if (!cn) return
@@ -1160,6 +1271,73 @@ const handleCourseDetailQuit = async () => {
   <div class="student-lms-shell">
     <section class="student-lms-main">
       <div class="student-lms-content" :class="{ 'student-page-flat': effectivePage !== 'home' }">
+
+    <!-- 侧边栏练习浮动按钮 -->
+    <button
+      v-if="canStudyCurrentCourse && effectivePage !== 'exercise'"
+      type="button"
+      class="quick-exercise-fab"
+      title="快速练习"
+      @click="quickExerciseVisible = !quickExerciseVisible"
+    >
+      <span v-if="!quickExerciseVisible">📝</span>
+      <span v-else>✕</span>
+    </button>
+
+    <!-- 侧边栏练习抽屉 -->
+    <Transition name="slide-right">
+      <aside
+        v-if="quickExerciseVisible && canStudyCurrentCourse"
+        class="quick-exercise-drawer"
+      >
+        <div class="quick-exercise-drawer-header">
+          <h3 class="portal-section-title portal-section-title--teal" style="margin:0">快速练习</h3>
+          <button type="button" class="cancel-button" @click="quickExerciseVisible = false">✕</button>
+        </div>
+        <div class="quick-exercise-drawer-body">
+          <div class="grid-form">
+            <label>
+              难度
+              <select v-model="questionForm.difficulty" class="match-height">
+                <option>基础</option>
+                <option>中等</option>
+                <option>拔高</option>
+              </select>
+            </label>
+          </div>
+          <div class="test-count-grid ui-mt-12" style="grid-template-columns:repeat(2,1fr)">
+            <label>
+              单选题
+              <input type="number" min="0" max="5" v-model.number="testCounts.singleChoiceCount" class="match-height test-count-input" />
+            </label>
+            <label>
+              多选题
+              <input type="number" min="0" max="5" v-model.number="testCounts.multiChoiceCount" class="match-height test-count-input" />
+            </label>
+            <label>
+              判断题
+              <input type="number" min="0" max="5" v-model.number="testCounts.judgeCount" class="match-height test-count-input" />
+            </label>
+            <label>
+              填空题
+              <input type="number" min="0" max="5" v-model.number="testCounts.fillCount" class="match-height test-count-input" />
+            </label>
+          </div>
+          <p class="panel-subtitle" style="margin-top:4px">共 {{ testTotalCount }} 题（最多 5 题）</p>
+          <div class="inline-form ui-mt-12">
+            <button
+              type="button"
+              class="match-button"
+              :disabled="testLoading || testTotalCount < 1"
+              @click="quickExerciseVisible = false; generateTest()"
+            >
+              {{ testLoading ? '生成中...' : '开始练习' }}
+            </button>
+          </div>
+        </div>
+      </aside>
+    </Transition>
+
     <StudentHome
       v-if="effectivePage === 'home'"
       :user-initial="userInitial"
@@ -1173,6 +1351,7 @@ const handleCourseDetailQuit = async () => {
       :dimension-scores-loading="dimensionScoresLoading"
       :dimension-scores-error="dimensionScoresError"
       :filtered-wrong-book-count="filteredWrongBook.length"
+      :due-review-count="totalDueReviewCount"
       :profile-message="profileMessage"
       @update:selected-course="(v) => (selectedCourse = v)"
       @edit-profile="openEditProfile"
@@ -1300,6 +1479,9 @@ const handleCourseDetailQuit = async () => {
       :test-submitted="testSubmitted"
       :test-result="testResult"
       :test-answers="testAnswers"
+      :test-counts="testCounts"
+      :test-form="testForm"
+      :kp-options="kpAllLevelOptions"
       :generate-test="generateTest"
       :submit-test="submitTest"
       :render-latex-text="renderLatexText"
@@ -1307,6 +1489,9 @@ const handleCourseDetailQuit = async () => {
       :parse-option-text="parseOptionText"
       :resolve-answer-text="resolveAnswerText"
       @go-courses="currentPage = 'courses'"
+      @regenerate="generateTest"
+      @add-test-point="addTestPoint"
+      @remove-test-point="removeTestPoint"
     />
 
     <StudentTeacherTest
@@ -1396,5 +1581,68 @@ const handleCourseDetailQuit = async () => {
   box-shadow: none !important;
   background: transparent !important;
   padding: 0 !important;
+}
+
+/* 侧边栏练习浮动按钮 */
+.quick-exercise-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 100px;
+  z-index: 999;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, background 0.2s;
+}
+.quick-exercise-fab:hover {
+  transform: scale(1.08);
+  background: #4f46e5;
+}
+
+/* 侧边栏练习抽屉 */
+.quick-exercise-drawer {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 340px;
+  max-width: 90vw;
+  z-index: 1000;
+  background: #fff;
+  box-shadow: -4px 0 20px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 20px;
+}
+.quick-exercise-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+.quick-exercise-drawer-body {
+  flex: 1;
+}
+
+/* 抽屉滑入动画 */
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.25s ease;
+}
+.slide-right-enter-from,
+.slide-right-leave-to {
+  transform: translateX(100%);
 }
 </style>

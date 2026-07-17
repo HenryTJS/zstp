@@ -28,7 +28,8 @@ export function useStudentPersistState({
   dimensionScores,
   dimensionScoresLoading,
   dimensionScoresError,
-  hydrateJoiningCourses
+  hydrateJoiningCourses,
+  preferences
 }) {
   let stateSaveTimer = null
   let dimScoreTimer = null
@@ -69,7 +70,8 @@ export function useStudentPersistState({
         learningRecords: learningRecords.value,
         wrongBook: wrongBook.value,
         joinedCourses: joinedCourses.value,
-        totalLearningSeconds: Math.max(0, Number(totalLearningSeconds.value || 0))
+        totalLearningSeconds: Math.max(0, Number(totalLearningSeconds.value || 0)),
+        preferencesJson: JSON.stringify(preferences.value || {})
       })
       if (showMessage) {
         profileMessage.value = '个人信息已保存到服务器。'
@@ -146,6 +148,9 @@ export function useStudentPersistState({
       learningRecords.value = Array.isArray(data.learningRecords) ? data.learningRecords : []
       wrongBook.value = Array.isArray(data.wrongBook) ? data.wrongBook : []
       totalLearningSeconds.value = Math.max(0, Number(data?.totalLearningSeconds || 0))
+      if (data?.preferences && typeof data.preferences === 'object') {
+        preferences.value = { ...data.preferences }
+      }
       void loadDimensionScores()
     } catch {
       profileMessage.value = '未读取到历史学习状态，已使用默认配置。'
