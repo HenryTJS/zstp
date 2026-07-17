@@ -17,6 +17,7 @@
 - 个人资料编辑、修改密码、学习画像（五维能力）
 - 个人中心统计项：加入课程数、总学习时长、发布评论数
 - 知识点交流区（发帖/回复/点赞）与通知铃铛
+- **头像系统**：默认首字母头像 + 自定义上传（支持学生/教师/管理员）
 
 ### 教师端
 
@@ -28,10 +29,11 @@
 - 课程简介/封面编辑
 - 知识点交流区与通知铃铛
 - 个人资料编辑、修改密码、AI 助手
+- **头像系统**：默认首字母头像 + 自定义上传
 
 ### 管理员端
 
-- 个人中心
+- 个人中心（含头像上传）
 - 用户统计（学生/教师）与批量导入（xlsx）
 - 公告发布与删除
 - 教师课程权限审批通知（顶栏铃铛）
@@ -46,11 +48,13 @@
 - 交流区与通知：`/api/knowledge-point-discussions*`（含 `/count-by-user`）、`/api/notifications*`
 - 教师权限：`/api/teacher-course-permissions*`、`/api/teacher-course-permission-requests*`
 - 公告与健康检查：`/api/announcements*`、`/api/health`
+- 头像上传：`POST /api/users/avatar/upload`（multipart，字段：`userId` + `file`）
 
 ## 技术栈
 
-- 前端：Vue 3、Vite、Vue Router、Axios、D3、ECharts、KaTeX、xlsx
-- 后端：Java 17、Spring Boot 3、Spring Data JPA、PostgreSQL
+- 前端：Vue 3、Vite 6、Vue Router、Axios、D3、ECharts、KaTeX、xlsx
+- 后端：Java 17、Spring Boot 3.3、Spring Data JPA、PostgreSQL
+- 认证：JWT（jjwt 0.12.6，HMAC-SHA256）
 - AI 接入：OpenAI 兼容接口
 - 部署：Docker Compose + Nginx
 
@@ -59,8 +63,24 @@
 ```text
 zstp/
   backend/               # Spring Boot 后端
+    src/main/java/.../
+      config/            # 全局配置（JWT 过滤器、CORS、异常处理、数据填充）
+      controller/        # REST 控制器
+      dto/               # 请求/响应 DTO
+      entity/            # JPA 实体
+      repository/        # 数据访问层
+      service/           # 业务逻辑层（含 AI 各子服务）
+      util/              # 工具类（JWT、知识点工具）
   frontend/              # Vue 3 + Vite 前端
+    src/
+      api/               # Axios HTTP 客户端（含 JWT 拦截器）
+      router/            # 路由配置
+      shared/            # 共享组件与样式
+      student/           # 学生端
+      teacher/           # 教师端
+      admin/             # 管理员端
   deploy/                # Docker Compose 与部署文档
+  diagrams/              # 架构图（Mermaid）
   start-all.bat          # Windows 一键启动（调用 PowerShell）
   start-all.ps1          # Windows 一键启动脚本
   LICENSE
@@ -90,6 +110,7 @@ CREATE DATABASE ai_self_learning;
 - 数据库：`DATABASE_URL` 或 `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD`
 - 端口：`PORT`（默认 `5000`）
 - AI：`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`
+- JWT 密钥：`JWT_SECRET`（默认 256-bit Base64，生产环境请务必修改）
 - 预置账号：`APP_BOOTSTRAP_USERS_*`
 - 上传目录：`UPLOAD_DIR`（默认 `uploads`）
 
@@ -120,7 +141,7 @@ npm install
 npm run dev
 ```
 
-默认地址：`http://localhost:5173`，并通过 Vite 代理将 `/api` 转发到 `http://localhost:5000`。
+默认地址：`http://localhost:5173`，并通过 Vite 代理将 `/api` 和 `/uploads` 转发到 `http://localhost:5000`。
 
 ### 6) Windows 一键启动
 
@@ -141,12 +162,47 @@ npm run dev
 
 ## 认证与安全说明
 
+- **JWT 认证**：登录后返回 `token`，前端通过 Axios 拦截器自动附加 `Authorization: Bearer <token>` 到每个请求
+- 公开路径（无需认证）：`POST /api/users/login`、`GET /api/health`、`GET /api/exams/*`、`/uploads/*`（静态资源）
 - 登录接口为 `POST /api/users/login`（identity 支持学工号或邮箱）
 - `POST /api/users/register` 当前固定返回 403（禁用自注册）
 - 统一修改密码接口：`POST /api/users/change-password`，支持两种模式：
   - 已登录修改：`userId + currentPassword + newPassword`
   - 忘记密码重置：`username + workId + newPassword`
 - 前端独立账号安全页路由：`/security`
+
+## 头像系统
+
+- **默认头像**：基于用户名首字母 + 12 色调色板生成彩色圆形头像
+- **自定义上传**：支持学生、教师、管理员在个人中心编辑资料时上传头像
+- 上传接口：`POST /api/users/avatar/upload`（multipart/form-data，字段：`userId`、`file`）
+- 头像文件存储于 `{uploadDir}/avatars/`，通过 `/uploads/avatars/*` 直接访问
+- 前端组件：`DefaultAvatar.vue`（自动切换图片/首字母模式）
+
+## 后端架构说明
+
+### AI 服务拆分
+
+原 `AiService.java`（1099 行）已按职责拆分为多个独立服务，`AiService` 保留为门面（Facade）以兼容已有调用方：
+
+| 服务 | 职责 |
+|------|------|
+| [`AiClient`](backend/src/main/java/com/teacher/backend/service/AiClient.java) | AI HTTP 客户端基类（封装 OpenAI 兼容 API 调用） |
+| [`AiQuestionService`](backend/src/main/java/com/teacher/backend/service/AiQuestionService.java) | 题目生成（单题/批量） |
+| [`AiGradingService`](backend/src/main/java/com/teacher/backend/service/AiGradingService.java) | 答案批改（客观题/主观题） |
+| [`AiSuggestionService`](backend/src/main/java/com/teacher/backend/service/AiSuggestionService.java) | 学习建议与知识图谱 |
+| [`AiChatService`](backend/src/main/java/com/teacher/backend/service/AiChatService.java) | AI 对话 |
+| [`ExamService`](backend/src/main/java/com/teacher/backend/service/ExamService.java) | 试卷管理（保存/渲染/下载） |
+
+### 统一异常处理
+
+[`GlobalExceptionHandler`](backend/src/main/java/com/teacher/backend/config/GlobalExceptionHandler.java) 使用 `@RestControllerAdvice` 统一处理：
+- `MethodArgumentNotValidException` → 400
+- `HttpMessageNotReadableException` → 400
+- `MissingServletRequestParameterException` → 400
+- `DataIntegrityViolationException` → 409
+- `NoResourceFoundException` → 404
+- `Exception`（兜底）→ 500
 
 ## 构建
 
@@ -164,7 +220,8 @@ npm run dev
 
 - 前端 `package.json` 当前仅提供 `dev/build/preview`，未内置 lint/test 脚本。
 - 后端仓库当前未包含测试用例目录。
-- 学生端“总学习时长”已支持**持久化**：前端会话内计时累计，并通过 `POST /api/student-state` 的 `totalLearningSeconds` 写入数据库字段 `student_states.total_learning_seconds`；跨会话可恢复。当前仍未做“多端并发/多标签页合并”的严格去重。
+- 学生端"总学习时长"已支持**持久化**：前端会话内计时累计，并通过 `POST /api/student-state` 的 `totalLearningSeconds` 写入数据库字段 `student_states.total_learning_seconds`；跨会话可恢复。当前仍未做"多端并发/多标签页合并"的严格去重。
+- 密码哈希使用 SCrypt（Bouncy Castle），兼容旧版 PBKDF2 哈希。
 
 ## 许可证
 
