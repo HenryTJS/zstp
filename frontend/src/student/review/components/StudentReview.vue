@@ -1,5 +1,7 @@
 <script setup>
+import { ref } from 'vue'
 import StudentWrongDrill from './StudentWrongDrill.vue'
+import WrongDiagnosisPanel from './WrongDiagnosisPanel.vue'
 
 const props = defineProps({
   filteredWrongBookForLearningPage: { type: Array, required: true },
@@ -26,6 +28,32 @@ const props = defineProps({
 })
 
 defineEmits(['go-courses'])
+
+/** AI 错因诊断面板状态 */
+const diagnosisVisible = ref(false)
+const diagnosisCourse = ref('')
+const diagnosisPoint = ref('')
+const diagnosisItems = ref([])
+
+/**
+ * 按「课程 + 知识点」聚合该知识点的全部错题后再诊断，
+ * 使 AI 能基于同一知识点的多道错题归纳共性错因，而不是只看单题。
+ */
+const openDiagnosis = (item) => {
+  if (!item) return
+  const course = String(item.course || '').trim()
+  const point = String(item.knowledgePoint || '').trim()
+  diagnosisCourse.value = course
+  diagnosisPoint.value = point
+  diagnosisItems.value = (props.filteredWrongBookForLearningPage || []).filter(
+    (row) => String(row.course || '').trim() === course && String(row.knowledgePoint || '').trim() === point
+  )
+  diagnosisVisible.value = true
+}
+
+const closeDiagnosis = () => {
+  diagnosisVisible.value = false
+}
 
 const wbQuestionType = (item) => String(item?.questionType || item?.question_type || '').trim()
 
@@ -106,6 +134,9 @@ const optionMarks = (opt, item) => {
               <button type="button" class="match-button wrong-book-toggle" @click.stop="openWrongBookModal(item)">
                 查看题目与解析
               </button>
+              <button type="button" class="match-button wrong-book-diagnose" @click.stop="openDiagnosis(item)">
+                AI 错因诊断
+              </button>
             </div>
           </article>
         </div>
@@ -137,6 +168,15 @@ const optionMarks = (opt, item) => {
         <p v-else class="panel-subtitle">该课程暂无学习记录。</p>
       </article>
     </div>
+
+    <WrongDiagnosisPanel
+      :visible="diagnosisVisible"
+      :course-name="diagnosisCourse"
+      :knowledge-point="diagnosisPoint"
+      :items="diagnosisItems"
+      :render-latex-text="renderLatexText"
+      @close="closeDiagnosis"
+    />
 
     <Teleport to="body">
       <div v-if="wrongBookModalItem" class="modal-mask" @click.self="closeWrongBookModal">
@@ -242,6 +282,15 @@ const optionMarks = (opt, item) => {
 @import '@/student/styles/student-portal.css';
 .review-stack{
   gap:12px;
+}
+/* AI 错因诊断入口：与"查看题目与解析"并排，用主色区分主次操作 */
+.wrong-book-card-actions .wrong-book-diagnose{
+  background:#4f46e5;
+  border-color:#4f46e5;
+}
+.wrong-book-card-actions .wrong-book-diagnose:hover{
+  background:#4338ca;
+  border-color:#4338ca;
 }
 .review-card-wrap{
   display:block;

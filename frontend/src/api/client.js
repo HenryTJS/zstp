@@ -98,6 +98,12 @@ export const fetchQuestion = (payload) => http.post('/generate-question', payloa
 export const fetchQuestions = (payload) => http.post('/generate-questions', payload)
 export const fetchGrading = (payload) => http.post('/grade-answer', payload)
 export const fetchExams = () => http.get('/exams')
+
+/**
+ * 错题诊断：一次返回 错因分析 + 推荐课程资料 + 针对性练习
+ * payload: { courseName, knowledgePoint, wrongItems }
+ */
+export const fetchWrongDiagnosis = (payload) => http.post('/wrong-diagnosis', payload)
 export const deleteExam = (id) => http.delete('/exams/' + id)
 export const saveExam = (payload) => http.post('/exams/save', payload)
 export const loginUser = (payload) => http.post('/users/login', payload)

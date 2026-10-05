@@ -70,7 +70,7 @@ public class UserController {
             return error(HttpStatus.BAD_REQUEST, "identity and password are required");
         }
 
-        return userRepository.findByWorkIdIgnoreCaseOrEmailIgnoreCase(identity, identity)
+        return userRepository.findByUsernameIgnoreCaseOrWorkIdIgnoreCaseOrEmailIgnoreCase(identity, identity, identity)
             .filter(user -> passwordService.matches(password, user.getPasswordHash()))
             .<ResponseEntity<?>>map(user -> {
                 String token = jwtUtil.generateToken(user.getId(), user.getRole());
