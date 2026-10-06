@@ -12,6 +12,16 @@ const props = defineProps({
   currentUser: {
     type: Object,
     default: () => ({})
+  },
+  /** 当前课程：用于检索该课程课件作为回答依据 */
+  courseName: {
+    type: String,
+    default: ''
+  },
+  /** 当前知识点：用于精准检索对应章节的课件 */
+  knowledgePoint: {
+    type: String,
+    default: ''
   }
 })
 
@@ -47,11 +57,15 @@ const send = async () => {
       question: text,
       role: props.role,
       userId: props.currentUser?.id != null ? String(props.currentUser.id) : '',
-      username: props.currentUser?.username || ''
+      username: props.currentUser?.username || '',
+      courseName: props.courseName || '',
+      knowledgePoint: props.knowledgePoint || ''
     })
     messages.value.push({
       role: 'assistant',
-      content: (data && data.answer) ? String(data.answer) : '暂时没有可用回复，请稍后再试。'
+      content: (data && data.answer) ? String(data.answer) : '暂时没有可用回复，请稍后再试。',
+      citations: Array.isArray(data?.citations) ? data.citations : [],
+      hasCourseContext: Boolean(data?.hasCourseContext)
     })
   } catch (e) {
     messages.value.push({
@@ -76,6 +90,10 @@ const send = async () => {
           <div v-for="(m, idx) in messages" :key="idx" :class="['ai-item', m.role === 'user' ? 'is-user' : 'is-ai']">
             <template v-if="m.role === 'assistant'">
               <div class="md-content" v-html="renderMarkdown(m.content)"></div>
+              <div v-if="m.citations && m.citations.length" class="ai-citations">
+                <span class="ai-citations-label">参考资料：</span>
+                <span v-for="(c, ci) in m.citations" :key="ci" class="ai-citation-tag">{{ c }}</span>
+              </div>
             </template>
             <template v-else>
               {{ m.content }}
@@ -103,6 +121,32 @@ const send = async () => {
 </template>
 
 <style scoped>
+/* 回答下方展示“依据了哪份课程资料”，体现答案是资料支撑的而非泛泛而谈 */
+.ai-citations {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-citations-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.ai-citation-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #4338ca;
+  font-size: 12px;
+}
+
 .ai-fab {
   position: fixed;
   right: max(16px, env(safe-area-inset-right, 0px));

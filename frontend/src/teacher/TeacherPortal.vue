@@ -395,7 +395,11 @@ const {
       </div>
     </div>
 
-    <AiAssistantWidget role="teacher" :current-user="currentUser" />
+    <AiAssistantWidget
+      role="teacher"
+      :current-user="currentUser"
+      :course-name="selectedCourse || ''"
+    />
 </template>
 
 <style>

@@ -1569,7 +1569,12 @@ const handleCourseDetailQuit = async () => {
       </div>
     </section>
   </div>
-    <AiAssistantWidget role="student" :current-user="currentUser" />
+    <AiAssistantWidget
+      role="student"
+      :current-user="currentUser"
+      :course-name="learningContextCourse || selectedCourse"
+      :knowledge-point="selectedNode?.label || ''"
+    />
 </template>
 
 <style>

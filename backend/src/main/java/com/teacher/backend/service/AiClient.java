@@ -400,6 +400,47 @@ public class AiClient {
         }
     }
 
+    /**
+     * 带图片的 JSON 调用（通用版）。
+     *
+     * <p>用于让视觉模型阅读图片内容（如扫描版试卷、纯图片资料）并返回结构化 JSON，
+     * 是"让 AI 读懂往年题"的基础能力。
+     *
+     * <p>该请求<b>不参与结果缓存</b>：图片内容各不相同且请求体较大，
+     * 缓存收益低而内存开销高；调用方应对识别结果自行落库（见 MaterialTextService）。
+     *
+     * @param imageBase64   Base64 图片数据，带或不带 data: 前缀均可
+     * @param imageMimeType 未带 data: 前缀时使用的 MIME 类型，默认 image/png
+     */
+    public Map<String, Object> chatJsonWithImage(String systemPrompt, String userPrompt, String imageBase64, String imageMimeType)
+            throws IOException, InterruptedException {
+        String dataUri = imageBase64 == null ? "" : imageBase64.trim();
+        if (!dataUri.startsWith("data:")) {
+            String mime = StringUtils.hasText(imageMimeType) ? imageMimeType : "image/png";
+            dataUri = "data:" + mime + ";base64," + dataUri;
+        }
+
+        Map<String, Object> requestBody = new LinkedHashMap<>();
+        requestBody.put("model", model);
+        applyTemperature(requestBody);
+        requestBody.put("response_format", Map.of("type", "json_object"));
+        requestBody.put("messages", List.of(
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", List.of(
+                Map.of("type", "text", "text", userPrompt),
+                Map.of("type", "image_url", "image_url", Map.of("url", dataUri))
+            ))
+        ));
+
+        String responseBody = sendWithRetry(objectMapper.writeValueAsString(requestBody));
+        JsonNode payload = objectMapper.readTree(responseBody);
+        String content = payload.path("choices").path(0).path("message").path("content").asText("");
+        if (!StringUtils.hasText(content)) {
+            throw new IllegalStateException("AI vision response content is empty");
+        }
+        return extractJson(content);
+    }
+
     public Map<String, Object> extractJson(String content) throws IOException {
         String cleaned = content.trim()
             .replaceFirst("^```(?:json)?\\s*", "")

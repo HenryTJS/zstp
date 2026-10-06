@@ -56,8 +56,11 @@ public class AiController {
         String role = request == null ? null : request.role();
         String username = request == null ? null : request.username();
         String userId = request == null ? null : request.userId();
-        log.info("Hit /api/agent-chat, role={}, userId={}", role, userId);
-        return aiService.agentChat(question, role, username);
+        String courseName = request == null ? null : request.courseName();
+        String knowledgePoint = request == null ? null : request.knowledgePoint();
+        log.info("Hit /api/agent-chat, role={}, userId={}, courseName={}, knowledgePoint={}",
+            role, userId, courseName, knowledgePoint);
+        return aiService.agentChat(question, role, username, courseName, knowledgePoint);
     }
 
     @PostMapping("/major-relevance")

@@ -102,8 +102,8 @@ public class AiService {
 
     // ==================== Chat ====================
 
-    public Map<String, Object> agentChat(String question, String role, String username) {
-        return aiChatService.agentChat(question, role, username);
+    public Map<String, Object> agentChat(String question, String role, String username, String courseName, String knowledgePoint) {
+        return aiChatService.agentChat(question, role, username, courseName, knowledgePoint);
     }
 
     // ==================== Exam ====================

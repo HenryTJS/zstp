@@ -126,6 +126,15 @@ const improvement = computed(() => {
 
 const toPercent = (ratio) => (ratio == null ? '—' : `${Math.round(ratio * 100)}%`)
 
+/** 练习是否参考了课程往年题的题型规格（后端返回 examStyleApplied / examStyleTitle） */
+const examStyleHint = computed(() => {
+  if (!result.value?.examStyleApplied) return ''
+  const title = String(result.value.examStyleTitle || '').trim()
+  return title
+    ? `已参考《${title}》的题型结构与分值规格出题，更贴近真实考试`
+    : '已参考课程期末试卷的题型结构与分值规格出题'
+})
+
 const submitPractice = () => {
   gradingDetail.value = practiceQuestions.value.map((question, index) => {
     const answer = answers.value[index] ?? ''
@@ -221,6 +230,7 @@ const setAnswer = (index, value) => {
             <!-- 步骤 4：针对性练习与再次作答 -->
             <section class="diagnosis-block">
               <h4 class="diagnosis-block-title">④ 针对性练习</h4>
+              <p v-if="examStyleHint" class="exam-style-hint">{{ examStyleHint }}</p>
               <p v-if="!practiceQuestions.length" class="diagnosis-note">
                 本次未能生成练习题目（AI 不可用或输出不可用），可点击下方重新诊断。
               </p>
@@ -389,6 +399,18 @@ const setAnswer = (index, value) => {
   margin: 6px 0;
   font-size: 13px;
   color: #9ca3af;
+}
+
+/* 提示练习已对齐课程往年题的题型与分值 */
+.exam-style-hint {
+  margin: 6px 0 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  font-size: 12.5px;
+  line-height: 1.6;
 }
 
 .diagnosis-error-type {

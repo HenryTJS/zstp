@@ -50,7 +50,11 @@ public class WrongDiagnosisService {
     /** 允许的错误类型，AI 返回其他值时回落到默认值，保证前端展示稳定。 */
     private static final List<String> ERROR_TYPES = List.of("概念不清", "计算错误", "步骤缺失", "前置知识不足");
 
+    /** 注入出题 prompt 的试卷参考文本长度上限，避免 prompt 过长拖慢出题。 */
+    private static final int MAX_EXAM_STYLE_CHARS = 4000;
+
     private final AiClient aiClient;
+    private final MaterialTextService materialTextService;
     private final MaterialRepository materialRepository;
     private final CourseKnowledgePointRepository courseKnowledgePointRepository;
     private final CourseCatalogService courseCatalogService;
@@ -58,12 +62,14 @@ public class WrongDiagnosisService {
 
     public WrongDiagnosisService(
         AiClient aiClient,
+        MaterialTextService materialTextService,
         MaterialRepository materialRepository,
         CourseKnowledgePointRepository courseKnowledgePointRepository,
         CourseCatalogService courseCatalogService,
         ApiResponseMapper responseMapper
     ) {
         this.aiClient = aiClient;
+        this.materialTextService = materialTextService;
         this.materialRepository = materialRepository;
         this.courseKnowledgePointRepository = courseKnowledgePointRepository;
         this.courseCatalogService = courseCatalogService;
@@ -108,7 +114,16 @@ public class WrongDiagnosisService {
         out.put("diagnosisSource", "ai");
         out.put("diagnosis", ai.get("diagnosis"));
         out.put("practiceQuestions", ai.get("questions"));
+        out.put("examStyleApplied", ai.get("examStyleApplied"));
+        out.put("examStyleTitle", ai.get("examStyleTitle"));
         return out;
+    }
+
+    /** 从 "《往年题》\n正文" 形式的参考文本中取出资料标题。 */
+    private static String extractTitle(String reference) {
+        int newline = reference.indexOf('\n');
+        String firstLine = newline > 0 ? reference.substring(0, newline) : reference;
+        return firstLine.replace("《", "").replace("》", "").trim();
     }
 
     /**
@@ -169,6 +184,16 @@ public class WrongDiagnosisService {
             return null;
         }
 
+        // 取课程期末试卷作为题型与分值参考，使生成的练习更贴近真实考试
+        String examStyleReference = "";
+        try {
+            examStyleReference = materialTextService.buildExamStyleReference(
+                courseName, knowledgePoint, MAX_EXAM_STYLE_CHARS);
+        } catch (Exception exception) {
+            log.warn("buildExamStyleReference failed: {}", exception.getMessage());
+        }
+        boolean hasExamStyle = StringUtils.hasText(examStyleReference);
+
         String systemPrompt = "你是学科教学诊断专家。你会收到学生的错题（含学生答案与正确答案），"
             + "需要判断错误原因，并生成针对性练习。"
             + "输出 JSON:{errorType:string,reason:string,misconception:string,reviewPoints:[string],"
@@ -182,8 +207,13 @@ public class WrongDiagnosisService {
             + "5) 选择题的 options 必须是 4 个选项，形如 [\"A. ...\",\"B. ...\",\"C. ...\",\"D. ...\"]；"
             + "填空题的 options 输出空数组；"
             + "6) 选择题的 answer 只填字母（如 \"B\"），填空题的 answer 填参考答案文本；"
-            + "7) fullScore 取 10；每题都要有 explanation 解析；focusPointName 填知识点名称；"
-            + "8) 练习必须针对学生暴露的具体错误，不要出与错题无关的题目。";
+            + "7) 每题都要有 explanation 解析；focusPointName 填知识点名称；"
+            + "8) 练习必须针对学生暴露的具体错误，不要出与错题无关的题目；"
+            + (hasExamStyle
+                ? "9) 消息末尾附有该课程的期末试卷，请严格参考它的题型结构、题干表述风格与单题分值来出题："
+                    + "fullScore 按试卷中同类题的分值设置（如试卷选择题每题 2 分，则本题也用 2 分）；"
+                    + "题干风格尽量贴近试卷；但题目内容必须针对学生的错因，不得直接照抄试卷原题。"
+                : "9) fullScore 取 10。");
 
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append("课程：").append(courseName).append('\n');
@@ -212,6 +242,11 @@ public class WrongDiagnosisService {
             }
         }
 
+        if (hasExamStyle) {
+            userPrompt.append("\n【课程期末试卷（题型与分值参考）】\n")
+                .append(examStyleReference).append('\n');
+        }
+
         try {
             Map<String, Object> parsed = aiClient.chatJson(systemPrompt, userPrompt.toString());
             if (parsed == null || parsed.isEmpty()) {
@@ -234,6 +269,10 @@ public class WrongDiagnosisService {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("diagnosis", diagnosis);
             result.put("questions", questions);
+            result.put("examStyleApplied", hasExamStyle);
+            if (hasExamStyle) {
+                result.put("examStyleTitle", extractTitle(examStyleReference));
+            }
             return result;
         } catch (Exception exception) {
             log.warn("wrong-diagnosis AI call failed: {}", exception.getMessage());
